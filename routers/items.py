@@ -28,6 +28,42 @@ from database import (
 from schemas import BatchUpdateRequest, ItemCreate, ItemUpdate
 
 router = APIRouter(prefix="/api")
+MIN_PAGE = 1
+MAX_PAGE_SIZE = 200
+DEFAULT_PAGE_SIZE = 20
+
+
+def _validate_pagination(page: int, page_size: int) -> None:
+    if page < MIN_PAGE:
+        raise HTTPException(status_code=400, detail="page 必须 >= 1")
+    if page_size < 1 or page_size > MAX_PAGE_SIZE:
+        raise HTTPException(status_code=400, detail="page_size 必须在 1-200 之间")
+
+
+def _normalize_item_filters(
+    status: Optional[str],
+    department: Optional[str],
+    month: Optional[str],
+    keyword: Optional[str],
+) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    return (
+        normalize_text_filter(status),
+        normalize_text_filter(department),
+        normalize_month(month),
+        normalize_text_filter(keyword),
+    )
+
+
+def _normalize_history_filters(
+    action: Optional[str],
+    keyword: Optional[str],
+    month: Optional[str],
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    return (
+        normalize_history_action(action),
+        normalize_text_filter(keyword),
+        normalize_month(month),
+    )
 
 
 @router.get("/items")
@@ -37,18 +73,13 @@ async def list_items(
     month: Optional[str] = None,
     keyword: Optional[str] = None,
     page: int = 1,
-    page_size: int = 20
+    page_size: int = DEFAULT_PAGE_SIZE
 ):
     """获取所有物品列表。"""
-    if page < 1:
-        raise HTTPException(status_code=400, detail="page 必须 >= 1")
-    if page_size < 1 or page_size > 200:
-        raise HTTPException(status_code=400, detail="page_size 必须在 1-200 之间")
-
-    status = normalize_text_filter(status)
-    department = normalize_text_filter(department)
-    month = normalize_month(month)
-    keyword = normalize_text_filter(keyword)
+    _validate_pagination(page, page_size)
+    status, department, month, keyword = _normalize_item_filters(
+        status, department, month, keyword
+    )
     items = await get_items(
         status=status, department=department, month=month, keyword=keyword,
         page=page, page_size=page_size
@@ -98,10 +129,9 @@ async def export_items(
     keyword: Optional[str] = None
 ):
     """导出筛选后的记录为 Excel。"""
-    status = normalize_text_filter(status)
-    department = normalize_text_filter(department)
-    month = normalize_month(month)
-    keyword = normalize_text_filter(keyword)
+    status, department, month, keyword = _normalize_item_filters(
+        status, department, month, keyword
+    )
     items = await get_items(status=status, department=department, month=month, keyword=keyword)
 
     try:
@@ -220,10 +250,9 @@ async def amount_report(
     keyword: Optional[str] = None
 ):
     """金额统计报表（支持与列表一致的筛选）。"""
-    status = normalize_text_filter(status)
-    department = normalize_text_filter(department)
-    month = normalize_month(month)
-    keyword = normalize_text_filter(keyword)
+    status, department, month, keyword = _normalize_item_filters(
+        status, department, month, keyword
+    )
     return await get_amount_report(
         status=status, department=department, month=month, keyword=keyword
     )
@@ -235,17 +264,11 @@ async def history_list(
     keyword: Optional[str] = None,
     month: Optional[str] = None,
     page: int = 1,
-    page_size: int = 20
+    page_size: int = DEFAULT_PAGE_SIZE
 ):
     """变更历史列表。"""
-    if page < 1:
-        raise HTTPException(status_code=400, detail="page 必须 >= 1")
-    if page_size < 1 or page_size > 200:
-        raise HTTPException(status_code=400, detail="page_size 必须在 1-200 之间")
-
-    action = normalize_history_action(action)
-    keyword = normalize_text_filter(keyword)
-    month = normalize_month(month)
+    _validate_pagination(page, page_size)
+    action, keyword, month = _normalize_history_filters(action, keyword, month)
     items = await get_item_history(
         action=action, keyword=keyword, month=month,
         page=page, page_size=page_size

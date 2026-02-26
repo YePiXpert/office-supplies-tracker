@@ -49,8 +49,9 @@ def normalize_webdav_config(payload: dict) -> dict:
     password = str(payload.get("password") or "")
     remote_dir = _normalize_remote_dir(payload.get("remote_dir"))
     if "jianguoyun.com" in parsed.netloc.lower():
-        # 坚果云 WebDAV 地址必须包含 /dav
-        if not parsed.path or parsed.path.rstrip("/") == "":
+        # 坚果云 WebDAV 地址必须指向 /dav 根路径。
+        path = (parsed.path or "").rstrip("/").lower()
+        if not path.startswith("/dav"):
             raise WebDAVError("坚果云地址应填写为 https://dav.jianguoyun.com/dav/")
         if remote_dir.startswith("dav/"):
             remote_dir = remote_dir[4:]

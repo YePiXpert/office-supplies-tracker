@@ -20,6 +20,17 @@ TEXT_FIELD_MAX_LENGTH = {
 
 DATE_CANONICAL_PATTERN = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})$")
 DATE_COMPACT_PATTERN = re.compile(r"^(\d{4})(\d{2})(\d{2})$")
+DEFAULT_STATUS = "待采购"
+DEFAULT_PAYMENT_STATUS = "未付款"
+DEFAULT_INVOICE_ISSUED = 0
+INSERT_ITEM_SQL = """
+    INSERT INTO items (
+        serial_number, department, handler, request_date,
+        item_name, quantity, purchase_link, unit_price,
+        status, invoice_issued, payment_status
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
 
 
 def _normalize_required_text(field: str, value) -> str:
@@ -136,6 +147,56 @@ def normalize_update_payload(updates: dict) -> dict:
     return payload
 
 
+def _validate_allowed_columns(payload: dict) -> None:
+    invalid = set(payload.keys()) - ALLOWED_COLUMNS
+    if invalid:
+        raise ValueError(f"不允许的字段: {invalid}")
+
+
+def _deduplicate_positive_ids(raw_ids: list[int]) -> list[int]:
+    unique_ids = []
+    seen = set()
+    for raw in raw_ids:
+        item_id = int(raw)
+        if item_id <= 0:
+            raise ValueError("ids 必须为正整数")
+        if item_id not in seen:
+            seen.add(item_id)
+            unique_ids.append(item_id)
+    return unique_ids
+
+
+def _build_insert_values(payload: dict) -> tuple:
+    return (
+        payload["serial_number"],
+        payload["department"],
+        payload["handler"],
+        payload["request_date"],
+        payload["item_name"],
+        payload["quantity"],
+        payload.get("purchase_link"),
+        payload.get("unit_price"),
+        payload.get("status", DEFAULT_STATUS),
+        payload.get("invoice_issued", DEFAULT_INVOICE_ISSUED),
+        payload.get("payment_status", DEFAULT_PAYMENT_STATUS),
+    )
+
+
+async def _insert_item_with_history(db: aiosqlite.Connection, payload: dict) -> int:
+    cursor = await db.execute(INSERT_ITEM_SQL, _build_insert_values(payload))
+    item_id = int(cursor.lastrowid)
+    snapshot = await fetch_item_row(db, item_id)
+    await insert_item_history(
+        db,
+        item_id=item_id,
+        action="create",
+        before_data=None,
+        after_data=snapshot,
+        changed_fields=sorted(ALLOWED_COLUMNS),
+    )
+    return item_id
+
+
 def _has_effective_changes(before_data: dict, updates: dict) -> bool:
     for field, new_value in updates.items():
         if before_data.get(field) != new_value:
@@ -206,31 +267,7 @@ async def create_item(item: dict) -> int:
     payload = normalize_item_payload(item)
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """
-            INSERT INTO items (serial_number, department, handler, request_date,
-                             item_name, quantity, purchase_link, unit_price,
-                             status, invoice_issued, payment_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                payload["serial_number"], payload["department"], payload["handler"],
-                payload["request_date"], payload["item_name"], payload["quantity"],
-                payload.get("purchase_link"), payload.get("unit_price"),
-                payload.get("status", "待采购"), payload.get("invoice_issued", 0),
-                payload.get("payment_status", "未付款")
-            ),
-        )
-        item_id = cursor.lastrowid
-        snapshot = await fetch_item_row(db, item_id)
-        await insert_item_history(
-            db,
-            item_id=item_id,
-            action="create",
-            before_data=None,
-            after_data=snapshot,
-            changed_fields=sorted(ALLOWED_COLUMNS),
-        )
+        item_id = await _insert_item_with_history(db, payload)
         await db.commit()
         return item_id
 
@@ -240,9 +277,7 @@ async def update_item(item_id: int, updates: dict) -> bool:
     if not updates:
         return False
     payload = normalize_update_payload(updates)
-    invalid = set(payload.keys()) - ALLOWED_COLUMNS
-    if invalid:
-        raise ValueError(f"不允许的字段: {invalid}")
+    _validate_allowed_columns(payload)
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         before_data = await fetch_item_row(db, item_id)
@@ -315,32 +350,8 @@ async def batch_create_items(items: list[dict]) -> list[int]:
                 exists = await cursor.fetchone()
                 if exists:
                     continue
-            cursor = await db.execute(
-                """
-                INSERT INTO items (serial_number, department, handler, request_date,
-                                 item_name, quantity, purchase_link, unit_price,
-                                 status, invoice_issued, payment_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    item["serial_number"], item["department"], item["handler"],
-                    item["request_date"], item["item_name"], item["quantity"],
-                    item.get("purchase_link"), item.get("unit_price"),
-                    item.get("status", "待采购"), item.get("invoice_issued", 0),
-                    item.get("payment_status", "未付款")
-                ),
-            )
-            item_id = cursor.lastrowid
+            item_id = await _insert_item_with_history(db, item)
             created_ids.append(item_id)
-            snapshot = await fetch_item_row(db, item_id)
-            await insert_item_history(
-                db,
-                item_id=item_id,
-                action="create",
-                before_data=None,
-                after_data=snapshot,
-                changed_fields=sorted(ALLOWED_COLUMNS),
-            )
         await db.commit()
     return created_ids
 
@@ -430,19 +441,8 @@ async def batch_update_items(item_ids: list[int], updates: dict) -> dict:
     payload = normalize_update_payload(updates)
     if not payload:
         raise ValueError("未提供可更新字段")
-    invalid = set(payload.keys()) - ALLOWED_COLUMNS
-    if invalid:
-        raise ValueError(f"不允许的字段: {invalid}")
-
-    unique_ids = []
-    seen = set()
-    for raw in item_ids:
-        item_id = int(raw)
-        if item_id <= 0:
-            raise ValueError("ids 必须为正整数")
-        if item_id not in seen:
-            seen.add(item_id)
-            unique_ids.append(item_id)
+    _validate_allowed_columns(payload)
+    unique_ids = _deduplicate_positive_ids(item_ids)
 
     placeholders = ",".join("?" for _ in unique_ids)
     existing_ids = set()
