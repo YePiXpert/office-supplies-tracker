@@ -44,9 +44,16 @@ def _normalize_remote_dir(remote_dir: Optional[str]) -> str:
 
 def normalize_webdav_config(payload: dict) -> dict:
     base_url = _normalize_base_url(str(payload.get("base_url") or ""))
+    parsed = urlparse(base_url)
     username = str(payload.get("username") or "").strip()
     password = str(payload.get("password") or "")
     remote_dir = _normalize_remote_dir(payload.get("remote_dir"))
+    if "jianguoyun.com" in parsed.netloc.lower():
+        # 坚果云 WebDAV 地址必须包含 /dav
+        if not parsed.path or parsed.path.rstrip("/") == "":
+            raise WebDAVError("坚果云地址应填写为 https://dav.jianguoyun.com/dav/")
+        if remote_dir.startswith("dav/"):
+            remote_dir = remote_dir[4:]
     if len(username) > 200:
         raise WebDAVError("username 长度不能超过 200")
     if len(password) > 200:
@@ -92,6 +99,10 @@ def _request(
         message = f"WebDAV 请求失败: HTTP {e.code}"
         if detail:
             message = f"{message} - {detail[:200]}"
+        parsed = urlparse(url)
+        if e.code == 404 and "jianguoyun.com" in parsed.netloc.lower():
+            if "/dav/" not in parsed.path and parsed.path != "/dav":
+                message += "（坚果云请使用 https://dav.jianguoyun.com/dav/）"
         raise WebDAVError(message, status_code=e.code)
     except URLError as e:
         raise WebDAVError(f"WebDAV 连接失败: {e.reason}")

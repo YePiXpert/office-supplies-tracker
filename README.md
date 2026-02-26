@@ -10,6 +10,7 @@
 - 申领部门精准解析：优先顶部“申领部门”字段，规避“部门领导意见/管理员意见”干扰
 - 重复物品处理：检测 `(流水号 + 物品名称 + 经办人)`，支持跳过/新增/合并数量
 - 一键备份/恢复：可下载当前数据库+上传文件备份，并一键恢复
+- WebDAV 同步：支持配置 WebDAV，上传备份到远端并从远端恢复
 - 采购记录在线编辑：字段直接修改并保存
 - 关键字模糊搜索：支持流水号、物品名、经办人、申领部门
 - 高级筛选：按状态、申领部门、月份（`YYYY-MM`）筛选
@@ -81,6 +82,12 @@ python desktop.py
 | GET | `/api/export` | 导出 Excel（支持与列表一致的筛选参数，含 `keyword`） |
 | GET | `/api/backup` | 下载数据备份（数据库+上传文件） |
 | POST | `/api/restore` | 上传备份包并恢复数据 |
+| GET | `/api/webdav/config` | 获取 WebDAV 配置（不含明文密码） |
+| PUT | `/api/webdav/config` | 保存 WebDAV 配置 |
+| POST | `/api/webdav/test` | 测试 WebDAV 连接 |
+| GET | `/api/webdav/backups` | 列出 WebDAV 远端备份 |
+| POST | `/api/webdav/backup` | 上传当前备份到 WebDAV |
+| POST | `/api/webdav/restore` | 从 WebDAV 下载并恢复指定备份 |
 
 ## 关键参数说明
 
