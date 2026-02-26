@@ -23,8 +23,6 @@
 
 ## 安装与启动
 
-> 注意：由于 `paddlepaddle` 轮子兼容性，Windows 打包建议使用 Python `3.10-3.12`（推荐 `3.12`）。
-
 ### 1. 安装依赖
 
 ```bash
@@ -50,35 +48,12 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 打开：`http://localhost:8000`
 
-## 桌面版运行与打包
-
-### 1. 直接运行桌面版
+## 桌面版运行（无需打包）
 
 ```bash
 source venv/bin/activate
-python3 scripts/prepare_vendor_assets.py
 python desktop.py
 ```
-
-### 2. 打包桌面版
-
-```bash
-./build_desktop.sh
-```
-
-Windows 一键打包：
-
-```bat
-build_windows.bat
-```
-
-PowerShell 一键打包（推荐）：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
-```
-
-产物目录：`dist/office-supplies-desktop/`
 
 ## API 一览
 
@@ -139,4 +114,3 @@ office-supplies-tracker/
 - 图片上传建议使用高清截图，避免带审批系统按钮区域
 - 解析后请抽样核对关键字段（部门、日期、数量）
 - 数据库文件 `office_supplies.db` 默认在项目根目录（已被 `.gitignore` 忽略）
-- 桌面版离线运行前请确保 `static/vendor/` 下资源已准备（可执行 `python3 scripts/prepare_vendor_assets.py`）

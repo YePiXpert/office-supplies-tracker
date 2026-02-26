@@ -7,10 +7,9 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>办公用品采购追踪系统</title>
-    <link rel="stylesheet" href="/static/vendor/tailwind.min.css"
-          onerror="if(!window.__tailwindFallback){window.__tailwindFallback=true;var s=document.createElement('script');s.src='https://cdn.tailwindcss.com';document.head.appendChild(s);}">
-    <script src="/static/vendor/vue.global.prod.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/vue@3.5.12/dist/vue.global.prod.js';"></script>
-    <script src="/static/vendor/axios.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/axios@1.7.9/dist/axios.min.js';"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.5.12/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.7.9/dist/axios.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -540,12 +539,6 @@
     </div>
 
     <script>
-        if (!window.Vue || !window.axios) {
-            const errorEl = document.getElementById('vue-error');
-            if (errorEl) errorEl.style.display = '';
-            throw new Error('前端依赖加载失败：请检查本地 vendor 资源或网络连接。');
-        }
-
         const { createApp } = Vue;
 
         const app = createApp({
