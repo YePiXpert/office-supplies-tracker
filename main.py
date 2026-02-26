@@ -6,14 +6,13 @@ from pydantic import BaseModel
 from typing import Optional
 import aiosqlite
 import shutil
-import os
 import re
 from pathlib import Path
 from io import BytesIO
 from datetime import datetime
 
 from database import (
-    init_db, get_items, count_items, get_item, create_item, update_item, delete_item,
+    init_db, get_items, count_items, get_stats_summary, get_item, create_item, update_item, delete_item,
     batch_create_items, get_serial_numbers, get_departments, get_handlers,
     ItemStatus, PaymentStatus
 )
@@ -75,6 +74,14 @@ def _normalize_text_filter(value: Optional[str]) -> Optional[str]:
     return value or None
 
 
+def _safe_unlink(path: Path) -> None:
+    """安全删除临时文件。"""
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 # Pydantic 模型
 class ItemCreate(BaseModel):
     serial_number: str
@@ -102,14 +109,6 @@ class ItemUpdate(BaseModel):
     status: Optional[str] = None
     invoice_issued: Optional[bool] = None
     payment_status: Optional[str] = None
-
-
-class ParseResult(BaseModel):
-    serial_number: str
-    department: str
-    handler: str
-    request_date: str
-    items: list[dict]
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -299,7 +298,7 @@ async def upload_and_parse(file: UploadFile = File(...)):
 
         # 如果有重复，返回重复信息（先清理临时文件）
         if duplicates:
-            os.remove(file_path)
+            _safe_unlink(file_path)
             return {
                 "message": f"检测到 {len(duplicates)} 个重复物品",
                 "parsed_data": result,
@@ -311,7 +310,7 @@ async def upload_and_parse(file: UploadFile = File(...)):
         created_ids = await batch_create_items(items_to_create)
 
         # 删除临时文件
-        os.remove(file_path)
+        _safe_unlink(file_path)
 
         return {
             "message": f"成功解析并创建 {len(created_ids)} 条记录",
@@ -323,8 +322,7 @@ async def upload_and_parse(file: UploadFile = File(...)):
 
     except Exception as e:
         # 清理文件
-        if file_path.exists():
-            os.remove(file_path)
+        _safe_unlink(file_path)
         raise HTTPException(status_code=500, detail=f"解析失败: {str(e)}")
 
 
@@ -343,34 +341,7 @@ async def autocomplete():
 @app.get("/api/stats")
 async def get_stats():
     """获取统计信息"""
-    items = await get_items()
-
-    total = len(items)
-    status_count = {}
-    payment_count = {}
-    invoice_count = {"issued": 0, "not_issued": 0}
-
-    for item in items:
-        # 状态统计
-        status = item.get("status", "待采购")
-        status_count[status] = status_count.get(status, 0) + 1
-
-        # 付款状态统计
-        payment = item.get("payment_status", "未付款")
-        payment_count[payment] = payment_count.get(payment, 0) + 1
-
-        # 发票统计
-        if item.get("invoice_issued"):
-            invoice_count["issued"] += 1
-        else:
-            invoice_count["not_issued"] += 1
-
-    return {
-        "total": total,
-        "status_count": status_count,
-        "payment_count": payment_count,
-        "invoice_count": invoice_count
-    }
+    return await get_stats_summary()
 
 
 class DuplicateHandleRequest(BaseModel):

@@ -1,7 +1,6 @@
 import aiosqlite
 from enum import Enum
 from typing import Optional
-from datetime import date
 
 DB_PATH = "office_supplies.db"
 
@@ -115,6 +114,46 @@ async def count_items(
             return int(row[0] if row else 0)
 
 
+async def get_stats_summary() -> dict:
+    """获取统计信息（SQL 聚合）。"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN invoice_issued = 1 THEN 1 ELSE 0 END) AS issued,
+                SUM(CASE WHEN invoice_issued = 1 THEN 0 ELSE 1 END) AS not_issued
+            FROM items
+            """
+        ) as cursor:
+            row = await cursor.fetchone()
+            total = int(row[0] if row and row[0] is not None else 0)
+            issued = int(row[1] if row and row[1] is not None else 0)
+            not_issued = int(row[2] if row and row[2] is not None else 0)
+
+        async with db.execute(
+            "SELECT status, COUNT(*) FROM items GROUP BY status"
+        ) as cursor:
+            status_rows = await cursor.fetchall()
+            status_count = {str(status): int(count) for status, count in status_rows}
+
+        async with db.execute(
+            "SELECT payment_status, COUNT(*) FROM items GROUP BY payment_status"
+        ) as cursor:
+            payment_rows = await cursor.fetchall()
+            payment_count = {str(status): int(count) for status, count in payment_rows}
+
+    return {
+        "total": total,
+        "status_count": status_count,
+        "payment_count": payment_count,
+        "invoice_count": {
+            "issued": issued,
+            "not_issued": not_issued,
+        },
+    }
+
+
 async def get_item(item_id: int) -> Optional[dict]:
     """获取单个物品详情"""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -168,17 +207,6 @@ async def delete_item(item_id: int) -> bool:
         cursor = await db.execute("DELETE FROM items WHERE id = ?", (item_id,))
         await db.commit()
         return cursor.rowcount > 0
-
-
-async def check_exists(serial_number: str, item_name: str, handler: str) -> bool:
-    """检查记录是否已存在"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            """SELECT 1 FROM items
-               WHERE serial_number = ? AND item_name = ? AND handler = ? LIMIT 1""",
-            (serial_number, item_name, handler)
-        ) as cursor:
-            return await cursor.fetchone() is not None
 
 
 async def batch_create_items(items: list[dict]) -> list[int]:

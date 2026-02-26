@@ -1,8 +1,7 @@
 import re
 import logging
 import pdfplumber
-from typing import Optional, Tuple, List, Union
-from datetime import datetime
+from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +52,23 @@ class DocumentParser:
         "部门领导", "管理员", "意见", "归属月份",
         "审批", "领用单", "序号", "编号", "No",
         "办公用品", "管理员意见"
+    ]
+
+    UI_PATTERNS = [
+        r'^转发|^转事件|^回退|^指定回退|^打印|^意见|^查找',
+        r'^同意|^不同意|^消息|^跟踪|^全部|^指定人',
+        r'^处理后归档|^草稿|^暂存|^待办|^附言',
+        r'^发起人|^附件|^隐藏|^中国瑞达|^CHINARIDA',
+        r'^\d+\(\d+\)$',
+        r'^《|^》|^○',
+        r'^ds/',
+    ]
+
+    OCR_SKIP_KEYWORDS = SKIP_KEYWORDS + [
+        "转发", "回退", "指定", "打印", "查找",
+        "跟踪", "全部", "草稿", "暂存", "待办",
+        "附言", "发起人", "附件", "隐藏",
+        "中国瑞达", "CHINARIDA"
     ]
 
     def __init__(self, file_path: str):
@@ -137,22 +153,12 @@ class DocumentParser:
 
     def _filter_ui_elements(self, lines: list) -> list:
         """过滤UI元素（按钮、标签等）"""
-        UI_PATTERNS = [
-            r'^转发|^转事件|^回退|^指定回退|^打印|^意见|^查找',
-            r'^同意|^不同意|^消息|^跟踪|^全部|^指定人',
-            r'^处理后归档|^草稿|^暂存|^待办|^附言',
-            r'^发起人|^附件|^隐藏|^中国瑞达|^CHINARIDA',
-            r'^\d+\(\d+\)$',  # 像 (0)(0) 这样的
-            r'^《|^》|^○',
-            r'^ds/',  # URL片段
-        ]
-
         filtered = []
         for line in lines:
             line_text = " ".join([item[1][0] for item in line])
             # 检查是否匹配UI模式
             is_ui = False
-            for pattern in UI_PATTERNS:
+            for pattern in self.UI_PATTERNS:
                 if re.search(pattern, line_text):
                     is_ui = True
                     break
@@ -162,7 +168,7 @@ class DocumentParser:
                 for item in line:
                     text = item[1][0]
                     is_ui_item = False
-                    for pattern in UI_PATTERNS:
+                    for pattern in self.UI_PATTERNS:
                         if re.search(pattern, text):
                             is_ui_item = True
                             break
@@ -332,19 +338,7 @@ class DocumentParser:
 
     def _should_skip_ocr_line(self, line_text: str) -> bool:
         """判断是否应该跳过该行"""
-        skip_keywords = [
-            "插入项", "删除项", "总金额", "合计", "金额",
-            "【", "】", "同意", "元",
-            "部门领导", "管理员", "意见", "归属月份",
-            "审批", "领用单", "序号", "编号", "No",
-            "办公用品", "管理员意见",
-            "转发", "回退", "指定", "打印", "查找",
-            "跟踪", "全部", "草稿", "暂存", "待办",
-            "附言", "发起人", "附件", "隐藏",
-            "中国瑞达", "CHINARIDA"
-        ]
-
-        for kw in skip_keywords:
+        for kw in self.OCR_SKIP_KEYWORDS:
             if kw in line_text:
                 return True
 
@@ -770,7 +764,7 @@ class DocumentParser:
 
         return False
 
-    def _parse_quantity(self, quantity_str: str) -> int:
+    def _parse_quantity(self, quantity_str: str) -> Union[int, float]:
         """解析数量"""
         if not quantity_str:
             return 1

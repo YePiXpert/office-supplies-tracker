@@ -558,7 +558,6 @@
                     pageSizeOptions: [20, 50, 100],
                     jumpPage: null,
                     uploading: false,
-                    isDragging: false,
                     parseResult: null,
                     error: null,
                     showAddModal: false,  // 确保初始化为 false
@@ -686,7 +685,6 @@
                     item.invoice_issued = !item.invoice_issued;
                     await this.updateItem(item.id, { invoice_issued: item.invoice_issued });
                 },
-                handleDrop(e) { this.isDragging = false; const files = e.dataTransfer.files; if (files.length) this.uploadFile(files[0]); },
                 handleFileSelect(e) { const files = e.target.files; if (files.length) this.uploadFile(files[0]); },
                 async uploadFile(file) {
                     const validTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
