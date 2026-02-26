@@ -22,6 +22,18 @@
                     parseResult: null,
                     error: null,
                     showAddModal: false,  // 确保初始化为 false
+                    showWebdavModal: false,
+                    webdavLoading: false,
+                    webdavConfig: {
+                        configured: false,
+                        base_url: '',
+                        username: '',
+                        password: '',
+                        remote_dir: '',
+                        has_password: false,
+                    },
+                    webdavBackups: [],
+                    webdavSelectedBackup: '',
                     showImportPreviewModal: false,
                     selectedItems: [],
                     selectAll: false,

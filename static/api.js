@@ -17,6 +17,139 @@
                         maximumFractionDigits: 2,
                     });
                 },
+                formatFileSize(size) {
+                    const value = Number(size);
+                    if (!Number.isFinite(value) || value < 0) return '-';
+                    if (value < 1024) return `${value} B`;
+                    const kb = value / 1024;
+                    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+                    const mb = kb / 1024;
+                    if (mb < 1024) return `${mb.toFixed(1)} MB`;
+                    const gb = mb / 1024;
+                    return `${gb.toFixed(2)} GB`;
+                },
+                async openWebdavModal() {
+                    this.showWebdavModal = true;
+                    this.webdavSelectedBackup = '';
+                    await this.loadWebdavConfig();
+                    if (this.webdavConfig.configured) {
+                        await this.loadWebdavBackups();
+                    } else {
+                        this.webdavBackups = [];
+                    }
+                },
+                closeWebdavModal() {
+                    this.showWebdavModal = false;
+                    this.webdavConfig.password = '';
+                    this.webdavSelectedBackup = '';
+                },
+                async loadWebdavConfig() {
+                    try {
+                        const res = await axios.get('/api/webdav/config');
+                        const config = res.data || {};
+                        this.webdavConfig = {
+                            configured: !!config.configured,
+                            base_url: config.base_url || '',
+                            username: config.username || '',
+                            password: '',
+                            remote_dir: config.remote_dir || '',
+                            has_password: !!config.has_password,
+                        };
+                    } catch (e) {
+                        alert('加载 WebDAV 配置失败: ' + (e.response?.data?.detail || e.message));
+                    }
+                },
+                async saveWebdavConfig(showAlert = true, manageLoading = true) {
+                    if (manageLoading) this.webdavLoading = true;
+                    try {
+                        const payload = {
+                            base_url: (this.webdavConfig.base_url || '').toString().trim(),
+                            username: (this.webdavConfig.username || '').toString().trim(),
+                            password: this.webdavConfig.password || '',
+                            remote_dir: (this.webdavConfig.remote_dir || '').toString().trim(),
+                        };
+                        const res = await axios.put('/api/webdav/config', payload);
+                        if (showAlert) {
+                            alert(res.data?.message || 'WebDAV 配置已保存');
+                        }
+                        const config = res.data?.config || {};
+                        this.webdavConfig.configured = !!config.configured;
+                        this.webdavConfig.has_password = !!config.has_password;
+                        this.webdavConfig.password = '';
+                        return config;
+                    } catch (e) {
+                        if (showAlert) {
+                            alert('保存 WebDAV 配置失败: ' + (e.response?.data?.detail || e.message));
+                        }
+                        throw e;
+                    } finally {
+                        if (manageLoading) this.webdavLoading = false;
+                    }
+                },
+                async testWebdavConnection() {
+                    this.webdavLoading = true;
+                    try {
+                        await this.saveWebdavConfig(false, false);
+                        const res = await axios.post('/api/webdav/test');
+                        alert(res.data?.message || '连接测试通过');
+                    } catch (e) {
+                        alert('WebDAV 测试失败: ' + (e.response?.data?.detail || e.message));
+                    } finally {
+                        this.webdavLoading = false;
+                    }
+                },
+                async loadWebdavBackups() {
+                    this.webdavLoading = true;
+                    try {
+                        const res = await axios.get('/api/webdav/backups');
+                        this.webdavBackups = Array.isArray(res.data?.items) ? res.data.items : [];
+                        if (this.webdavSelectedBackup && !this.webdavBackups.find((f) => f.name === this.webdavSelectedBackup)) {
+                            this.webdavSelectedBackup = '';
+                        }
+                    } catch (e) {
+                        alert('加载 WebDAV 备份列表失败: ' + (e.response?.data?.detail || e.message));
+                    } finally {
+                        this.webdavLoading = false;
+                    }
+                },
+                async uploadBackupToWebdav() {
+                    this.webdavLoading = true;
+                    try {
+                        await this.saveWebdavConfig(false, false);
+                        const res = await axios.post('/api/webdav/backup');
+                        alert(res.data?.message || '上传成功');
+                        await this.loadWebdavBackups();
+                    } catch (e) {
+                        alert('上传 WebDAV 失败: ' + (e.response?.data?.detail || e.message));
+                    } finally {
+                        this.webdavLoading = false;
+                    }
+                },
+                async restoreFromWebdav(filename) {
+                    const name = (filename || '').toString().trim();
+                    if (!name) {
+                        alert('请先选择要恢复的备份');
+                        return;
+                    }
+                    if (!confirm(`确认从 WebDAV 恢复备份 ${name}？这会覆盖当前数据。`)) {
+                        return;
+                    }
+                    this.webdavLoading = true;
+                    this.restoring = true;
+                    try {
+                        await this.saveWebdavConfig(false, false);
+                        const res = await axios.post('/api/webdav/restore', { filename: name });
+                        alert(res.data?.message || '恢复成功');
+                        await this.loadAutocomplete();
+                        await this.loadItems();
+                        await this.loadStats();
+                    } catch (e) {
+                        alert('从 WebDAV 恢复失败: ' + (e.response?.data?.detail || e.message));
+                    } finally {
+                        this.webdavLoading = false;
+                        this.restoring = false;
+                    }
+                },
                 openAmountReportModal() {
                     this.showAmountReportModal = true;
                     this.loadAmountReport();

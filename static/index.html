@@ -57,6 +57,9 @@
                             class="btn-base btn-soft">
                         {{ restoring ? '恢复中...' : '恢复备份' }}
                     </button>
+                    <button @click="openWebdavModal" class="btn-base btn-soft">
+                        WebDAV
+                    </button>
                     <button @click="openAddModal" class="btn-base btn-primary">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -469,6 +472,87 @@
                         <button @click="handleDuplicates('merge')" class="btn-base btn-primary">合并数量</button>
                         <button @click="handleDuplicates('add')" class="btn-base btn-success">全部新增</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- WebDAV 同步 -->
+        <div v-if="showWebdavModal" class="fixed inset-0 modal-overlay flex items-center justify-center z-50 p-3" @click.self="closeWebdavModal">
+            <div class="modal-panel rounded-2xl w-full max-w-4xl mx-1 max-h-[92vh] flex flex-col overflow-hidden">
+                <div class="p-4 border-b border-gray-100 bg-gradient-to-r from-indigo-600 to-blue-700 flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-white">WebDAV 备份同步</h3>
+                    <button @click="closeWebdavModal" class="text-white/80 hover:text-white">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="p-4 space-y-4 overflow-y-auto">
+                    <div class="text-sm text-slate-500">支持：保存配置、测试连接、上传备份到 WebDAV、从 WebDAV 恢复。</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">WebDAV 地址</label>
+                            <input v-model="webdavConfig.base_url" class="toolbar-control w-full" placeholder="https://example.com/dav">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+                            <input v-model="webdavConfig.username" class="toolbar-control w-full" placeholder="用户名（可留空）">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                            <input v-model="webdavConfig.password" type="password" class="toolbar-control w-full" :placeholder="webdavConfig.has_password ? '留空则沿用已保存密码' : '密码（可留空）'">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">远端目录</label>
+                            <input v-model="webdavConfig.remote_dir" class="toolbar-control w-full" placeholder="backup/office-supplies（可留空）">
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button @click="saveWebdavConfig" :disabled="webdavLoading" class="btn-base btn-secondary">保存配置</button>
+                        <button @click="testWebdavConnection" :disabled="webdavLoading" class="btn-base btn-soft">测试连接</button>
+                        <button @click="uploadBackupToWebdav" :disabled="webdavLoading" class="btn-base btn-primary">上传当前备份</button>
+                        <button @click="loadWebdavBackups" :disabled="webdavLoading" class="btn-base btn-soft">刷新远端列表</button>
+                    </div>
+
+                    <div class="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                        <div class="px-4 py-3 border-b border-slate-200 font-medium text-slate-700 flex items-center justify-between">
+                            <span>远端备份列表（{{ webdavBackups.length }}）</span>
+                            <span class="text-xs text-slate-400">仅展示 .zip</span>
+                        </div>
+                        <div class="max-h-72 overflow-y-auto">
+                            <table class="w-full text-sm">
+                                <thead class="sticky top-0 bg-slate-50 z-10">
+                                    <tr>
+                                        <th class="text-left px-3 py-2 border-b border-slate-200 w-10"></th>
+                                        <th class="text-left px-3 py-2 border-b border-slate-200">文件名</th>
+                                        <th class="text-left px-3 py-2 border-b border-slate-200 w-28">大小</th>
+                                        <th class="text-left px-3 py-2 border-b border-slate-200 w-44">修改时间</th>
+                                        <th class="text-left px-3 py-2 border-b border-slate-200 w-24">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="file in webdavBackups" :key="`webdav-${file.name}`" class="border-b border-slate-100">
+                                        <td class="px-3 py-2">
+                                            <input type="radio" name="webdavBackup" :value="file.name" v-model="webdavSelectedBackup">
+                                        </td>
+                                        <td class="px-3 py-2">{{ file.name }}</td>
+                                        <td class="px-3 py-2">{{ formatFileSize(file.size) }}</td>
+                                        <td class="px-3 py-2">{{ file.modified || '-' }}</td>
+                                        <td class="px-3 py-2">
+                                            <button @click="restoreFromWebdav(file.name)" class="text-blue-600 hover:text-blue-800">恢复</button>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="!webdavBackups.length">
+                                        <td colspan="5" class="px-3 py-8 text-center text-slate-400">{{ webdavLoading ? '加载中...' : '暂无远端备份' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 border-t border-slate-200 bg-white/90 flex justify-end gap-2">
+                    <button @click="restoreFromWebdav(webdavSelectedBackup)" :disabled="!webdavSelectedBackup || webdavLoading" class="btn-base btn-soft">恢复选中备份</button>
+                    <button @click="closeWebdavModal" class="btn-base btn-primary">关闭</button>
                 </div>
             </div>
         </div>
