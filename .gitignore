@@ -11,6 +11,10 @@ venv/
 uploads/*
 !uploads/.gitkeep
 
+# Packaging artifacts
+build/
+dist/
+
 # OS/editor
 .DS_Store
 .idea/

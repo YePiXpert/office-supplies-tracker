@@ -48,6 +48,23 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 打开：`http://localhost:8000`
 
+## 桌面版运行与打包
+
+### 1. 直接运行桌面版
+
+```bash
+source venv/bin/activate
+python desktop.py
+```
+
+### 2. 打包桌面版
+
+```bash
+./build_desktop.sh
+```
+
+产物目录：`dist/office-supplies-desktop/`
+
 ## API 一览
 
 | 方法 | 路径 | 说明 |

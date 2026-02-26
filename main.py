@@ -7,6 +7,7 @@ from typing import Optional
 import aiosqlite
 import shutil
 import re
+import sys
 from pathlib import Path
 from io import BytesIO
 from datetime import datetime
@@ -28,12 +29,37 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="办公用品采购追踪系统", lifespan=lifespan)
 
-# 创建上传目录
-UPLOAD_DIR = Path("uploads")
+def _resolve_runtime_dir() -> Path:
+    """运行目录（源码模式为项目目录，打包模式为 exe 所在目录）。"""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def _resolve_static_dir() -> Path:
+    """静态资源目录（兼容源码与 PyInstaller 打包）。"""
+    candidates: list[Path] = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / "static")
+    candidates.append(Path(__file__).resolve().parent / "static")
+    candidates.append(Path.cwd() / "static")
+
+    for path in candidates:
+        if path.exists():
+            return path
+    return candidates[0]
+
+
+RUNTIME_DIR = _resolve_runtime_dir()
+STATIC_DIR = _resolve_static_dir()
+
+# 创建上传目录（落在运行目录，避免打包后写入只读目录）
+UPLOAD_DIR = RUNTIME_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 # 挂载静态文件
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 def _item_key(item: dict) -> tuple[str, str, str]:
@@ -114,7 +140,7 @@ class ItemUpdate(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """返回主页"""
-    html_path = Path(__file__).parent / "static" / "index.html"
+    html_path = STATIC_DIR / "index.html"
     return FileResponse(html_path)
 
 
