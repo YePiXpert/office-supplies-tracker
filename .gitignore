@@ -8,6 +8,10 @@ venv/
 
 # Local runtime data
 *.db
+.webdav_config.json
+.restore_tmp_*
+.restore_db_snapshot_*.bak
+.restore_uploads_snapshot_*
 uploads/*
 !uploads/.gitkeep
 
@@ -20,3 +24,4 @@ dist/
 .idea/
 .vscode/
 .claude/
+.history/
