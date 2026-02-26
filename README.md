@@ -64,6 +64,12 @@ python desktop.py
 ./build_desktop.sh
 ```
 
+Windows 一键打包：
+
+```bat
+build_windows.bat
+```
+
 产物目录：`dist/office-supplies-desktop/`
 
 ## API 一览
