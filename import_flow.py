@@ -69,10 +69,9 @@ def is_noise_item_name(value) -> bool:
     if re.fullmatch(r"[#＃]+", text):
         return True
 
-    if text in {"物品名称", "数量", "关联链接", "采购链接", "备注", "序号", "操作"}:
-        return True
-
-    if "物品名称" in text and "数量" in text and ("关联链接" in text or "采购链接" in text):
+    header_tokens = ("序号", "物品", "名称", "数量", "关联链接", "采购链接", "备注", "操作")
+    hit_count = sum(1 for token in header_tokens if token in text)
+    if hit_count >= 2:
         return True
     return False
 

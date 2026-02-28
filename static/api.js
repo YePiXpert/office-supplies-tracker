@@ -361,24 +361,12 @@
                     if (!normalized) return true;
                     if (/^[#＃]+$/.test(normalized)) return true;
 
-                    const exactNoise = new Set([
-                        '物品名称',
-                        '数量',
-                        '关联链接',
-                        '采购链接',
-                        '备注',
-                        '序号',
-                        '操作',
-                    ]);
-                    if (exactNoise.has(normalized)) return true;
-
-                    if (
-                        normalized.includes('物品名称')
-                        && normalized.includes('数量')
-                        && (normalized.includes('关联链接') || normalized.includes('采购链接'))
-                    ) {
-                        return true;
-                    }
+                    const headerTokens = ['序号', '物品', '名称', '数量', '关联链接', '采购链接', '备注', '操作'];
+                    const hitCount = headerTokens.reduce(
+                        (count, token) => count + (normalized.includes(token) ? 1 : 0),
+                        0
+                    );
+                    if (hitCount >= 2) return true;
                     return false;
                 },
                 normalizePreviewData(data) {
