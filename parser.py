@@ -141,14 +141,32 @@ class DocumentParser:
             # 扫描件 PDF 常见无文本/无表格，触发 OCR 兜底。
             if self._should_fallback_pdf_ocr(parsed):
                 ocr_parsed = self._parse_pdf_via_ocr()
-                if ocr_parsed.get("items"):
-                    return ocr_parsed
-                # OCR 若只识别到表头字段，也尽量补齐返回值。
-                for key in ("serial_number", "department", "handler", "request_date"):
-                    if not parsed.get(key) and ocr_parsed.get(key):
-                        parsed[key] = ocr_parsed[key]
+                parsed = self._merge_pdf_and_ocr_result(parsed, ocr_parsed)
 
             return parsed
+
+    def _merge_pdf_and_ocr_result(self, parsed: dict, ocr_parsed: dict) -> dict:
+        """合并 PDF 文本/表格解析与 OCR 兜底结果。
+
+        策略：
+        - 已有明细时，优先保留原始明细，避免 OCR 误识别覆盖。
+        - 明细为空时，使用 OCR 明细兜底。
+        - 表头字段仅在缺失时由 OCR 补齐。
+        """
+        base = self._get_empty_result()
+        base.update(parsed or {})
+
+        parsed_items = self._deduplicate_items((parsed or {}).get("items") or [])
+        ocr_items = self._deduplicate_items((ocr_parsed or {}).get("items") or [])
+        base["items"] = parsed_items if parsed_items else ocr_items
+
+        for key in ("serial_number", "department", "handler", "request_date"):
+            if not str(base.get(key) or "").strip():
+                candidate = str((ocr_parsed or {}).get(key) or "").strip()
+                if candidate:
+                    base[key] = candidate
+
+        return base
 
     def _parse_image(self) -> dict:
         """解析图片文件（OCR）"""

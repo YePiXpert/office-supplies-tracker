@@ -170,10 +170,14 @@ async def export_items(
 
     filename = f"办公用品台账_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     encoded_filename = quote(filename)
+    content_disposition = (
+        f"attachment; filename=\"office_supplies_export.xlsx\"; "
+        f"filename*=UTF-8''{encoded_filename}"
+    )
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
+        headers={"Content-Disposition": content_disposition}
     )
 
 
