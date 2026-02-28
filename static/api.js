@@ -112,6 +112,9 @@
                             total: Number(data.total) || 0,
                             limit_per_status: Number(data.limit_per_status) || 80,
                         };
+                        this.draggingExecutionId = null;
+                        this.draggingExecutionFromKey = '';
+                        this.executionDropTargetKey = '';
                     } catch (e) {
                         this.showToast('加载执行看板失败: ' + (e.response?.data?.detail || e.message), 'error');
                     } finally {
@@ -126,6 +129,143 @@
                     this.boardDepartment = '';
                     this.boardMonth = '';
                     this.loadExecutionBoard();
+                },
+                onExecutionDragStart(event, item, column) {
+                    if (!item?.id) return;
+                    this.draggingExecutionId = Number(item.id);
+                    this.draggingExecutionFromKey = column?.key || '';
+                    this.executionDropTargetKey = '';
+                    if (event?.dataTransfer) {
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.dropEffect = 'move';
+                        event.dataTransfer.setData('text/plain', String(item.id));
+                        event.dataTransfer.setData('application/x-office-item-id', String(item.id));
+                        event.dataTransfer.setData(
+                            'application/x-office-from-column',
+                            this.draggingExecutionFromKey
+                        );
+                    }
+                },
+                onExecutionDragOver(event, column) {
+                    if (event?.dataTransfer) {
+                        event.dataTransfer.dropEffect = 'move';
+                    }
+                    this.executionDropTargetKey = column?.key || '';
+                },
+                onExecutionDragEnter(column) {
+                    this.executionDropTargetKey = column?.key || '';
+                },
+                onExecutionDragLeave(event, column) {
+                    const currentTarget = event?.currentTarget;
+                    const relatedTarget = event?.relatedTarget;
+                    if (
+                        currentTarget &&
+                        relatedTarget &&
+                        typeof currentTarget.contains === 'function' &&
+                        currentTarget.contains(relatedTarget)
+                    ) {
+                        return;
+                    }
+                    if (this.executionDropTargetKey === (column?.key || '')) {
+                        this.executionDropTargetKey = '';
+                    }
+                },
+                onExecutionDragEnd() {
+                    this.draggingExecutionId = null;
+                    this.draggingExecutionFromKey = '';
+                    this.executionDropTargetKey = '';
+                },
+                extractExecutionDragId(event) {
+                    const transfer = event?.dataTransfer;
+                    const rawValue = (
+                        transfer?.getData('application/x-office-item-id') ||
+                        transfer?.getData('text/plain') ||
+                        this.draggingExecutionId
+                    );
+                    const itemId = Number(rawValue);
+                    if (!Number.isFinite(itemId) || itemId <= 0) return null;
+                    return itemId;
+                },
+                findExecutionItemById(itemId) {
+                    const id = Number(itemId);
+                    const columns = Array.isArray(this.executionBoard?.columns)
+                        ? this.executionBoard.columns
+                        : [];
+                    for (const column of columns) {
+                        const list = Array.isArray(column?.items) ? column.items : [];
+                        const found = list.find((row) => Number(row?.id) === id);
+                        if (found) {
+                            return found;
+                        }
+                    }
+                    return null;
+                },
+                buildExecutionDragTransition(item, targetStatus) {
+                    const nextStatus = this.normalizeText(targetStatus);
+                    const currentStatus = this.normalizeText(item?.status);
+                    if (!nextStatus || !item?.id || currentStatus === nextStatus) {
+                        return null;
+                    }
+                    if (nextStatus === '待分发') {
+                        const arrivalDate = this.normalizeDateText(
+                            item.arrival_date || this.todayDateText()
+                        );
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(arrivalDate)) {
+                            throw new Error('请先填写有效的到货日期，再拖拽到“待分发”');
+                        }
+                        return {
+                            patch: {
+                                status: nextStatus,
+                                arrival_date: arrivalDate,
+                            },
+                            successMessage: '已拖拽流转到“待分发”',
+                        };
+                    }
+                    return {
+                        patch: { status: nextStatus },
+                        successMessage: `已拖拽流转到“${nextStatus}”`,
+                    };
+                },
+                async onExecutionDrop(event, column) {
+                    const targetKey = column?.key || '';
+                    const targetStatus = column?.status || '';
+                    const itemId = this.extractExecutionDragId(event);
+                    const sourceKey = (
+                        this.draggingExecutionFromKey ||
+                        event?.dataTransfer?.getData('application/x-office-from-column') ||
+                        ''
+                    );
+
+                    this.executionDropTargetKey = '';
+                    if (!itemId || !targetStatus || (sourceKey && sourceKey === targetKey)) {
+                        this.onExecutionDragEnd();
+                        return;
+                    }
+
+                    const item = this.findExecutionItemById(itemId);
+                    if (!item) {
+                        this.onExecutionDragEnd();
+                        return;
+                    }
+
+                    try {
+                        const transition = this.buildExecutionDragTransition(item, targetStatus);
+                        if (!transition) {
+                            return;
+                        }
+                        await this.updateExecutionItem(
+                            item,
+                            transition.patch,
+                            transition.successMessage
+                        );
+                    } catch (e) {
+                        this.showToast(
+                            '拖拽流转失败: ' + (e?.response?.data?.detail || e?.message || '未知错误'),
+                            'error'
+                        );
+                    } finally {
+                        this.onExecutionDragEnd();
+                    }
                 },
                 todayDateText() {
                     const now = new Date();
