@@ -17,7 +17,9 @@
 - 输入容错与规范化：自动清理空白、统一流水号格式、校验并规范链接 URL
 - 手动录入提效：部门/经办人支持自动补全，流水号可留空自动生成
 - 高级筛选：按状态、申领部门、月份（`YYYY-MM`）筛选
+- 执行看板闭环：`待采购 → 已下单 → 待到货 → 待分发 → 已分发`
 - 服务端分页：支持页码切换、每页条数切换、页码跳转
+- 宽表格交互：支持横向滚动，首列复选框与末列操作列冻结（Sticky）
 - Excel 导出：按当前筛选导出 `.xlsx`
 - 统计面板：总数、待采购、发票、报销等统计
 - 金额统计报表：基于当前筛选汇总总金额，并按部门/状态/月份统计
@@ -82,6 +84,7 @@ python3 scripts/run_regression_suite.py
 |---|---|---|
 | GET | `/` | 前端页面 |
 | GET | `/api/items` | 列表查询（支持 `keyword`/`status`/`department`/`month`/`page`/`page_size`） |
+| GET | `/api/execution-board` | 执行看板数据（按执行状态分组） |
 | GET | `/api/items/{id}` | 获取单条记录 |
 | POST | `/api/items` | 手动新增 |
 | POST | `/api/items/batch-update` | 批量更新（状态/部门/经办人/付款/发票等） |
@@ -124,9 +127,14 @@ python3 scripts/run_regression_suite.py
 | quantity | REAL | 数量 |
 | purchase_link | TEXT | 购买链接 |
 | unit_price | REAL | 单价 |
-| status | TEXT | 待采购/已采购/已到货/已发放 |
-| invoice_issued | BOOLEAN | 是否开票 |
+| status | TEXT | 待采购/已下单/待到货/待分发/已分发（启动时自动迁移历史状态） |
+| invoice_issued | BOOLEAN | 发票状态（`0=待报`，`1=已入账`） |
 | payment_status | TEXT | 未付款/已付款/已报销 |
+| arrival_date | TEXT | 到货日期（`YYYY-MM-DD`） |
+| distribution_date | TEXT | 分发日期（`YYYY-MM-DD`） |
+| signoff_note | TEXT | 签收备注 |
+
+`recipient/分发对象` 字段已下线，不再写入数据库。
 
 变更历史保存在 `item_history` 表，记录每次新增/更新/删除的前后快照与变更字段。
 
