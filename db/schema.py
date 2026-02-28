@@ -13,7 +13,6 @@ async def _ensure_item_columns(db: aiosqlite.Connection) -> None:
     existing_columns = await _get_existing_columns(db, "items")
     expected_columns = {
         "arrival_date": "TEXT",
-        "recipient": "TEXT",
         "distribution_date": "TEXT",
         "signoff_note": "TEXT",
     }
@@ -21,6 +20,62 @@ async def _ensure_item_columns(db: aiosqlite.Connection) -> None:
         if column_name in existing_columns:
             continue
         await db.execute(f"ALTER TABLE items ADD COLUMN {column_name} {column_type}")
+
+
+async def _drop_recipient_column(db: aiosqlite.Connection) -> None:
+    existing_columns = await _get_existing_columns(db, "items")
+    if "recipient" not in existing_columns:
+        return
+
+    await db.execute("PRAGMA foreign_keys=OFF")
+    try:
+        await db.execute("DROP TABLE IF EXISTS items__new")
+        await db.execute(
+            """
+            CREATE TABLE items__new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                serial_number TEXT NOT NULL,
+                department TEXT NOT NULL,
+                handler TEXT NOT NULL,
+                request_date TEXT NOT NULL,
+                item_name TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                purchase_link TEXT,
+                unit_price REAL,
+                status TEXT NOT NULL DEFAULT '待采购',
+                invoice_issued BOOLEAN DEFAULT 0,
+                payment_status TEXT NOT NULL DEFAULT '未付款',
+                arrival_date TEXT,
+                distribution_date TEXT,
+                signoff_note TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(serial_number, item_name, handler)
+            )
+            """
+        )
+        await db.execute(
+            """
+            INSERT INTO items__new (
+                id, serial_number, department, handler, request_date,
+                item_name, quantity, purchase_link, unit_price,
+                status, invoice_issued, payment_status,
+                arrival_date, distribution_date, signoff_note,
+                created_at, updated_at
+            )
+            SELECT
+                id, serial_number, department, handler, request_date,
+                item_name, quantity, purchase_link, unit_price,
+                status, invoice_issued, payment_status,
+                arrival_date, distribution_date, signoff_note,
+                created_at, updated_at
+            FROM items
+            """
+        )
+        await db.execute("DROP TABLE items")
+        await db.execute("ALTER TABLE items__new RENAME TO items")
+    finally:
+        await db.execute("PRAGMA foreign_keys=ON")
 
 
 async def _migrate_legacy_statuses(db: aiosqlite.Connection) -> None:
@@ -49,7 +104,6 @@ async def init_db():
                 invoice_issued BOOLEAN DEFAULT 0,
                 payment_status TEXT NOT NULL DEFAULT '未付款',
                 arrival_date TEXT,
-                recipient TEXT,
                 distribution_date TEXT,
                 signoff_note TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -58,6 +112,7 @@ async def init_db():
             )
             """
         )
+        await _drop_recipient_column(db)
         await _ensure_item_columns(db)
         await _migrate_legacy_statuses(db)
         await db.execute(
