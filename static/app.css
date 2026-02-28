@@ -166,3 +166,18 @@ body {
 ::-webkit-scrollbar-track { background: #f1f5f9; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+.execution-card-draggable {
+    cursor: grab;
+}
+
+.execution-card-draggable:active {
+    cursor: grabbing;
+}
+
+.execution-card-dragging {
+    opacity: 0.52;
+    border-color: #60a5fa !important;
+    background: #eff6ff !important;
+    transform: scale(0.985);
+}

@@ -381,10 +381,11 @@
                         <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
                             <div>
                                 <h2 class="text-3xl font-semibold tracking-tight text-slate-900">采购执行看板</h2>
-                                <p class="mt-1 text-sm text-slate-500">按执行流程分栏管理：待采购、已下单、待到货、待分发</p>
+                                <p class="mt-1 text-sm text-slate-500">按执行流程分栏管理：待采购、已下单、待到货、待分发（支持拖拽跨列流转）</p>
                             </div>
-                            <div class="text-xs text-slate-500">
-                                执行中记录：<span class="font-semibold text-slate-800">{{ executionBoard.total || 0 }}</span>
+                            <div class="text-xs text-slate-500 text-right">
+                                <div>执行中记录：<span class="font-semibold text-slate-800">{{ executionBoard.total || 0 }}</span></div>
+                                <div class="mt-1 text-[11px] text-blue-600">拖拽卡片到目标列即可批量推进流程</div>
                             </div>
                         </div>
 
@@ -420,7 +421,10 @@
                             <div
                                 v-for="column in executionBoard.columns"
                                 :key="column.key"
-                                class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl min-h-0 flex flex-col"
+                                :class="{
+                                    'ring-2 ring-blue-300 bg-blue-50/40': executionDropTargetKey === column.key
+                                }"
+                                class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl min-h-0 flex flex-col transition-all duration-150"
                             >
                                 <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
                                     <span
@@ -436,10 +440,23 @@
                                     </span>
                                     <span class="text-xs font-semibold text-slate-500">{{ column.count }}</span>
                                 </div>
-                                <div class="flex-1 overflow-y-auto p-3 space-y-3">
+                                <div
+                                    class="flex-1 overflow-y-auto p-3 space-y-3"
+                                    @dragover.prevent="onExecutionDragOver($event, column)"
+                                    @dragenter.prevent="onExecutionDragEnter(column)"
+                                    @dragleave="onExecutionDragLeave($event, column)"
+                                    @drop.prevent="onExecutionDrop($event, column)"
+                                >
                                     <div
                                         v-for="item in column.items"
                                         :key="item.id"
+                                        :draggable="!executionLoading"
+                                        @dragstart="onExecutionDragStart($event, item, column)"
+                                        @dragend="onExecutionDragEnd"
+                                        :class="{
+                                            'execution-card-dragging': draggingExecutionId === item.id,
+                                            'execution-card-draggable': !executionLoading
+                                        }"
                                         class="rounded-lg border border-slate-200 bg-white p-3 space-y-2"
                                     >
                                         <div class="flex items-start justify-between gap-2">
@@ -451,6 +468,7 @@
                                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                                             </a>
                                         </div>
+                                        <div class="text-[10px] text-slate-400 font-medium">按住卡片拖拽到目标列</div>
                                         <div class="text-sm font-medium text-slate-800 leading-snug truncate" :title="item.item_name || ''">{{ item.item_name || '未命名物品' }}</div>
                                         <div class="text-[11px] text-slate-500 flex items-center justify-between gap-2">
                                             <span>申请日 {{ item.request_date || '-' }}</span>
@@ -533,26 +551,92 @@
                                 <p class="mt-1 text-xs text-slate-500">请先在台账页录入或导入采购记录</p>
                             </div>
 
-                            <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                <div class="border border-slate-200 rounded-xl p-4">
-                                    <h4 class="text-sm font-semibold text-slate-800">部门支出排行</h4>
-                                    <div class="mt-4 max-h-[420px] overflow-y-auto space-y-2">
-                                        <div v-for="row in amountReport.by_department" :key="row.department" class="flex justify-between items-center p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                                            <span class="text-sm font-medium text-slate-700">{{ row.department || '未分类' }}</span>
-                                            <span class="text-sm font-semibold font-mono text-blue-700">¥ {{ formatCurrency(row.total_amount) }}</span>
+                            <div v-if="amountReport.summary.total_records" class="mt-6 space-y-6">
+                                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                    <div class="border border-slate-200 rounded-xl p-4">
+                                        <div class="flex items-center justify-between">
+                                            <h4 class="text-sm font-semibold text-slate-800">部门支出占比（Top 10）</h4>
+                                            <span class="text-[11px] text-slate-500">按金额排序</span>
                                         </div>
-                                        <div v-if="!amountReport.by_department.length" class="py-10 text-center text-xs text-slate-500">暂无部门统计</div>
+                                        <div class="mt-4 max-h-[420px] overflow-y-auto space-y-3 pr-1">
+                                            <div
+                                                v-for="row in reportDepartmentRows"
+                                                :key="`dept-chart-${row.department}-${row._rank}`"
+                                                class="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                                            >
+                                                <div class="flex items-center justify-between gap-2">
+                                                    <div class="min-w-0 flex items-center gap-2">
+                                                        <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-600">{{ row._rank }}</span>
+                                                        <span class="truncate text-sm font-medium text-slate-700">{{ row.department || '未分类' }}</span>
+                                                    </div>
+                                                    <span class="text-sm font-semibold font-mono text-blue-700">¥ {{ formatCurrency(row._amount) }}</span>
+                                                </div>
+                                                <div class="mt-2 h-2 rounded-full bg-slate-200/80 overflow-hidden">
+                                                    <div class="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-500" :style="{ width: `${row._ratio.toFixed(2)}%` }"></div>
+                                                </div>
+                                                <div class="mt-1 text-[11px] text-right text-slate-500">占总金额 {{ row._share.toFixed(1) }}%</div>
+                                            </div>
+                                            <div v-if="!reportDepartmentRows.length" class="py-10 text-center text-xs text-slate-500">暂无部门统计</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="border border-slate-200 rounded-xl p-4">
+                                        <h4 class="text-sm font-semibold text-slate-800">状态金额占比</h4>
+                                        <div class="mt-4 flex flex-col sm:flex-row sm:items-center gap-5">
+                                            <div class="relative shrink-0 mx-auto sm:mx-0">
+                                                <div class="h-40 w-40 rounded-full border border-slate-200" :style="reportStatusDonutStyle"></div>
+                                                <div class="absolute inset-[27%] rounded-full bg-white border border-slate-200 flex items-center justify-center text-center p-1">
+                                                    <div>
+                                                        <div class="text-[10px] uppercase tracking-wide text-slate-500">金额总计</div>
+                                                        <div class="text-xs font-semibold font-mono text-slate-800">¥ {{ formatCurrency(amountReport.summary.total_amount) }}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="flex-1 max-h-[280px] overflow-y-auto space-y-2 pr-1">
+                                                <div
+                                                    v-for="row in reportStatusRows"
+                                                    :key="`status-chart-${row.status}`"
+                                                    class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                                                >
+                                                    <span class="h-2.5 w-2.5 rounded-full shrink-0" :style="{ backgroundColor: row._color }"></span>
+                                                    <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{{ row.status || '未标记' }}</span>
+                                                    <span class="text-xs font-semibold text-slate-500">{{ row._share.toFixed(1) }}%</span>
+                                                    <span class="text-xs font-semibold font-mono text-indigo-700">¥ {{ formatCurrency(row._amount) }}</span>
+                                                </div>
+                                                <div v-if="!reportStatusRows.length" class="py-10 text-center text-xs text-slate-500">暂无状态统计</div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
                                 <div class="border border-slate-200 rounded-xl p-4">
-                                    <h4 class="text-sm font-semibold text-slate-800">状态分布概览</h4>
-                                    <div class="mt-4 max-h-[420px] overflow-y-auto space-y-2">
-                                        <div v-for="row in amountReport.by_status" :key="row.status" class="flex justify-between items-center p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                                            <span class="text-sm font-medium text-slate-700">{{ row.status }}</span>
-                                            <span class="text-sm font-semibold font-mono text-orange-600">¥ {{ formatCurrency(row.total_amount) }}</span>
+                                    <div class="flex items-center justify-between">
+                                        <h4 class="text-sm font-semibold text-slate-800">月度金额趋势（最近 12 个月）</h4>
+                                        <span class="text-[11px] text-slate-500">单位：元</span>
+                                    </div>
+                                    <div class="mt-6 h-52 flex items-end gap-2">
+                                        <div
+                                            v-for="row in reportMonthRows"
+                                            :key="`month-chart-${row.month}`"
+                                            class="flex-1 min-w-0 flex flex-col items-center gap-2"
+                                        >
+                                            <div
+                                                class="w-full max-w-[52px] rounded-t-md bg-gradient-to-t from-indigo-600 to-blue-500 transition-all duration-500"
+                                                :style="{ height: `${row._barHeight}px`, opacity: row._amount > 0 ? 0.95 : 0.25 }"
+                                            ></div>
+                                            <div class="text-[10px] font-medium text-slate-500 truncate w-full text-center px-1">{{ row.month || '-' }}</div>
                                         </div>
-                                        <div v-if="!amountReport.by_status.length" class="py-10 text-center text-xs text-slate-500">暂无状态统计</div>
+                                    </div>
+                                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+                                        <div
+                                            v-for="row in reportMonthRows"
+                                            :key="`month-amount-${row.month}`"
+                                            class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 flex items-center justify-between gap-2"
+                                        >
+                                            <span class="text-xs text-slate-500">{{ row.month || '-' }}</span>
+                                            <span class="text-xs font-semibold font-mono text-slate-700">¥ {{ formatCurrency(row._amount) }}</span>
+                                        </div>
+                                        <div v-if="!reportMonthRows.length" class="sm:col-span-2 xl:col-span-4 py-10 text-center text-xs text-slate-500">暂无月度趋势</div>
                                     </div>
                                 </div>
                             </div>

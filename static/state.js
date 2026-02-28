@@ -23,6 +23,9 @@
                         total: 0,
                         limit_per_status: 80,
                     },
+                    draggingExecutionId: null,
+                    draggingExecutionFromKey: '',
+                    executionDropTargetKey: '',
                     reportsInitialized: false,
                     auditInitialized: false,
                     executionInitialized: false,
@@ -156,6 +159,93 @@
                 },
                 historyTotalPages() {
                     return Math.max(1, Math.ceil(this.historyTotal / this.historyPageSize));
+                },
+                reportDepartmentRows() {
+                    const rows = Array.isArray(this.amountReport?.by_department)
+                        ? this.amountReport.by_department
+                        : [];
+                    const normalized = rows.map((row, idx) => {
+                        const amount = Number(row?.total_amount) || 0;
+                        return {
+                            ...row,
+                            _rank: idx + 1,
+                            _amount: amount,
+                        };
+                    });
+                    const maxAmount = normalized.reduce(
+                        (max, row) => Math.max(max, row._amount),
+                        0
+                    );
+                    const totalAmount = Number(this.amountReport?.summary?.total_amount) || 0;
+                    return normalized
+                        .sort((a, b) => b._amount - a._amount)
+                        .slice(0, 10)
+                        .map((row, idx) => ({
+                            ...row,
+                            _rank: idx + 1,
+                            _ratio: maxAmount > 0 ? (row._amount / maxAmount) * 100 : 0,
+                            _share: totalAmount > 0 ? (row._amount / totalAmount) * 100 : 0,
+                        }));
+                },
+                reportStatusRows() {
+                    const palette = [
+                        '#f59e0b',
+                        '#2563eb',
+                        '#0891b2',
+                        '#4f46e5',
+                        '#16a34a',
+                        '#64748b',
+                    ];
+                    const rows = Array.isArray(this.amountReport?.by_status)
+                        ? this.amountReport.by_status
+                        : [];
+                    const normalized = rows.map((row, idx) => ({
+                        ...row,
+                        _amount: Number(row?.total_amount) || 0,
+                        _color: palette[idx % palette.length],
+                    }));
+                    const totalAmount = normalized.reduce((sum, row) => sum + row._amount, 0);
+                    return normalized.map((row) => ({
+                        ...row,
+                        _share: totalAmount > 0 ? (row._amount / totalAmount) * 100 : 0,
+                    }));
+                },
+                reportStatusDonutStyle() {
+                    const rows = this.reportStatusRows;
+                    if (!rows.length) {
+                        return { background: '#e2e8f0' };
+                    }
+                    const totalShare = rows.reduce((sum, row) => sum + row._share, 0);
+                    if (totalShare <= 0) {
+                        return { background: '#e2e8f0' };
+                    }
+                    let cursor = 0;
+                    const segments = rows.map((row) => {
+                        const start = cursor;
+                        cursor += row._share;
+                        const end = Math.min(100, cursor);
+                        return `${row._color} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+                    });
+                    return {
+                        background: `conic-gradient(${segments.join(', ')})`,
+                    };
+                },
+                reportMonthRows() {
+                    const rows = Array.isArray(this.amountReport?.by_month)
+                        ? this.amountReport.by_month
+                        : [];
+                    const normalized = rows
+                        .map((row) => ({
+                            ...row,
+                            _amount: Number(row?.total_amount) || 0,
+                        }))
+                        .sort((a, b) => String(a?.month || '').localeCompare(String(b?.month || '')))
+                        .slice(-12);
+                    const maxAmount = normalized.reduce((max, row) => Math.max(max, row._amount), 0);
+                    return normalized.map((row) => ({
+                        ...row,
+                        _barHeight: maxAmount > 0 ? Math.max(16, (row._amount / maxAmount) * 150) : 16,
+                    }));
                 },
             },
         mounted() {
