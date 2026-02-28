@@ -10,14 +10,14 @@ ALLOWED_COLUMNS = frozenset({
     "serial_number", "department", "handler", "request_date",
     "item_name", "quantity", "purchase_link", "unit_price",
     "status", "invoice_issued", "payment_status",
-    "arrival_date", "recipient", "distribution_date", "signoff_note",
+    "arrival_date", "distribution_date", "signoff_note",
 })
 
 ITEM_COLUMNS = (
     "id", "serial_number", "department", "handler", "request_date",
     "item_name", "quantity", "purchase_link", "unit_price", "status",
     "invoice_issued", "payment_status",
-    "arrival_date", "recipient", "distribution_date", "signoff_note",
+    "arrival_date", "distribution_date", "signoff_note",
     "created_at", "updated_at",
 )
 

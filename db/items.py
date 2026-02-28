@@ -20,7 +20,6 @@ TEXT_FIELD_MAX_LENGTH = {
     "serial_number": 120,
     "department": 120,
     "handler": 80,
-    "recipient": 120,
     "request_date": 32,
     "arrival_date": 32,
     "distribution_date": 32,
@@ -41,9 +40,9 @@ INSERT_ITEM_SQL = """
         serial_number, department, handler, request_date,
         item_name, quantity, purchase_link, unit_price,
         status, invoice_issued, payment_status,
-        arrival_date, recipient, distribution_date, signoff_note
+        arrival_date, distribution_date, signoff_note
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 FULLWIDTH_TRANSLATION = str.maketrans({
     "０": "0",
@@ -228,7 +227,6 @@ def normalize_item_payload(item: dict) -> dict:
         payload.get("invoice_issued", DEFAULT_INVOICE_ISSUED)
     )
     payload["arrival_date"] = _normalize_optional_date("arrival_date", payload.get("arrival_date"))
-    payload["recipient"] = _normalize_optional_text("recipient", payload.get("recipient"))
     payload["distribution_date"] = _normalize_optional_date(
         "distribution_date",
         payload.get("distribution_date"),
@@ -264,8 +262,6 @@ def normalize_update_payload(updates: dict) -> dict:
         payload["invoice_issued"] = _normalize_invoice_issued(payload.get("invoice_issued"))
     if "arrival_date" in payload:
         payload["arrival_date"] = _normalize_optional_date("arrival_date", payload.get("arrival_date"))
-    if "recipient" in payload:
-        payload["recipient"] = _normalize_optional_text("recipient", payload.get("recipient"))
     if "distribution_date" in payload:
         payload["distribution_date"] = _normalize_optional_date(
             "distribution_date",
@@ -309,7 +305,6 @@ def _build_insert_values(payload: dict) -> tuple:
         payload["invoice_issued"],
         payload["payment_status"],
         payload.get("arrival_date"),
-        payload.get("recipient"),
         payload.get("distribution_date"),
         payload.get("signoff_note"),
     )

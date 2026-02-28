@@ -18,7 +18,6 @@ class ItemCreate(BaseModel):
     invoice_issued: bool = False
     payment_status: PaymentStatus = Field(default=PaymentStatus.UNPAID)
     arrival_date: Optional[str] = Field(default=None, max_length=32)
-    recipient: Optional[str] = Field(default=None, max_length=120)
     distribution_date: Optional[str] = Field(default=None, max_length=32)
     signoff_note: Optional[str] = Field(default=None, max_length=500)
 
@@ -36,7 +35,6 @@ class ItemUpdate(BaseModel):
     invoice_issued: Optional[bool] = None
     payment_status: Optional[PaymentStatus] = None
     arrival_date: Optional[str] = Field(default=None, max_length=32)
-    recipient: Optional[str] = Field(default=None, max_length=120)
     distribution_date: Optional[str] = Field(default=None, max_length=32)
     signoff_note: Optional[str] = Field(default=None, max_length=500)
 

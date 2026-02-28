@@ -302,25 +302,18 @@
                     );
                 },
                 async completeDistribution(item) {
-                    const recipient = this.normalizeText(item.recipient);
-                    if (!recipient) {
-                        this.showToast('请填写分发对象', 'error');
-                        return;
-                    }
                     const distributionDate = this.normalizeDateText(item.distribution_date || this.todayDateText());
                     if (!/^\d{4}-\d{2}-\d{2}$/.test(distributionDate)) {
                         this.showToast('请填写有效的分发日期', 'error');
                         return;
                     }
                     const signoffNote = this.normalizeText(item.signoff_note);
-                    item.recipient = recipient;
                     item.distribution_date = distributionDate;
                     item.signoff_note = signoffNote;
                     await this.updateExecutionItem(
                         item,
                         {
                             status: '已分发',
-                            recipient,
                             distribution_date: distributionDate,
                             signoff_note: signoffNote || null,
                         },
@@ -611,7 +604,6 @@
                         invoice_issued: '发票',
                         payment_status: '付款状态',
                         arrival_date: '到货日期',
-                        recipient: '分发对象',
                         distribution_date: '分发日期',
                         signoff_note: '签收备注',
                     };
@@ -948,7 +940,6 @@
                         item_name: '物品名称',
                         status: '状态',
                         payment_status: '付款状态',
-                        recipient: '分发对象',
                         signoff_note: '签收备注',
                     };
                     for (const field of ['serial_number', 'department', 'handler', 'item_name', 'status', 'payment_status']) {
@@ -960,7 +951,7 @@
                             payload[field] = field === 'serial_number' ? value.toUpperCase().replace(/\s+/g, '') : value;
                         }
                     }
-                    for (const field of ['recipient', 'signoff_note']) {
+                    for (const field of ['signoff_note']) {
                         if (Object.prototype.hasOwnProperty.call(payload, field)) {
                             const value = this.normalizeText(payload[field]);
                             payload[field] = value || null;
