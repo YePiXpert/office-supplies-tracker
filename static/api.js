@@ -116,10 +116,35 @@
                         this.draggingExecutionFromKey = '';
                         this.executionDropTargetKey = '';
                     } catch (e) {
-                        this.showToast('加载执行看板失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('加载执行看板失败', e);
                     } finally {
                         this.executionLoading = false;
                     }
+                },
+                async refreshExecutionBoardIfNeeded() {
+                    if (!this.executionInitialized) return;
+                    await this.loadExecutionBoard();
+                },
+                async refreshDataViews(options = {}) {
+                    const {
+                        items = true,
+                        stats = true,
+                        execution = true,
+                        autocomplete = false,
+                    } = options;
+                    const tasks = [];
+                    if (items) tasks.push(this.loadItems());
+                    if (stats) tasks.push(this.loadStats());
+                    if (execution) tasks.push(this.refreshExecutionBoardIfNeeded());
+                    if (autocomplete) tasks.push(this.loadAutocomplete());
+                    if (!tasks.length) return;
+                    await Promise.all(tasks);
+                },
+                getErrorDetail(error, fallback = '未知错误') {
+                    return error?.response?.data?.detail || error?.message || fallback;
+                },
+                showApiError(prefix, error) {
+                    this.showToast(`${prefix}: ${this.getErrorDetail(error)}`, 'error');
                 },
                 applyExecutionFilter() {
                     this.loadExecutionBoard();
@@ -277,8 +302,7 @@
                     if (!item?.id) return false;
                     const ok = await this.updateItem(item.id, patch);
                     if (!ok) return false;
-                    await this.loadExecutionBoard();
-                    await this.loadStats();
+                    await this.refreshDataViews({ items: false });
                     this.showToast(successMessage, 'success');
                     return true;
                 },
@@ -444,6 +468,13 @@
                     this.webdavConfig.password = '';
                     this.webdavSelectedBackup = '';
                 },
+                normalizeKeepBackups(value) {
+                    const parsed = Number(value);
+                    if (!Number.isFinite(parsed) || parsed < 0) {
+                        return 0;
+                    }
+                    return Math.min(365, Math.floor(parsed));
+                },
                 async loadWebdavConfig() {
                     try {
                         const res = await axios.get('/api/webdav/config');
@@ -454,10 +485,11 @@
                             username: config.username || '',
                             password: '',
                             remote_dir: config.remote_dir || '',
+                            keep_backups: this.normalizeKeepBackups(config.keep_backups),
                             has_password: !!config.has_password,
                         };
                     } catch (e) {
-                        this.showToast('加载 WebDAV 配置失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('加载 WebDAV 配置失败', e);
                     }
                 },
                 async saveWebdavConfig(showAlert = true, manageLoading = true) {
@@ -468,6 +500,7 @@
                             username: (this.webdavConfig.username || '').toString().trim(),
                             password: this.webdavConfig.password || '',
                             remote_dir: (this.webdavConfig.remote_dir || '').toString().trim(),
+                            keep_backups: this.normalizeKeepBackups(this.webdavConfig.keep_backups),
                         };
                         const res = await axios.put('/api/webdav/config', payload);
                         if (showAlert) {
@@ -476,11 +509,12 @@
                         const config = res.data?.config || {};
                         this.webdavConfig.configured = !!config.configured;
                         this.webdavConfig.has_password = !!config.has_password;
+                        this.webdavConfig.keep_backups = this.normalizeKeepBackups(config.keep_backups);
                         this.webdavConfig.password = '';
                         return config;
                     } catch (e) {
                         if (showAlert) {
-                            this.showToast('保存 WebDAV 配置失败: ' + (e.response?.data?.detail || e.message), 'error');
+                            this.showApiError('保存 WebDAV 配置失败', e);
                         }
                         throw e;
                     } finally {
@@ -494,7 +528,7 @@
                         const res = await axios.post('/api/webdav/test');
                         this.showToast(res.data?.message || '连接测试通过', 'success');
                     } catch (e) {
-                        this.showToast('WebDAV 测试失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('WebDAV 测试失败', e);
                     } finally {
                         this.webdavLoading = false;
                     }
@@ -508,7 +542,7 @@
                             this.webdavSelectedBackup = '';
                         }
                     } catch (e) {
-                        this.showToast('加载 WebDAV 备份列表失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('加载 WebDAV 备份列表失败', e);
                     } finally {
                         this.webdavLoading = false;
                     }
@@ -521,7 +555,7 @@
                         this.showToast(res.data?.message || '上传成功', 'success');
                         await this.loadWebdavBackups();
                     } catch (e) {
-                        this.showToast('上传 WebDAV 失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('上传 WebDAV 失败', e);
                     } finally {
                         this.webdavLoading = false;
                     }
@@ -534,7 +568,7 @@
                     }
                     const ok = await this.openConfirmDialog({
                         title: '确认恢复云端备份',
-                        message: `将从 ${name} 恢复并覆盖当前数据，是否继续？`,
+                        message: `将从 ${name} 恢复；恢复前会自动执行健康检查，是否继续？`,
                         confirmText: '确认恢复',
                         cancelText: '取消',
                         danger: true,
@@ -548,11 +582,9 @@
                         await this.saveWebdavConfig(false, false);
                         const res = await axios.post('/api/webdav/restore', { filename: name });
                         this.showToast(res.data?.message || '恢复成功', 'success');
-                        await this.loadAutocomplete();
-                        await this.loadItems();
-                        await this.loadStats();
+                        await this.refreshDataViews({ autocomplete: true });
                     } catch (e) {
-                        this.showToast('从 WebDAV 恢复失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('从 WebDAV 恢复失败', e);
                     } finally {
                         this.webdavLoading = false;
                         this.restoring = false;
@@ -581,7 +613,7 @@
                             by_month: Array.isArray(data.by_month) ? data.by_month : []
                         };
                     } catch (e) {
-                        this.showToast('加载金额报表失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('加载金额报表失败', e);
                     } finally {
                         this.amountReportLoading = false;
                     }
@@ -606,6 +638,7 @@
                         arrival_date: '到货日期',
                         distribution_date: '分发日期',
                         signoff_note: '签收备注',
+                        deleted_at: '删除时间',
                     };
                     return labels[field] || field;
                 },
@@ -655,7 +688,7 @@
                             await this.loadHistory();
                         }
                     } catch (e) {
-                        this.showToast('加载变更历史失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('加载变更历史失败', e);
                     } finally {
                         this.historyLoading = false;
                     }
@@ -674,6 +707,152 @@
                     if (page < 1 || page > this.historyTotalPages || page === this.historyPage) return;
                     this.historyPage = page;
                     this.loadHistory();
+                },
+                canRollbackHistory(row) {
+                    const itemId = Number(row?.item_id);
+                    if (!Number.isFinite(itemId) || itemId <= 0) return false;
+                    return row?.action === 'update' || row?.action === 'delete';
+                },
+                async rollbackHistoryRow(row) {
+                    const itemId = Number(row?.item_id);
+                    const historyId = Number(row?.id);
+                    if (!this.canRollbackHistory(row) || !Number.isFinite(historyId) || historyId <= 0) {
+                        this.showToast('该历史记录不支持回滚', 'error');
+                        return;
+                    }
+                    const ok = await this.openConfirmDialog({
+                        title: '确认回滚记录',
+                        message: `将物品 #${itemId} 回滚到该历史版本，是否继续？`,
+                        confirmText: '确认回滚',
+                        cancelText: '取消',
+                        danger: true,
+                    });
+                    if (!ok) return;
+                    try {
+                        await axios.post(`/api/items/${itemId}/rollback`, { history_id: historyId });
+                        this.showToast('回滚成功', 'success');
+                        await Promise.all([
+                            this.refreshDataViews({ autocomplete: true }),
+                            this.loadHistory(),
+                        ]);
+                    } catch (e) {
+                        this.showApiError('回滚失败', e);
+                    }
+                },
+                async openRecycleBinModal() {
+                    this.showRecycleBinModal = true;
+                    this.recycleBinPage = 1;
+                    await this.loadRecycleBin();
+                },
+                closeRecycleBinModal() {
+                    this.showRecycleBinModal = false;
+                },
+                async loadRecycleBin() {
+                    this.recycleBinLoading = true;
+                    try {
+                        const params = {
+                            page: this.recycleBinPage,
+                            page_size: this.recycleBinPageSize,
+                        };
+                        if (this.recycleBinKeyword) params.keyword = this.recycleBinKeyword;
+                        const res = await axios.get('/api/recycle-bin', { params });
+                        this.recycleBinItems = Array.isArray(res.data?.items) ? res.data.items : [];
+                        this.recycleBinTotal = Number(res.data?.total) || 0;
+                        const maxPage = Math.max(
+                            1,
+                            Math.ceil(this.recycleBinTotal / this.recycleBinPageSize)
+                        );
+                        if (this.recycleBinPage > maxPage) {
+                            this.recycleBinPage = maxPage;
+                            await this.loadRecycleBin();
+                            return;
+                        }
+                    } catch (e) {
+                        this.showApiError('加载回收站失败', e);
+                    } finally {
+                        this.recycleBinLoading = false;
+                    }
+                },
+                async restoreFromRecycleBin(item) {
+                    const itemId = Number(item?.id);
+                    if (!Number.isFinite(itemId) || itemId <= 0) return;
+                    const ok = await this.openConfirmDialog({
+                        title: '确认恢复记录',
+                        message: `将“${item?.item_name || `ID ${itemId}`}”恢复到台账，是否继续？`,
+                        confirmText: '确认恢复',
+                        cancelText: '取消',
+                    });
+                    if (!ok) return;
+                    try {
+                        await axios.post(`/api/items/${itemId}/restore`);
+                        this.showToast('记录已恢复', 'success');
+                        await Promise.all([
+                            this.loadRecycleBin(),
+                            this.refreshDataViews({ autocomplete: true }),
+                        ]);
+                    } catch (e) {
+                        this.showApiError('恢复失败', e);
+                    }
+                },
+                async purgeFromRecycleBin(item) {
+                    const itemId = Number(item?.id);
+                    if (!Number.isFinite(itemId) || itemId <= 0) return;
+                    const ok = await this.openConfirmDialog({
+                        title: '确认彻底删除',
+                        message: `将彻底删除“${item?.item_name || `ID ${itemId}`}”，此操作不可撤销，是否继续？`,
+                        confirmText: '彻底删除',
+                        cancelText: '取消',
+                        danger: true,
+                    });
+                    if (!ok) return;
+                    try {
+                        await axios.delete(`/api/recycle-bin/${itemId}`);
+                        this.showToast('已彻底删除', 'success');
+                        await this.loadRecycleBin();
+                    } catch (e) {
+                        this.showApiError('彻底删除失败', e);
+                    }
+                },
+                qualityIssueLabel(code) {
+                    const labels = {
+                        missing_department: '缺少部门',
+                        missing_handler: '缺少经办人',
+                        missing_request_date: '缺少申领日期',
+                        invalid_quantity: '数量无效',
+                        missing_purchase_link: '缺少采购链接',
+                        invalid_purchase_link: '采购链接无效',
+                        invalid_request_date_format: '日期格式异常',
+                        duplicate_active_keys: '存在重复主键组',
+                    };
+                    return labels[code] || code;
+                },
+                async openDataQualityModal() {
+                    this.showDataQualityModal = true;
+                    await this.loadDataQualityReport();
+                },
+                closeDataQualityModal() {
+                    this.showDataQualityModal = false;
+                },
+                async loadDataQualityReport() {
+                    this.dataQualityLoading = true;
+                    try {
+                        const limit = Math.max(1, Math.min(1000, Number(this.dataQualityLimit) || 200));
+                        this.dataQualityLimit = limit;
+                        const res = await axios.get('/api/data-quality', {
+                            params: { limit },
+                        });
+                        const report = res.data || {};
+                        this.dataQualityReport = {
+                            summary: report.summary || {},
+                            issues: Array.isArray(report.issues) ? report.issues : [],
+                            duplicates: Array.isArray(report.duplicates) ? report.duplicates : [],
+                            scanned_rows: Number(report.scanned_rows) || 0,
+                        };
+                    } catch (e) {
+                        this.showApiError('加载数据质量报告失败', e);
+                    } finally {
+                        this.dataQualityLoading = false;
+                    }
                 },
                 normalizeDateText(value) {
                     const raw = (value || '').toString().trim();
@@ -1007,26 +1186,29 @@
                     try {
                         const payload = this.normalizeItemUpdatePayload(data);
                         await axios.put(`/api/items/${id}`, payload);
-                        await this.loadStats();
+                        await this.refreshDataViews({ items: false, execution: false });
                         return true;
                     }
                     catch(e) {
-                        this.showToast('更新失败: ' + (e.response?.data?.detail || e.message), 'error');
-                        await this.loadItems();
+                        this.showApiError('更新失败', e);
+                        await this.refreshDataViews({ stats: false });
                         return false;
                     }
                 },
                 async deleteItem(id) {
                     const ok = await this.openConfirmDialog({
                         title: '确认删除记录',
-                        message: '删除后不可恢复，是否继续？',
-                        confirmText: '删除',
+                        message: '记录将移入回收站，可在回收站恢复，是否继续？',
+                        confirmText: '移入回收站',
                         cancelText: '取消',
                         danger: true,
                     });
                     if (!ok) return;
-                    try { await axios.delete(`/api/items/${id}`); await this.loadItems(); await this.loadStats(); }
-                    catch(e) { this.showToast('删除失败', 'error'); }
+                    try {
+                        await axios.delete(`/api/items/${id}`);
+                        await this.refreshDataViews();
+                    }
+                    catch(e) { this.showApiError('删除失败', e); }
                 },
                 async toggleInvoice(item) {
                     item.invoice_issued = !item.invoice_issued;
@@ -1050,7 +1232,7 @@
                     }
                     const ok = await this.openConfirmDialog({
                         title: '确认恢复本地备份',
-                        message: '恢复会覆盖当前数据库和上传文件，是否继续？',
+                        message: '恢复前将自动执行健康检查；通过后会覆盖当前数据库和上传文件，是否继续？',
                         confirmText: '确认恢复',
                         cancelText: '取消',
                         danger: true,
@@ -1067,11 +1249,9 @@
                             headers: { 'Content-Type': 'multipart/form-data' }
                         });
                         this.showToast(res.data.message || '恢复成功', 'success');
-                        await this.loadAutocomplete();
-                        await this.loadItems();
-                        await this.loadStats();
+                        await this.refreshDataViews({ autocomplete: true });
                     } catch(e) {
-                        this.showToast('恢复失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('恢复失败', e);
                     } finally {
                         this.restoring = false;
                     }
@@ -1163,25 +1343,21 @@
                                             axios.put(`/api/items/${id}`, this.normalizeItemUpdatePayload({ [updatedField]: value }))
                                         )
                                     );
-                                    await this.loadItems();
-                                    await this.loadStats();
-                                    await this.loadAutocomplete();
+                                    await this.refreshDataViews({ autocomplete: true });
                                     this.showToast('已撤销本次批量修改', 'success');
                                 },
                             }
                         );
-                        await this.loadItems();
-                        await this.loadStats();
-                        await this.loadAutocomplete();
+                        await this.refreshDataViews({ autocomplete: true });
                         this.batchEditValue = '';
                     } catch (e) {
-                        this.showToast('批量修改失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('批量修改失败', e);
                     }
                 },
                 async batchDelete() {
                     const ok = await this.openConfirmDialog({
                         title: '确认批量删除',
-                        message: `删除 ${this.selectedItems.length} 条记录后不可恢复，是否继续？`,
+                        message: `将 ${this.selectedItems.length} 条记录移入回收站，是否继续？`,
                         confirmText: '确认删除',
                         cancelText: '取消',
                         danger: true,
@@ -1191,10 +1367,9 @@
                         await Promise.all(this.selectedItems.map(id => axios.delete(`/api/items/${id}`)));
                         this.selectedItems = [];
                         this.batchEditValue = '';
-                        await this.loadItems();
-                        await this.loadStats();
+                        await this.refreshDataViews();
                     }
-                    catch(e) { this.showToast('删除失败', 'error'); }
+                    catch(e) { this.showApiError('删除失败', e); }
                 },
                 async submitImport(duplicateAction = null) {
                     const source = duplicateAction ? this.pendingParsedData : this.importPreview;
@@ -1240,11 +1415,10 @@
                             request_date: '',
                             items: []
                         };
-                        await this.loadItems();
-                        await this.loadStats();
+                        await this.refreshDataViews();
                         this.showToast(res.data?.message || '导入完成', 'success');
                     } catch(e) {
-                        this.showToast('导入失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('导入失败', e);
                     } finally {
                         this.importSubmitting = false;
                     }
@@ -1312,11 +1486,10 @@
                             unit_price: null,
                             purchase_link: ''
                         };
-                        await this.loadItems();
-                        await this.loadStats();
+                        await this.refreshDataViews();
                         this.showToast('添加成功', 'success');
                     } catch(e) {
-                        this.showToast('添加失败: ' + (e.response?.data?.detail || e.message), 'error');
+                        this.showApiError('添加失败', e);
                     }
                 }
             },

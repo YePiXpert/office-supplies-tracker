@@ -66,12 +66,30 @@ class BatchUpdateRequest(BaseModel):
     updates: dict
 
 
+class ItemRollbackRequest(BaseModel):
+    history_id: int = Field(gt=0)
+
+
 class WebDAVConfigRequest(BaseModel):
     base_url: str = Field(min_length=1, max_length=300)
     username: str = Field(default="", max_length=200)
     password: str = Field(default="", max_length=200)
     remote_dir: str = Field(default="", max_length=300)
+    keep_backups: int = Field(default=0, ge=0, le=365)
 
 
 class WebDAVRestoreRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=300)
+
+
+class BackupHealthCheckDbReport(BaseModel):
+    integrity: str
+    tables: list[str]
+    item_count: int
+
+
+class BackupHealthCheckResponse(BaseModel):
+    message: str
+    ok: bool
+    db: BackupHealthCheckDbReport
+    upload_files: int

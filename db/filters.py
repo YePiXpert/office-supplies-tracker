@@ -10,11 +10,18 @@ def build_item_filters(
     status: Optional[str] = None,
     department: Optional[str] = None,
     month: Optional[str] = None,
-    keyword: Optional[str] = None
+    keyword: Optional[str] = None,
+    include_deleted: bool = False,
+    only_deleted: bool = False,
 ) -> tuple[list[str], list]:
     """构建物品筛选条件与参数。"""
     conditions = []
     params = []
+
+    if only_deleted:
+        conditions.append("deleted_at IS NOT NULL")
+    elif not include_deleted:
+        conditions.append("deleted_at IS NULL")
 
     if status:
         conditions.append("status = ?")

@@ -5,14 +5,17 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from api_utils import normalize_history_action, normalize_month, normalize_text_filter
+from app_locks import DATA_MUTATION_LOCK
 from database import (
     ItemStatus,
     PaymentStatus,
     batch_update_items,
+    count_deleted_items,
     count_item_history,
     count_items,
     create_item,
     delete_item,
+    get_data_quality_report,
     get_amount_report,
     get_departments,
     get_execution_board,
@@ -20,6 +23,10 @@ from database import (
     get_item,
     get_item_history,
     get_items,
+    list_deleted_items,
+    purge_item,
+    restore_item,
+    rollback_item_to_history,
     get_serial_numbers,
     get_stats_summary,
     update_item,
@@ -29,7 +36,7 @@ from export_utils import (
     build_export_content_disposition,
     build_items_excel_stream,
 )
-from schemas import BatchUpdateRequest, ItemCreate, ItemUpdate
+from schemas import BatchUpdateRequest, ItemCreate, ItemRollbackRequest, ItemUpdate
 
 router = APIRouter(prefix="/api")
 MIN_PAGE = 1
@@ -123,14 +130,15 @@ async def batch_update_items_endpoint(request: BatchUpdateRequest):
     """批量更新记录。"""
     if not request.updates:
         raise HTTPException(status_code=400, detail="updates 不能为空")
-    try:
-        result = await batch_update_items(request.ids, request.updates)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except aiosqlite.IntegrityError as e:
-        if "UNIQUE constraint failed" in str(e):
-            raise HTTPException(status_code=409, detail="批量更新触发唯一约束冲突（流水号+物品名称+经办人）")
-        raise HTTPException(status_code=400, detail="批量更新失败：字段值不合法")
+    async with DATA_MUTATION_LOCK:
+        try:
+            result = await batch_update_items(request.ids, request.updates)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except aiosqlite.IntegrityError as e:
+            if "UNIQUE constraint failed" in str(e):
+                raise HTTPException(status_code=409, detail="批量更新触发唯一约束冲突（流水号+物品名称+经办人）")
+            raise HTTPException(status_code=400, detail="批量更新失败：字段值不合法")
 
     updated_count = result.get("updated_count", 0)
     unchanged_count = result.get("unchanged_count", 0)
@@ -184,10 +192,11 @@ async def read_item(item_id: int):
 @router.post("/items")
 async def create_new_item(item: ItemCreate):
     """手动创建新物品记录。"""
-    try:
-        item_id = await create_item(item.model_dump())
-    except aiosqlite.IntegrityError:
-        raise HTTPException(status_code=409, detail="记录已存在（流水号+物品名称+经办人）")
+    async with DATA_MUTATION_LOCK:
+        try:
+            item_id = await create_item(item.model_dump())
+        except aiosqlite.IntegrityError:
+            raise HTTPException(status_code=409, detail="记录已存在（流水号+物品名称+经办人）")
     return {"id": item_id, "message": "创建成功"}
 
 
@@ -199,14 +208,15 @@ async def update_item_endpoint(item_id: int, updates: ItemUpdate):
         raise HTTPException(status_code=400, detail="未提供可更新字段")
     if "quantity" in update_data and update_data["quantity"] is None:
         raise HTTPException(status_code=400, detail="quantity 不能为空")
-    try:
-        success = await update_item(item_id, update_data)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except aiosqlite.IntegrityError as e:
-        if "UNIQUE constraint failed" in str(e):
-            raise HTTPException(status_code=409, detail="记录已存在（流水号+物品名称+经办人）")
-        raise HTTPException(status_code=400, detail="更新失败：字段值不合法")
+    async with DATA_MUTATION_LOCK:
+        try:
+            success = await update_item(item_id, update_data)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except aiosqlite.IntegrityError as e:
+            if "UNIQUE constraint failed" in str(e):
+                raise HTTPException(status_code=409, detail="记录已存在（流水号+物品名称+经办人）")
+            raise HTTPException(status_code=400, detail="更新失败：字段值不合法")
     if not success:
         raise HTTPException(status_code=404, detail="物品不存在")
     return {"message": "更新成功"}
@@ -215,10 +225,79 @@ async def update_item_endpoint(item_id: int, updates: ItemUpdate):
 @router.delete("/items/{item_id}")
 async def delete_item_endpoint(item_id: int):
     """删除物品记录。"""
-    success = await delete_item(item_id)
+    async with DATA_MUTATION_LOCK:
+        success = await delete_item(item_id)
     if not success:
         raise HTTPException(status_code=404, detail="物品不存在")
     return {"message": "删除成功"}
+
+
+@router.get("/recycle-bin")
+async def recycle_bin_list(
+    keyword: Optional[str] = None,
+    page: int = 1,
+    page_size: int = DEFAULT_PAGE_SIZE,
+):
+    """回收站列表（软删除记录）。"""
+    _validate_pagination(page, page_size)
+    normalized_keyword = normalize_text_filter(keyword)
+    items = await list_deleted_items(
+        keyword=normalized_keyword,
+        page=page,
+        page_size=page_size,
+    )
+    total = await count_deleted_items(keyword=normalized_keyword)
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@router.post("/items/{item_id}/restore")
+async def restore_item_endpoint(item_id: int):
+    """从回收站恢复记录。"""
+    async with DATA_MUTATION_LOCK:
+        success = await restore_item(item_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="回收站记录不存在")
+    return {"message": "恢复成功"}
+
+
+@router.delete("/recycle-bin/{item_id}")
+async def purge_item_endpoint(item_id: int):
+    """彻底删除回收站记录。"""
+    async with DATA_MUTATION_LOCK:
+        success = await purge_item(item_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="回收站记录不存在")
+    return {"message": "已彻底删除"}
+
+
+@router.post("/items/{item_id}/rollback")
+async def rollback_item_endpoint(item_id: int, request: ItemRollbackRequest):
+    """将记录回滚到指定历史版本（before_data 快照）。"""
+    async with DATA_MUTATION_LOCK:
+        try:
+            success = await rollback_item_to_history(item_id, request.history_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except aiosqlite.IntegrityError as exc:
+            if "UNIQUE constraint failed" in str(exc):
+                raise HTTPException(status_code=409, detail="回滚会触发唯一约束冲突（流水号+物品名称+经办人）")
+            raise HTTPException(status_code=400, detail="回滚失败：字段值不合法")
+    if not success:
+        raise HTTPException(status_code=404, detail="物品或历史记录不存在")
+    return {"message": "回滚成功"}
+
+
+@router.get("/data-quality")
+async def data_quality(limit: int = 200):
+    """数据质量巡检报告。"""
+    if limit < 1 or limit > 1000:
+        raise HTTPException(status_code=400, detail="limit 必须在 1-1000 之间")
+    return await get_data_quality_report(limit=limit)
 
 
 @router.get("/autocomplete")
