@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>办公用品采购管理系统 | Procurement Management</title>
+    <title>办公用品采购系统 | Procurement Management</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/vue@3.5.12/dist/vue.global.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios@1.7.9/dist/axios.min.js"></script>
@@ -107,15 +107,15 @@
                         </div>
                         <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-5">
                             <div class="text-sm font-medium text-slate-500">待采购申请</div>
-                            <div class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ stats.status_count['待采购'] || 0 }}</div>
+                            <div class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ stats.statusCount['待采购'] || 0 }}</div>
                         </div>
                         <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-5">
                             <div class="text-sm font-medium text-slate-500">已开具发票</div>
-                            <div class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ stats.invoice_count.issued }}</div>
+                            <div class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ stats.invoiceCount.issued }}</div>
                         </div>
                         <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-5">
                             <div class="text-sm font-medium text-slate-500">已完成报销</div>
-                            <div class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ stats.payment_count['已报销'] || 0 }}</div>
+                            <div class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ stats.paymentCount['已报销'] || 0 }}</div>
                         </div>
                     </div>
 
@@ -457,7 +457,7 @@
                                 <option v-for="d in departments" :key="`exec-d-${d}`" :value="d">{{ d }}</option>
                             </select>
                             <input type="month" v-model="boardMonth" @change="applyExecutionFilter" class="h-11 px-3 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                            <select v-model.number="executionBoard.limit_per_status" @change="applyExecutionFilter" class="h-11 px-3 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                            <select v-model.number="executionBoard.limitPerStatus" @change="applyExecutionFilter" class="h-11 px-3 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out">
                                 <option :value="40">每栏 40 条</option>
                                 <option :value="80">每栏 80 条</option>
                                 <option :value="120">每栏 120 条</option>
@@ -595,24 +595,24 @@
                             <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
                                 <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
                                     <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">当前费用总计</div>
-                                    <div class="text-2xl font-bold text-slate-900 font-mono">¥ {{ formatCurrency(amountReport.summary.total_amount) }}</div>
+                                    <div class="text-2xl font-bold text-slate-900 font-mono">¥ {{ formatCurrency(amountReport.summary.totalAmount) }}</div>
                                 </div>
                                 <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
                                     <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">已计价金额</div>
-                                    <div class="text-2xl font-bold text-slate-900 font-mono">¥ {{ formatCurrency(amountReport.summary.priced_amount) }}</div>
+                                    <div class="text-2xl font-bold text-slate-900 font-mono">¥ {{ formatCurrency(amountReport.summary.pricedAmount) }}</div>
                                 </div>
                                 <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
                                     <div class="text-[10px] font-semibold text-orange-600 uppercase tracking-wide mb-2">单价缺失笔数</div>
-                                    <div class="text-2xl font-bold text-orange-600 font-mono">{{ amountReport.summary.missing_price_records }}</div>
+                                    <div class="text-2xl font-bold text-orange-600 font-mono">{{ amountReport.summary.missingPriceRecords }}</div>
                                 </div>
                             </div>
 
-                            <div v-if="!amountReport.summary.total_records" class="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 py-16 text-center">
+                            <div v-if="!amountReport.summary.totalRecords" class="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 py-16 text-center">
                                 <p class="text-sm font-medium text-slate-600">暂无可统计数据</p>
                                 <p class="mt-1 text-xs text-slate-500">请先在台账页录入或导入采购记录</p>
                             </div>
 
-                            <div v-if="amountReport.summary.total_records" class="mt-6 space-y-6">
+                            <div v-if="amountReport.summary.totalRecords" class="mt-6 space-y-6">
                                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
                                     <div class="border border-slate-200 rounded-xl p-4">
                                         <div class="flex items-center justify-between">
@@ -649,7 +649,7 @@
                                                 <div class="absolute inset-[27%] rounded-full bg-white border border-slate-200 flex items-center justify-center text-center p-1">
                                                     <div>
                                                         <div class="text-[10px] uppercase tracking-wide text-slate-500">金额总计</div>
-                                                        <div class="text-xs font-semibold font-mono text-slate-800">¥ {{ formatCurrency(amountReport.summary.total_amount) }}</div>
+                                                        <div class="text-xs font-semibold font-mono text-slate-800">¥ {{ formatCurrency(amountReport.summary.totalAmount) }}</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -856,7 +856,7 @@
                     <div class="grid grid-cols-2 gap-4">
                         <div class="col-span-2">
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">服务器地址</label>
-                            <input v-model="webdavConfig.base_url" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="https://example.com/dav">
+                            <input v-model="webdavConfig.baseUrl" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="https://example.com/dav">
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">用户名</label>
@@ -864,15 +864,15 @@
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">授权密码</label>
-                            <input v-model="webdavConfig.password" type="password" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" :placeholder="webdavConfig.has_password ? '********' : 'Password'">
+                            <input v-model="webdavConfig.password" type="password" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" :placeholder="webdavConfig.hasPassword ? '********' : 'Password'">
                         </div>
                         <div class="col-span-2">
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">远端目录（可空）</label>
-                            <input v-model="webdavConfig.remote_dir" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="office-supplies/backups">
+                            <input v-model="webdavConfig.remoteDir" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="office-supplies/backups">
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">保留最新备份数</label>
-                            <input v-model.number="webdavConfig.keep_backups" type="number" min="0" max="365" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                            <input v-model.number="webdavConfig.keepBackups" type="number" min="0" max="365" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
                         </div>
                         <div class="text-[11px] text-slate-500 leading-relaxed flex items-end">
                             设置为 0 表示不自动清理；大于 0 时每次上传后自动删除更早备份。
@@ -998,7 +998,7 @@
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
                             <div class="text-[10px] text-slate-500 uppercase font-semibold">扫描记录</div>
-                            <div class="mt-1 text-xl font-semibold text-slate-900 font-mono">{{ dataQualityReport.scanned_rows || 0 }}</div>
+                            <div class="mt-1 text-xl font-semibold text-slate-900 font-mono">{{ dataQualityReport.scannedRows || 0 }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
                             <div class="text-[10px] text-slate-500 uppercase font-semibold">问题记录</div>
