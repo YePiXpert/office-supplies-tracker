@@ -117,6 +117,16 @@ winget install JRSoftware.InnoSetup
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1
 ```
 
+常用参数：
+
+```powershell
+# 指定 Inno Setup 编译器路径（当系统 PATH 检测不到 iscc.exe 时）
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1 -IsccPath "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+
+# 跳过 exe 重编译，直接基于现有 dist 目录生成安装包
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1 -SkipExeBuild
+```
+
 或：
 
 ```bat
@@ -125,6 +135,11 @@ scripts\build_windows_installer.bat
 
 安装包产物：
 - `dist-installer\OfficeSuppliesTracker-Setup-YYYY.MM.DD.exe`
+
+若报 `ISCC.exe not found`：
+- 先确认 Inno Setup 已安装
+- 然后使用 `-IsccPath` 明确指定 `ISCC.exe` 路径
+- 或设置环境变量 `ISCC_PATH` 后重新打开 PowerShell 再执行
 
 备注：
 - 首次执行 OCR 时可能会初始化模型缓存，启动会比平时慢
