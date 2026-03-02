@@ -15,6 +15,7 @@ async def _ensure_item_columns(db: aiosqlite.Connection) -> None:
         "arrival_date": "TEXT",
         "distribution_date": "TEXT",
         "signoff_note": "TEXT",
+        "deleted_at": "TIMESTAMP",
     }
     for column_name, column_type in expected_columns.items():
         if column_name in existing_columns:
@@ -48,6 +49,7 @@ async def _drop_recipient_column(db: aiosqlite.Connection) -> None:
                 arrival_date TEXT,
                 distribution_date TEXT,
                 signoff_note TEXT,
+                deleted_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(serial_number, item_name, handler)
@@ -61,6 +63,7 @@ async def _drop_recipient_column(db: aiosqlite.Connection) -> None:
                 item_name, quantity, purchase_link, unit_price,
                 status, invoice_issued, payment_status,
                 arrival_date, distribution_date, signoff_note,
+                deleted_at,
                 created_at, updated_at
             )
             SELECT
@@ -68,6 +71,7 @@ async def _drop_recipient_column(db: aiosqlite.Connection) -> None:
                 item_name, quantity, purchase_link, unit_price,
                 status, invoice_issued, payment_status,
                 arrival_date, distribution_date, signoff_note,
+                NULL AS deleted_at,
                 created_at, updated_at
             FROM items
             """
@@ -106,6 +110,7 @@ async def init_db():
                 arrival_date TEXT,
                 distribution_date TEXT,
                 signoff_note TEXT,
+                deleted_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(serial_number, item_name, handler)
@@ -149,6 +154,9 @@ async def init_db():
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_handler ON items(handler)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_items_deleted_at ON items(deleted_at)"
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_item_history_created_at ON item_history(created_at DESC)"

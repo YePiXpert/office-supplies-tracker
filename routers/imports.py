@@ -7,6 +7,7 @@ from api_utils import (
     safe_unlink,
     save_upload_file_with_limit,
 )
+from app_locks import DATA_MUTATION_LOCK
 from import_flow import build_preview_data, confirm_import_payload, normalize_import_payload
 from parser import parse_document
 from schemas import DuplicateHandleRequest, ImportConfirmRequest
@@ -58,7 +59,8 @@ async def confirm_import(request: ImportConfirmRequest):
     payload = request.model_dump()
     duplicate_action = payload.pop("duplicate_action", None)
     normalized_payload = normalize_import_payload(payload)
-    return await confirm_import_payload(normalized_payload, duplicate_action)
+    async with DATA_MUTATION_LOCK:
+        return await confirm_import_payload(normalized_payload, duplicate_action)
 
 
 @router.post("/upload/handle-duplicates")
@@ -73,7 +75,8 @@ async def handle_duplicates(request: DuplicateHandleRequest):
             "request_date": first.get("request_date", ""),
             "items": request.items_data,
         })
-        return await confirm_import_payload(normalized_payload, request.action)
+        async with DATA_MUTATION_LOCK:
+            return await confirm_import_payload(normalized_payload, request.action)
 
     except HTTPException:
         raise

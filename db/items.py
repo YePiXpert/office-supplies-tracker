@@ -13,7 +13,7 @@ from .constants import (
     PaymentStatus,
 )
 from .filters import build_item_filters
-from .history import diff_item_fields, fetch_item_row, insert_item_history
+from .history import diff_item_fields, fetch_item_row, insert_item_history, safe_json_loads
 
 
 TEXT_FIELD_MAX_LENGTH = {
@@ -310,6 +310,89 @@ def _build_insert_values(payload: dict) -> tuple:
     )
 
 
+async def _find_item_by_unique_key(
+    db: aiosqlite.Connection,
+    serial_number: str,
+    item_name: str,
+    handler: str,
+) -> Optional[dict]:
+    async with db.execute(
+        """
+        SELECT * FROM items
+        WHERE serial_number = ? AND item_name = ? AND handler = ?
+        LIMIT 1
+        """,
+        (serial_number, item_name, handler),
+    ) as cursor:
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def _restore_deleted_item(
+    db: aiosqlite.Connection,
+    existing_row: dict,
+    payload: dict,
+) -> int:
+    item_id = int(existing_row["id"])
+    before_data = await fetch_item_row(db, item_id)
+    cursor = await db.execute(
+        """
+        UPDATE items
+        SET
+            serial_number = ?,
+            department = ?,
+            handler = ?,
+            request_date = ?,
+            item_name = ?,
+            quantity = ?,
+            purchase_link = ?,
+            unit_price = ?,
+            status = ?,
+            invoice_issued = ?,
+            payment_status = ?,
+            arrival_date = ?,
+            distribution_date = ?,
+            signoff_note = ?,
+            deleted_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            payload["serial_number"],
+            payload["department"],
+            payload["handler"],
+            payload["request_date"],
+            payload["item_name"],
+            payload["quantity"],
+            payload.get("purchase_link"),
+            payload.get("unit_price"),
+            payload["status"],
+            payload["invoice_issued"],
+            payload["payment_status"],
+            payload.get("arrival_date"),
+            payload.get("distribution_date"),
+            payload.get("signoff_note"),
+            item_id,
+        ),
+    )
+    if cursor.rowcount <= 0:
+        raise ValueError("恢复已删除记录失败")
+    after_data = await fetch_item_row(db, item_id)
+    if before_data and after_data:
+        changed_fields = diff_item_fields(before_data, after_data)
+        if before_data.get("deleted_at") != after_data.get("deleted_at"):
+            changed_fields = sorted(set(changed_fields + ["deleted_at"]))
+        await insert_item_history(
+            db,
+            item_id=item_id,
+            action="update",
+            before_data=before_data,
+            after_data=after_data,
+            changed_fields=changed_fields or ["deleted_at"],
+        )
+    return item_id
+
+
 async def _insert_item_with_history(db: aiosqlite.Connection, payload: dict) -> int:
     cursor = await db.execute(INSERT_ITEM_SQL, _build_insert_values(payload))
     item_id = int(cursor.lastrowid)
@@ -436,7 +519,10 @@ async def get_item(item_id: int) -> Optional[dict]:
     """获取单个物品详情。"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM items WHERE id = ?", (item_id,)) as cursor:
+        async with db.execute(
+            "SELECT * FROM items WHERE id = ? AND deleted_at IS NULL",
+            (item_id,),
+        ) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
@@ -446,6 +532,16 @@ async def create_item(item: dict) -> int:
     payload = normalize_item_payload(item)
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
+        existing = await _find_item_by_unique_key(
+            db,
+            payload["serial_number"],
+            payload["item_name"],
+            payload["handler"],
+        )
+        if existing and existing.get("deleted_at"):
+            item_id = await _restore_deleted_item(db, existing, payload)
+            await db.commit()
+            return item_id
         item_id = await _insert_item_with_history(db, payload)
         await db.commit()
         return item_id
@@ -460,7 +556,7 @@ async def update_item(item_id: int, updates: dict) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         before_data = await fetch_item_row(db, item_id)
-        if not before_data:
+        if not before_data or before_data.get("deleted_at"):
             return False
 
         set_clause = ", ".join(f"{k} = ?" for k in payload.keys())
@@ -495,18 +591,25 @@ async def delete_item(item_id: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         before_data = await fetch_item_row(db, item_id)
-        if not before_data:
+        if not before_data or before_data.get("deleted_at"):
             return False
 
-        cursor = await db.execute("DELETE FROM items WHERE id = ?", (item_id,))
+        cursor = await db.execute(
+            "UPDATE items SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (item_id,),
+        )
         if cursor.rowcount > 0:
+            after_data = await fetch_item_row(db, item_id)
+            changed_fields = sorted(ALLOWED_COLUMNS)
+            if before_data.get("deleted_at") != (after_data or {}).get("deleted_at"):
+                changed_fields = sorted(set(changed_fields + ["deleted_at"]))
             await insert_item_history(
                 db,
                 item_id=item_id,
                 action="delete",
                 before_data=before_data,
-                after_data=None,
-                changed_fields=sorted(ALLOWED_COLUMNS),
+                after_data=after_data,
+                changed_fields=changed_fields,
             )
         await db.commit()
         return cursor.rowcount > 0
@@ -518,18 +621,19 @@ async def batch_create_items(items: list[dict]) -> list[int]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         for raw_item in items:
-            item = normalize_item_payload(raw_item)
-            async with db.execute(
-                """
-                SELECT 1 FROM items
-                WHERE serial_number = ? AND item_name = ? AND handler = ? LIMIT 1
-                """,
-                (item["serial_number"], item["item_name"], item["handler"]),
-            ) as cursor:
-                exists = await cursor.fetchone()
-                if exists:
-                    continue
-            item_id = await _insert_item_with_history(db, item)
+            payload = normalize_item_payload(raw_item)
+            existing = await _find_item_by_unique_key(
+                db,
+                payload["serial_number"],
+                payload["item_name"],
+                payload["handler"],
+            )
+            if existing and not existing.get("deleted_at"):
+                continue
+            if existing and existing.get("deleted_at"):
+                item_id = await _restore_deleted_item(db, existing, payload)
+            else:
+                item_id = await _insert_item_with_history(db, payload)
             created_ids.append(item_id)
         await db.commit()
     return created_ids
@@ -553,7 +657,8 @@ async def get_existing_items_by_keys(keys: list[tuple[str, str, str]]) -> dict[t
                 params.extend([serial_number, item_name, handler])
             query = (
                 "SELECT * FROM items "
-                f"WHERE (serial_number, item_name, handler) IN ({placeholders})"
+                f"WHERE (serial_number, item_name, handler) IN ({placeholders}) "
+                "AND deleted_at IS NULL"
             )
             async with db.execute(query, params) as cursor:
                 rows = await cursor.fetchall()
@@ -583,7 +688,7 @@ async def bulk_update_quantities(quantity_updates: dict[int, float]) -> int:
         db.row_factory = aiosqlite.Row
         for item_id, quantity in normalized_updates.items():
             before_data = await fetch_item_row(db, item_id)
-            if not before_data:
+            if not before_data or before_data.get("deleted_at"):
                 continue
             cursor = await db.execute(
                 "UPDATE items SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -628,7 +733,7 @@ async def batch_update_items(item_ids: list[int], updates: dict) -> dict:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            f"SELECT id FROM items WHERE id IN ({placeholders})",
+            f"SELECT id FROM items WHERE id IN ({placeholders}) AND deleted_at IS NULL",
             unique_ids,
         ) as cursor:
             rows = await cursor.fetchall()
@@ -643,7 +748,7 @@ async def batch_update_items(item_ids: list[int], updates: dict) -> dict:
             if item_id not in existing_ids:
                 continue
             before_data = await fetch_item_row(db, item_id)
-            if not before_data:
+            if not before_data or before_data.get("deleted_at"):
                 continue
             if not _has_effective_changes(before_data, payload):
                 unchanged_count += 1
@@ -681,11 +786,214 @@ async def batch_update_items(item_ids: list[int], updates: dict) -> dict:
     }
 
 
+async def list_deleted_items(
+    keyword: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> list[dict]:
+    conditions, params = build_item_filters(keyword=keyword, only_deleted=True)
+    query = "SELECT * FROM items"
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY deleted_at DESC, id DESC LIMIT ? OFFSET ?"
+    params.extend([page_size, max(0, (page - 1) * page_size)])
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def count_deleted_items(keyword: Optional[str] = None) -> int:
+    conditions, params = build_item_filters(keyword=keyword, only_deleted=True)
+    query = "SELECT COUNT(*) FROM items"
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(query, params) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] if row else 0)
+
+
+async def restore_item(item_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        before_data = await fetch_item_row(db, item_id)
+        if not before_data or not before_data.get("deleted_at"):
+            return False
+        cursor = await db.execute(
+            "UPDATE items SET deleted_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (item_id,),
+        )
+        if cursor.rowcount <= 0:
+            return False
+        after_data = await fetch_item_row(db, item_id)
+        changed_fields = diff_item_fields(before_data, after_data or {})
+        if before_data.get("deleted_at") != (after_data or {}).get("deleted_at"):
+            changed_fields = sorted(set(changed_fields + ["deleted_at"]))
+        await insert_item_history(
+            db,
+            item_id=item_id,
+            action="update",
+            before_data=before_data,
+            after_data=after_data,
+            changed_fields=changed_fields or ["deleted_at"],
+        )
+        await db.commit()
+        return True
+
+
+async def purge_item(item_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        before_data = await fetch_item_row(db, item_id)
+        if not before_data or not before_data.get("deleted_at"):
+            return False
+        cursor = await db.execute("DELETE FROM items WHERE id = ?", (item_id,))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def rollback_item_to_history(item_id: int, history_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        before_data = await fetch_item_row(db, item_id)
+        if not before_data:
+            return False
+        async with db.execute(
+            "SELECT * FROM item_history WHERE id = ? AND item_id = ? LIMIT 1",
+            (history_id, item_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if not row:
+            raise ValueError("指定历史记录不存在")
+
+        history = dict(row)
+        snapshot = safe_json_loads(history.get("before_data"))
+        if not snapshot:
+            raise ValueError("该历史记录缺少可回滚快照")
+
+        restored_payload = {
+            column: snapshot.get(column)
+            for column in ALLOWED_COLUMNS
+            if column in snapshot
+        }
+        normalized = normalize_update_payload(restored_payload)
+        if not normalized:
+            raise ValueError("回滚快照不包含可恢复字段")
+
+        set_clause = ", ".join(f"{key} = ?" for key in normalized.keys())
+        values = list(normalized.values())
+        deleted_at_value = snapshot.get("deleted_at")
+        values.extend([deleted_at_value, item_id])
+        cursor = await db.execute(
+            f"UPDATE items SET {set_clause}, deleted_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            values,
+        )
+        if cursor.rowcount <= 0:
+            return False
+        after_data = await fetch_item_row(db, item_id)
+        changed_fields = diff_item_fields(before_data, after_data or {})
+        if before_data.get("deleted_at") != (after_data or {}).get("deleted_at"):
+            changed_fields = sorted(set(changed_fields + ["deleted_at"]))
+        await insert_item_history(
+            db,
+            item_id=item_id,
+            action="update",
+            before_data=before_data,
+            after_data=after_data,
+            changed_fields=changed_fields or ["deleted_at"],
+        )
+        await db.commit()
+        return True
+
+
+async def get_data_quality_report(limit: int = 200) -> dict:
+    max_rows = max(1, min(int(limit), 1000))
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        async with db.execute(
+            """
+            SELECT id, serial_number, department, handler, request_date, item_name,
+                   quantity, purchase_link, unit_price, status
+            FROM items
+            WHERE deleted_at IS NULL
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?
+            """,
+            (max_rows,),
+        ) as cursor:
+            rows = [dict(row) for row in await cursor.fetchall()]
+
+        async with db.execute(
+            """
+            SELECT serial_number, item_name, handler, COUNT(*) AS duplicate_count
+            FROM items
+            WHERE deleted_at IS NULL
+            GROUP BY serial_number, item_name, handler
+            HAVING COUNT(*) > 1
+            ORDER BY duplicate_count DESC
+            LIMIT 50
+            """
+        ) as cursor:
+            duplicates = [dict(row) for row in await cursor.fetchall()]
+
+    issues: list[dict] = []
+    for row in rows:
+        row_issues: list[str] = []
+        if not str(row.get("department") or "").strip():
+            row_issues.append("missing_department")
+        if not str(row.get("handler") or "").strip():
+            row_issues.append("missing_handler")
+        if not str(row.get("request_date") or "").strip():
+            row_issues.append("missing_request_date")
+        quantity_value = row.get("quantity")
+        try:
+            quantity_number = float(quantity_value if quantity_value is not None else 0)
+        except (TypeError, ValueError):
+            quantity_number = 0
+        if quantity_number <= 0:
+            row_issues.append("invalid_quantity")
+        link = str(row.get("purchase_link") or "").strip()
+        if not link:
+            row_issues.append("missing_purchase_link")
+        elif not re.match(r"^https?://", link, re.IGNORECASE):
+            row_issues.append("invalid_purchase_link")
+        request_date = str(row.get("request_date") or "").strip()
+        if request_date and not DATE_CANONICAL_PATTERN.fullmatch(request_date):
+            row_issues.append("invalid_request_date_format")
+        if row_issues:
+            issues.append(
+                {
+                    "id": int(row.get("id") or 0),
+                    "serial_number": row.get("serial_number") or "",
+                    "item_name": row.get("item_name") or "",
+                    "issues": row_issues,
+                }
+            )
+
+    summary: dict[str, int] = {}
+    for issue in issues:
+        for code in issue["issues"]:
+            summary[code] = summary.get(code, 0) + 1
+    if duplicates:
+        summary["duplicate_active_keys"] = len(duplicates)
+
+    return {
+        "summary": summary,
+        "issues": issues,
+        "duplicates": duplicates,
+        "scanned_rows": len(rows),
+    }
+
+
 async def get_serial_numbers() -> list[str]:
     """获取所有流水号（用于自动补全）。"""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT DISTINCT serial_number FROM items ORDER BY serial_number DESC"
+            "SELECT DISTINCT serial_number FROM items WHERE deleted_at IS NULL ORDER BY serial_number DESC"
         ) as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
@@ -695,7 +1003,7 @@ async def get_departments() -> list[str]:
     """获取所有部门（用于自动补全）。"""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT DISTINCT department FROM items ORDER BY department"
+            "SELECT DISTINCT department FROM items WHERE deleted_at IS NULL ORDER BY department"
         ) as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
@@ -705,7 +1013,7 @@ async def get_handlers() -> list[str]:
     """获取所有经办人（用于自动补全）。"""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT DISTINCT handler FROM items ORDER BY handler"
+            "SELECT DISTINCT handler FROM items WHERE deleted_at IS NULL ORDER BY handler"
         ) as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]

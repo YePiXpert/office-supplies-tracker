@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/app.css">
+    <link rel="stylesheet" href="/static/app.css?v=20260302.1">
     <style>
         .toast-enter-active,
         .toast-leave-active {
@@ -92,6 +92,8 @@
                 <div class="flex items-center gap-2">
                     <button @click="backupData" class="h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">备份</button>
                     <button @click="$refs.restoreInput && $refs.restoreInput.click()" class="h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">恢复</button>
+                    <button @click="openRecycleBinModal" class="h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">回收站</button>
+                    <button @click="openDataQualityModal" class="h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">数据巡检</button>
                     <button @click="openWebdavModal" class="h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">云同步</button>
                 </div>
             </header>
@@ -736,11 +738,12 @@
                                         <th class="px-4 py-3 text-left w-28">操作类型</th>
                                         <th class="px-4 py-3 text-left w-56">关联项目</th>
                                         <th class="px-4 py-3 text-left">变更详情</th>
+                                        <th class="px-4 py-3 text-center w-24">回滚</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-slate-200">
                                     <tr v-if="historyLoading">
-                                        <td colspan="4" class="py-16 text-center text-sm text-slate-500">日志加载中...</td>
+                                        <td colspan="5" class="py-16 text-center text-sm text-slate-500">日志加载中...</td>
                                     </tr>
                                     <template v-else>
                                         <tr v-for="row in historyItems" :key="row.id" class="hover:bg-slate-50">
@@ -759,9 +762,19 @@
                                             </td>
                                             <td class="px-4 py-3.5 text-sm font-medium text-slate-800">{{ row.item_name || '系统默认' }}</td>
                                             <td class="px-4 py-3.5 text-sm text-slate-600">{{ historyDetailText(row) }}</td>
+                                            <td class="px-4 py-3.5 text-center">
+                                                <button
+                                                    v-if="canRollbackHistory(row)"
+                                                    @click="rollbackHistoryRow(row)"
+                                                    class="h-7 px-2 rounded-md border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition-all duration-200 ease-in-out"
+                                                >
+                                                    回滚
+                                                </button>
+                                                <span v-else class="text-[11px] text-slate-300">-</span>
+                                            </td>
                                         </tr>
                                         <tr v-if="!historyItems.length">
-                                            <td colspan="4" class="py-16 text-center text-sm text-slate-500">暂无审计日志</td>
+                                            <td colspan="5" class="py-16 text-center text-sm text-slate-500">暂无审计日志</td>
                                         </tr>
                                     </template>
                                 </tbody>
@@ -853,6 +866,17 @@
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">授权密码</label>
                             <input v-model="webdavConfig.password" type="password" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" :placeholder="webdavConfig.has_password ? '********' : 'Password'">
                         </div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">远端目录（可空）</label>
+                            <input v-model="webdavConfig.remote_dir" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="office-supplies/backups">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">保留最新备份数</label>
+                            <input v-model.number="webdavConfig.keep_backups" type="number" min="0" max="365" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        </div>
+                        <div class="text-[11px] text-slate-500 leading-relaxed flex items-end">
+                            设置为 0 表示不自动清理；大于 0 时每次上传后自动删除更早备份。
+                        </div>
                     </div>
                     <div class="flex gap-2">
                         <button @click="saveWebdavConfig" class="btn-base !bg-white !border !border-slate-300 !text-slate-700 hover:!bg-slate-50 hover:!border-slate-400 text-[11px] font-bold transition-all duration-200 ease-in-out">保存配置</button>
@@ -863,11 +887,178 @@
                         <div class="bg-slate-50 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase border-b border-slate-200">远端备份文件列表</div>
                         <div class="max-h-48 overflow-y-auto p-2 space-y-1">
                             <div v-for="file in webdavBackups" :key="file.name" class="flex items-center justify-between p-2 hover:bg-slate-50 rounded transition-colors">
-                                <span class="text-xs font-mono font-medium text-slate-600">{{ file.name }}</span>
+                                <div class="min-w-0 pr-3">
+                                    <div class="text-xs font-mono font-medium text-slate-600 truncate">{{ file.name }}</div>
+                                    <div class="text-[10px] text-slate-400">{{ file.modified || '-' }} · {{ formatFileSize(file.size) }}</div>
+                                </div>
                                 <button @click="restoreFromWebdav(file.name)" class="text-blue-600 hover:text-blue-800 text-[10px] font-bold transition-all duration-200 ease-in-out">恢复此备份</button>
                             </div>
                             <div v-if="!webdavBackups.length" class="text-center py-8 text-slate-300 font-mono text-xs uppercase">没有找到云端备份</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 弹窗：回收站 -->
+        <div v-if="showRecycleBinModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+            <div class="modal-panel w-full max-w-5xl max-h-[90vh] flex flex-col">
+                <div class="modal-header flex justify-between items-center">
+                    <h3 class="modal-title">回收站</h3>
+                    <button @click="closeRecycleBinModal" class="text-slate-400 hover:text-blue-700 font-bold transition-all duration-200 ease-in-out">&times;</button>
+                </div>
+                <div class="p-5 space-y-4 overflow-y-auto">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <input
+                            v-model="recycleBinKeyword"
+                            @keyup.enter="loadRecycleBin"
+                            class="toolbar-control flex-1 min-w-[220px] h-10 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out"
+                            placeholder="搜索流水号 / 部门 / 物品名称..."
+                        >
+                        <button @click="loadRecycleBin" :disabled="recycleBinLoading" class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out">查询</button>
+                        <button @click="recycleBinKeyword=''; recycleBinPage=1; loadRecycleBin()" :disabled="recycleBinLoading" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out">清空</button>
+                    </div>
+                    <div class="text-xs text-slate-500">共 {{ recycleBinTotal }} 条已删除记录</div>
+                    <div class="border border-slate-200 rounded-lg overflow-hidden">
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                <tr>
+                                    <th class="px-3 py-2 text-left">物品名称</th>
+                                    <th class="px-3 py-2 text-left">流水号</th>
+                                    <th class="px-3 py-2 text-left">部门 / 经办人</th>
+                                    <th class="px-3 py-2 text-left">删除时间</th>
+                                    <th class="px-3 py-2 text-right">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr v-if="recycleBinLoading">
+                                    <td colspan="5" class="py-12 text-center text-slate-500 text-sm">加载中...</td>
+                                </tr>
+                                <template v-else>
+                                    <tr v-for="item in recycleBinItems" :key="item.id" class="hover:bg-slate-50">
+                                        <td class="px-3 py-2.5 text-slate-800 font-medium">{{ item.item_name || '-' }}</td>
+                                        <td class="px-3 py-2.5 text-slate-600 font-mono text-xs">{{ item.serial_number || '-' }}</td>
+                                        <td class="px-3 py-2.5 text-slate-600">{{ item.department || '-' }} / {{ item.handler || '-' }}</td>
+                                        <td class="px-3 py-2.5 text-slate-600 text-xs font-mono">{{ item.deleted_at || '-' }}</td>
+                                        <td class="px-3 py-2.5">
+                                            <div class="flex items-center justify-end gap-2">
+                                                <button @click="restoreFromRecycleBin(item)" class="h-7 px-2 rounded-md border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition-all duration-200 ease-in-out">恢复</button>
+                                                <button @click="purgeFromRecycleBin(item)" class="h-7 px-2 rounded-md border border-rose-200 bg-white text-[11px] font-semibold text-rose-600 hover:bg-rose-50 transition-all duration-200 ease-in-out">彻底删除</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="!recycleBinItems.length">
+                                        <td colspan="5" class="py-12 text-center text-slate-500 text-sm">回收站为空</td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-slate-500">
+                        <div>
+                            第 {{ recycleBinPage }} / {{ Math.max(1, Math.ceil(recycleBinTotal / recycleBinPageSize)) }} 页
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button
+                                @click="recycleBinPage > 1 && (recycleBinPage -= 1, loadRecycleBin())"
+                                :disabled="recycleBinLoading || recycleBinPage <= 1"
+                                class="h-8 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors duration-200"
+                            >
+                                上一页
+                            </button>
+                            <button
+                                @click="recycleBinPage < Math.max(1, Math.ceil(recycleBinTotal / recycleBinPageSize)) && (recycleBinPage += 1, loadRecycleBin())"
+                                :disabled="recycleBinLoading || recycleBinPage >= Math.max(1, Math.ceil(recycleBinTotal / recycleBinPageSize))"
+                                class="h-8 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors duration-200"
+                            >
+                                下一页
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 弹窗：数据质量巡检 -->
+        <div v-if="showDataQualityModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+            <div class="modal-panel w-full max-w-5xl max-h-[90vh] flex flex-col">
+                <div class="modal-header flex justify-between items-center">
+                    <h3 class="modal-title">数据质量巡检</h3>
+                    <button @click="closeDataQualityModal" class="text-slate-400 hover:text-blue-700 font-bold transition-all duration-200 ease-in-out">&times;</button>
+                </div>
+                <div class="p-5 overflow-y-auto space-y-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <label class="text-xs text-slate-500">扫描条数</label>
+                        <input v-model.number="dataQualityLimit" type="number" min="1" max="1000" class="h-10 w-28 px-3 bg-white border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        <button @click="loadDataQualityReport" :disabled="dataQualityLoading" class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out">
+                            {{ dataQualityLoading ? '巡检中...' : '刷新巡检' }}
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                            <div class="text-[10px] text-slate-500 uppercase font-semibold">扫描记录</div>
+                            <div class="mt-1 text-xl font-semibold text-slate-900 font-mono">{{ dataQualityReport.scanned_rows || 0 }}</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                            <div class="text-[10px] text-slate-500 uppercase font-semibold">问题记录</div>
+                            <div class="mt-1 text-xl font-semibold text-amber-600 font-mono">{{ (dataQualityReport.issues || []).length }}</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                            <div class="text-[10px] text-slate-500 uppercase font-semibold">重复键组</div>
+                            <div class="mt-1 text-xl font-semibold text-rose-600 font-mono">{{ (dataQualityReport.duplicates || []).length }}</div>
+                        </div>
+                    </div>
+
+                    <div class="border border-slate-200 rounded-lg p-3">
+                        <div class="text-xs font-semibold text-slate-600 mb-2">问题汇总</div>
+                        <div v-if="Object.keys(dataQualityReport.summary || {}).length" class="flex flex-wrap gap-2">
+                            <span
+                                v-for="(count, code) in dataQualityReport.summary"
+                                :key="`quality-summary-${code}`"
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-700"
+                            >
+                                <span>{{ qualityIssueLabel(code) }}</span>
+                                <span class="font-semibold font-mono">{{ count }}</span>
+                            </span>
+                        </div>
+                        <div v-else class="text-xs text-slate-400">暂无问题</div>
+                    </div>
+
+                    <div class="border border-slate-200 rounded-lg overflow-hidden">
+                        <div class="bg-slate-50 px-3 py-2 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase">问题明细</div>
+                        <table class="w-full text-sm">
+                            <thead class="bg-white border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                <tr>
+                                    <th class="px-3 py-2 text-left w-20">ID</th>
+                                    <th class="px-3 py-2 text-left">流水号 / 物品</th>
+                                    <th class="px-3 py-2 text-left">问题</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr v-for="row in dataQualityReport.issues" :key="`quality-issue-${row.id}`">
+                                    <td class="px-3 py-2 text-xs font-mono text-slate-600">{{ row.id }}</td>
+                                    <td class="px-3 py-2 text-slate-700">
+                                        <div class="text-xs font-mono text-slate-500">{{ row.serial_number || '-' }}</div>
+                                        <div class="text-sm font-medium text-slate-800">{{ row.item_name || '-' }}</div>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <div class="flex flex-wrap gap-1">
+                                            <span
+                                                v-for="code in row.issues || []"
+                                                :key="`quality-issue-code-${row.id}-${code}`"
+                                                class="inline-flex px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 text-[11px] font-semibold ring-1 ring-amber-600/20"
+                                            >
+                                                {{ qualityIssueLabel(code) }}
+                                            </span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-if="!dataQualityReport.issues.length">
+                                    <td colspan="3" class="py-12 text-center text-slate-500 text-sm">未发现问题记录</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -998,9 +1189,9 @@
 
     </div>
     
-    <script src="/static/state.js"></script>
-    <script src="/static/api.js"></script>
-    <script src="/static/ui.js"></script>
+    <script src="/static/state.js?v=20260302.1"></script>
+    <script src="/static/api.js?v=20260302.1"></script>
+    <script src="/static/ui.js?v=20260302.1"></script>
     <script>
         window.addEventListener('load', () => {
             setTimeout(() => {

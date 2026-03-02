@@ -16,6 +16,7 @@ async def get_stats_summary() -> dict:
                 SUM(CASE WHEN invoice_issued = 1 THEN 1 ELSE 0 END) AS issued,
                 SUM(CASE WHEN invoice_issued = 1 THEN 0 ELSE 1 END) AS not_issued
             FROM items
+            WHERE deleted_at IS NULL
             """
         ) as cursor:
             row = await cursor.fetchone()
@@ -24,13 +25,13 @@ async def get_stats_summary() -> dict:
             not_issued = int(row[2] if row and row[2] is not None else 0)
 
         async with db.execute(
-            "SELECT status, COUNT(*) FROM items GROUP BY status"
+            "SELECT status, COUNT(*) FROM items WHERE deleted_at IS NULL GROUP BY status"
         ) as cursor:
             status_rows = await cursor.fetchall()
             status_count = {str(status): int(count) for status, count in status_rows}
 
         async with db.execute(
-            "SELECT payment_status, COUNT(*) FROM items GROUP BY payment_status"
+            "SELECT payment_status, COUNT(*) FROM items WHERE deleted_at IS NULL GROUP BY payment_status"
         ) as cursor:
             payment_rows = await cursor.fetchall()
             payment_count = {str(status): int(count) for status, count in payment_rows}

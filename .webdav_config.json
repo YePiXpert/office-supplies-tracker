@@ -2,5 +2,6 @@
   "base_url": "https://dav.jianguoyun.com/dav",
   "username": "percival.lyp@gmail.com",
   "password": "a9i7pgdn2tx7sz2i",
-  "remote_dir": "office-supplies-backup"
+  "remote_dir": "office-supplies-backup",
+  "keep_backups": 0
 }

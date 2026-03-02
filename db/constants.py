@@ -18,6 +18,7 @@ ITEM_COLUMNS = (
     "item_name", "quantity", "purchase_link", "unit_price", "status",
     "invoice_issued", "payment_status",
     "arrival_date", "distribution_date", "signoff_note",
+    "deleted_at",
     "created_at", "updated_at",
 )
 
