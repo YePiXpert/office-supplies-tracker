@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-APP_TITLE = "采购自动解析与追踪系统"
+APP_TITLE = "办公用品采购系统"
 HOST = "127.0.0.1"
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720

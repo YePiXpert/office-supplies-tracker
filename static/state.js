@@ -4,7 +4,7 @@
                 return {
                     items: [],
                     totalItems: 0,
-                    stats: { total: 0, status_count: {}, payment_count: {}, invoice_count: { issued: 0, not_issued: 0 }},
+                    stats: { total: 0, statusCount: {}, paymentCount: {}, invoiceCount: { issued: 0, notIssued: 0 }},
                     statuses: ['待采购', '已下单', '待到货', '待分发', '已分发'],
                     departments: [],
                     handlers: [],
@@ -21,7 +21,7 @@
                     executionBoard: {
                         columns: [],
                         total: 0,
-                        limit_per_status: 80,
+                        limitPerStatus: 80,
                     },
                     draggingExecutionId: null,
                     draggingExecutionFromKey: '',
@@ -58,12 +58,12 @@
                     webdavLoading: false,
                     webdavConfig: {
                         configured: false,
-                        base_url: '',
+                        baseUrl: '',
                         username: '',
                         password: '',
-                        remote_dir: '',
-                        keep_backups: 0,
-                        has_password: false,
+                        remoteDir: '',
+                        keepBackups: 0,
+                        hasPassword: false,
                     },
                     webdavBackups: [],
                     webdavSelectedBackup: '',
@@ -81,7 +81,7 @@
                         summary: {},
                         issues: [],
                         duplicates: [],
-                        scanned_rows: 0,
+                        scannedRows: 0,
                     },
                     showImportPreviewModal: false,
                     selectedItems: [],
@@ -94,14 +94,14 @@
                     amountReportLoading: false,
                     amountReport: {
                         summary: {
-                            total_records: 0,
-                            total_amount: 0,
-                            priced_amount: 0,
-                            missing_price_records: 0
+                            totalRecords: 0,
+                            totalAmount: 0,
+                            pricedAmount: 0,
+                            missingPriceRecords: 0
                         },
-                        by_department: [],
-                        by_status: [],
-                        by_month: []
+                        byDepartment: [],
+                        byStatus: [],
+                        byMonth: []
                     },
                     historyLoading: false,
                     historyItems: [],
@@ -178,8 +178,8 @@
                     return Math.max(1, Math.ceil(this.historyTotal / this.historyPageSize));
                 },
                 reportDepartmentRows() {
-                    const rows = Array.isArray(this.amountReport?.by_department)
-                        ? this.amountReport.by_department
+                    const rows = Array.isArray(this.amountReport?.byDepartment)
+                        ? this.amountReport.byDepartment
                         : [];
                     const normalized = rows.map((row, idx) => {
                         const amount = Number(row?.total_amount) || 0;
@@ -193,7 +193,7 @@
                         (max, row) => Math.max(max, row._amount),
                         0
                     );
-                    const totalAmount = Number(this.amountReport?.summary?.total_amount) || 0;
+                    const totalAmount = Number(this.amountReport?.summary?.totalAmount) || 0;
                     return normalized
                         .sort((a, b) => b._amount - a._amount)
                         .slice(0, 10)
@@ -213,8 +213,8 @@
                         '#16a34a',
                         '#64748b',
                     ];
-                    const rows = Array.isArray(this.amountReport?.by_status)
-                        ? this.amountReport.by_status
+                    const rows = Array.isArray(this.amountReport?.byStatus)
+                        ? this.amountReport.byStatus
                         : [];
                     const normalized = rows.map((row, idx) => ({
                         ...row,
@@ -248,8 +248,8 @@
                     };
                 },
                 reportMonthRows() {
-                    const rows = Array.isArray(this.amountReport?.by_month)
-                        ? this.amountReport.by_month
+                    const rows = Array.isArray(this.amountReport?.byMonth)
+                        ? this.amountReport.byMonth
                         : [];
                     const normalized = rows
                         .map((row) => ({

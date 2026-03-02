@@ -100,7 +100,7 @@
                     this.executionLoading = true;
                     try {
                         const params = {
-                            limit_per_status: this.executionBoard.limit_per_status || 80,
+                            limit_per_status: this.executionBoard.limitPerStatus || 80,
                         };
                         if (this.boardKeyword) params.keyword = this.boardKeyword;
                         if (this.boardDepartment) params.department = this.boardDepartment;
@@ -110,7 +110,7 @@
                         this.executionBoard = {
                             columns: Array.isArray(data.columns) ? data.columns : [],
                             total: Number(data.total) || 0,
-                            limit_per_status: Number(data.limit_per_status) || 80,
+                            limitPerStatus: Number(data.limit_per_status) || 80,
                         };
                         this.draggingExecutionId = null;
                         this.draggingExecutionFromKey = '';
@@ -481,12 +481,12 @@
                         const config = res.data || {};
                         this.webdavConfig = {
                             configured: !!config.configured,
-                            base_url: config.base_url || '',
+                            baseUrl: config.base_url || '',
                             username: config.username || '',
                             password: '',
-                            remote_dir: config.remote_dir || '',
-                            keep_backups: this.normalizeKeepBackups(config.keep_backups),
-                            has_password: !!config.has_password,
+                            remoteDir: config.remote_dir || '',
+                            keepBackups: this.normalizeKeepBackups(config.keep_backups),
+                            hasPassword: !!config.has_password,
                         };
                     } catch (e) {
                         this.showApiError('加载 WebDAV 配置失败', e);
@@ -496,11 +496,11 @@
                     if (manageLoading) this.webdavLoading = true;
                     try {
                         const payload = {
-                            base_url: (this.webdavConfig.base_url || '').toString().trim(),
+                            base_url: (this.webdavConfig.baseUrl || '').toString().trim(),
                             username: (this.webdavConfig.username || '').toString().trim(),
                             password: this.webdavConfig.password || '',
-                            remote_dir: (this.webdavConfig.remote_dir || '').toString().trim(),
-                            keep_backups: this.normalizeKeepBackups(this.webdavConfig.keep_backups),
+                            remote_dir: (this.webdavConfig.remoteDir || '').toString().trim(),
+                            keep_backups: this.normalizeKeepBackups(this.webdavConfig.keepBackups),
                         };
                         const res = await axios.put('/api/webdav/config', payload);
                         if (showAlert) {
@@ -508,8 +508,8 @@
                         }
                         const config = res.data?.config || {};
                         this.webdavConfig.configured = !!config.configured;
-                        this.webdavConfig.has_password = !!config.has_password;
-                        this.webdavConfig.keep_backups = this.normalizeKeepBackups(config.keep_backups);
+                        this.webdavConfig.hasPassword = !!config.has_password;
+                        this.webdavConfig.keepBackups = this.normalizeKeepBackups(config.keep_backups);
                         this.webdavConfig.password = '';
                         return config;
                     } catch (e) {
@@ -603,14 +603,14 @@
                         const data = res.data || {};
                         this.amountReport = {
                             summary: {
-                                total_records: data.summary?.total_records || 0,
-                                total_amount: data.summary?.total_amount || 0,
-                                priced_amount: data.summary?.priced_amount || 0,
-                                missing_price_records: data.summary?.missing_price_records || 0
+                                totalRecords: data.summary?.total_records || 0,
+                                totalAmount: data.summary?.total_amount || 0,
+                                pricedAmount: data.summary?.priced_amount || 0,
+                                missingPriceRecords: data.summary?.missing_price_records || 0
                             },
-                            by_department: Array.isArray(data.by_department) ? data.by_department : [],
-                            by_status: Array.isArray(data.by_status) ? data.by_status : [],
-                            by_month: Array.isArray(data.by_month) ? data.by_month : []
+                            byDepartment: Array.isArray(data.by_department) ? data.by_department : [],
+                            byStatus: Array.isArray(data.by_status) ? data.by_status : [],
+                            byMonth: Array.isArray(data.by_month) ? data.by_month : []
                         };
                     } catch (e) {
                         this.showApiError('加载金额报表失败', e);
@@ -846,7 +846,7 @@
                             summary: report.summary || {},
                             issues: Array.isArray(report.issues) ? report.issues : [],
                             duplicates: Array.isArray(report.duplicates) ? report.duplicates : [],
-                            scanned_rows: Number(report.scanned_rows) || 0,
+                            scannedRows: Number(report.scanned_rows) || 0,
                         };
                     } catch (e) {
                         this.showApiError('加载数据质量报告失败', e);
@@ -1068,7 +1068,19 @@
                     catch(e) { console.error(e); }
                 },
                 async loadStats() {
-                    try { const res = await axios.get('/api/stats'); this.stats = res.data; }
+                    try {
+                        const res = await axios.get('/api/stats');
+                        const data = res.data || {};
+                        this.stats = {
+                            total: Number(data.total) || 0,
+                            statusCount: data.status_count || {},
+                            paymentCount: data.payment_count || {},
+                            invoiceCount: {
+                                issued: Number(data.invoice_count?.issued) || 0,
+                                notIssued: Number(data.invoice_count?.not_issued) || 0,
+                            },
+                        };
+                    }
                     catch(e) { console.error(e); }
                 },
                 handleFilter() {
