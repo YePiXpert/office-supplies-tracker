@@ -14,10 +14,10 @@ function Write-Step {
 function Invoke-AndCheck {
   param(
     [string]$Exe,
-    [string[]]$Args,
+    [string[]]$CommandArgs,
     [string]$ErrorMessage
   )
-  & $Exe @Args
+  & $Exe @CommandArgs
   if ($LASTEXITCODE -ne 0) {
     throw $ErrorMessage
   }
@@ -68,14 +68,14 @@ try {
   $venvPython = Join-Path $projectRoot "venv\Scripts\python.exe"
   if (-not (Test-Path $venvPython)) {
     Write-Step "Creating virtual environment..."
-    Invoke-AndCheck -Exe $python.Exe -Args ($python.Prefix + @("-m", "venv", "venv")) -ErrorMessage "Failed to create virtual environment."
+    Invoke-AndCheck -Exe $python.Exe -CommandArgs ($python.Prefix + @("-m", "venv", "venv")) -ErrorMessage "Failed to create virtual environment."
   }
 
   Write-Step "Upgrading pip..."
-  Invoke-AndCheck -Exe $venvPython -Args @("-m", "pip", "install", "--upgrade", "pip") -ErrorMessage "Failed to upgrade pip."
+  Invoke-AndCheck -Exe $venvPython -CommandArgs @("-m", "pip", "install", "--upgrade", "pip") -ErrorMessage "Failed to upgrade pip."
 
   Write-Step "Installing requirements..."
-  Invoke-AndCheck -Exe $venvPython -Args @("-m", "pip", "install", "-r", "requirements.txt") -ErrorMessage "Failed to install requirements."
+  Invoke-AndCheck -Exe $venvPython -CommandArgs @("-m", "pip", "install", "-r", "requirements.txt") -ErrorMessage "Failed to install requirements."
 
   if ($OnlySetup) {
     Write-Host ""
@@ -99,7 +99,7 @@ try {
     "--hidden-import", "uvicorn.lifespan.on",
     "desktop.py"
   )
-  Invoke-AndCheck -Exe $venvPython -Args $pyinstallerArgs -ErrorMessage "PyInstaller build failed."
+  Invoke-AndCheck -Exe $venvPython -CommandArgs $pyinstallerArgs -ErrorMessage "PyInstaller build failed."
 
   $exePath = Join-Path $projectRoot "dist\OfficeSuppliesTracker\OfficeSuppliesTracker.exe"
   if (-not (Test-Path $exePath)) {
