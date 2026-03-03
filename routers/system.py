@@ -33,6 +33,37 @@ router = APIRouter()
 WEBDAV_CONFIG_PATH = RUNTIME_DIR / ".webdav_config.json"
 
 
+def _validate_backup_filename(filename: str) -> str:
+    """校验备份文件名与扩展名。"""
+    normalized = (filename or "").strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="无效的备份文件名")
+    if Path(normalized).suffix.lower() != ".zip":
+        raise HTTPException(status_code=400, detail="仅支持 .zip 备份文件")
+    return normalized
+
+
+async def _save_backup_upload(file: UploadFile, prefix: str) -> Path:
+    """保存上传的备份压缩包并返回临时路径。"""
+    archive_path = UPLOAD_DIR / f"{prefix}_{uuid4().hex}.zip"
+    try:
+        save_upload_file_with_limit(
+            file,
+            archive_path,
+            max_bytes=MAX_BACKUP_TOTAL_SIZE,
+            file_label="备份文件",
+        )
+    except HTTPException:
+        safe_unlink(archive_path)
+        raise
+    except Exception as exc:
+        safe_unlink(archive_path)
+        raise HTTPException(status_code=500, detail=f"写入备份文件失败: {str(exc)}")
+    finally:
+        await file.close()
+    return archive_path
+
+
 def _run_init_db_sync() -> None:
     """在线程池中执行 DB 初始化/迁移。"""
     asyncio.run(init_db())
@@ -126,20 +157,9 @@ async def backup_data():
 @router.post("/api/backup/health", response_model=BackupHealthCheckResponse)
 async def backup_health_check(file: UploadFile = File(...)):
     """上传备份包并执行健康检查（不写入当前数据）。"""
-    filename = (file.filename or "").strip()
-    if not filename:
-        raise HTTPException(status_code=400, detail="无效的备份文件名")
-    if Path(filename).suffix.lower() != ".zip":
-        raise HTTPException(status_code=400, detail="仅支持 .zip 备份文件")
-
-    archive_path = UPLOAD_DIR / f"health_{uuid4().hex}.zip"
+    _validate_backup_filename(file.filename or "")
+    archive_path = await _save_backup_upload(file, prefix="health")
     try:
-        save_upload_file_with_limit(
-            file,
-            archive_path,
-            max_bytes=MAX_BACKUP_TOTAL_SIZE,
-            file_label="备份文件",
-        )
         report = await run_in_threadpool(inspect_backup_archive, archive_path)
         return {"message": "备份健康检查通过", **report}
     except ValueError as exc:
@@ -149,35 +169,14 @@ async def backup_health_check(file: UploadFile = File(...)):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"备份健康检查失败: {exc}")
     finally:
-        await file.close()
         safe_unlink(archive_path)
 
 
 @router.post("/api/restore")
 async def restore_data(file: UploadFile = File(...)):
     """从备份包恢复数据库与上传文件。"""
-    filename = (file.filename or "").strip()
-    if not filename:
-        raise HTTPException(status_code=400, detail="无效的备份文件名")
-    if Path(filename).suffix.lower() != ".zip":
-        raise HTTPException(status_code=400, detail="仅支持 .zip 备份文件")
-
-    archive_path = UPLOAD_DIR / f"restore_{uuid4().hex}.zip"
-    try:
-        save_upload_file_with_limit(
-            file,
-            archive_path,
-            max_bytes=MAX_BACKUP_TOTAL_SIZE,
-            file_label="备份文件",
-        )
-    except HTTPException:
-        safe_unlink(archive_path)
-        raise
-    except Exception as e:
-        safe_unlink(archive_path)
-        raise HTTPException(status_code=500, detail=f"写入备份文件失败: {str(e)}")
-    finally:
-        await file.close()
+    _validate_backup_filename(file.filename or "")
+    archive_path = await _save_backup_upload(file, prefix="restore")
 
     async with DATA_MUTATION_LOCK:
         MAINTENANCE_MODE.set()
@@ -291,6 +290,8 @@ async def restore_from_webdav(request: WebDAVRestoreRequest):
         try:
             await run_in_threadpool(download_backup_to_file, config, filename, archive_path)
             result = await run_in_threadpool(restore_from_archive, archive_path, _run_init_db_sync)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             _handle_webdav_error(e)
         finally:

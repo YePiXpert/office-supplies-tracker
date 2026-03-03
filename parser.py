@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import threading
-import pdfplumber
 from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
@@ -159,6 +158,7 @@ class DocumentParser:
         r'^《|^》|^○',
         r'^ds/',
     ]
+    UI_REGEX_PATTERNS = tuple(re.compile(pattern) for pattern in UI_PATTERNS)
 
     OCR_SKIP_KEYWORDS = SKIP_KEYWORDS + [
         "转发", "回退", "指定", "打印", "查找",
@@ -189,6 +189,11 @@ class DocumentParser:
 
     def _parse_pdf(self) -> dict:
         """解析 PDF 文件"""
+        try:
+            import pdfplumber
+        except ModuleNotFoundError as exc:
+            raise RuntimeError("缺少 pdfplumber 依赖，请先安装 requirements.txt") from exc
+
         with pdfplumber.open(self.file_path) as pdf:
             if not pdf.pages:
                 return self._get_empty_result()
@@ -395,28 +400,20 @@ class DocumentParser:
         filtered = []
         for line in lines:
             line_text = " ".join([item[1][0] for item in line])
-            # 检查是否匹配UI模式
-            is_ui = False
-            for pattern in self.UI_PATTERNS:
-                if re.search(pattern, line_text):
-                    is_ui = True
-                    break
-            if not is_ui:
+            if not self._is_ui_text(line_text):
                 # 过滤掉纯UI元素的item
                 filtered_items = []
                 for item in line:
                     text = item[1][0]
-                    is_ui_item = False
-                    for pattern in self.UI_PATTERNS:
-                        if re.search(pattern, text):
-                            is_ui_item = True
-                            break
-                    if not is_ui_item:
+                    if not self._is_ui_text(text):
                         filtered_items.append(item)
                 if filtered_items:
                     filtered.append(filtered_items)
 
         return filtered
+
+    def _is_ui_text(self, text: str) -> bool:
+        return any(pattern.search(text) for pattern in self.UI_REGEX_PATTERNS)
 
     def _parse_from_ocr_with_coords(self, lines: list) -> dict:
         """从OCR结果（带坐标）解析数据"""

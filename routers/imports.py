@@ -1,3 +1,4 @@
+import aiosqlite
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
@@ -15,6 +16,67 @@ from schemas import DuplicateHandleRequest, ImportConfirmRequest
 router = APIRouter(prefix="/api")
 
 
+def _normalize_payload_from_fields(
+    *,
+    serial_number,
+    department,
+    handler,
+    request_date,
+    items,
+) -> dict:
+    return normalize_import_payload(
+        {
+            "serial_number": serial_number or "",
+            "department": department or "",
+            "handler": handler or "",
+            "request_date": request_date or "",
+            "items": items or [],
+        }
+    )
+
+
+def _normalize_payload_from_parse_result(result: dict) -> dict:
+    return _normalize_payload_from_fields(
+        serial_number=result.get("serial_number", ""),
+        department=result.get("department", ""),
+        handler=result.get("handler", ""),
+        request_date=result.get("request_date", ""),
+        items=result.get("items", []),
+    )
+
+
+def _normalize_payload_from_items_data(items_data: list[dict]) -> dict:
+    first = items_data[0] if items_data else {}
+    return _normalize_payload_from_fields(
+        serial_number=first.get("serial_number", ""),
+        department=first.get("department", ""),
+        handler=first.get("handler", ""),
+        request_date=first.get("request_date", ""),
+        items=items_data,
+    )
+
+
+async def _confirm_import_with_lock(
+    normalized_payload: dict,
+    duplicate_action: str | None,
+    *,
+    failure_prefix: str,
+) -> dict:
+    try:
+        async with DATA_MUTATION_LOCK:
+            return await confirm_import_payload(normalized_payload, duplicate_action)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except aiosqlite.IntegrityError as e:
+        if "UNIQUE constraint failed" in str(e):
+            raise HTTPException(status_code=409, detail="导入触发唯一约束冲突（流水号+物品名称+经办人）")
+        raise HTTPException(status_code=400, detail="导入失败：字段值不合法")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{failure_prefix}: {str(e)}")
+
+
 @router.post("/upload")
 async def upload_and_parse(file: UploadFile = File(...)):
     """上传文件并解析。"""
@@ -28,13 +90,7 @@ async def upload_and_parse(file: UploadFile = File(...)):
             file_label="上传文件",
         )
         result = await run_in_threadpool(parse_document, str(file_path))
-        normalized_payload = normalize_import_payload({
-            "serial_number": result.get("serial_number", ""),
-            "department": result.get("department", ""),
-            "handler": result.get("handler", ""),
-            "request_date": result.get("request_date", ""),
-            "items": result.get("items", []),
-        })
+        normalized_payload = _normalize_payload_from_parse_result(result)
         preview_data = build_preview_data(normalized_payload, normalized_payload["items"])
 
         return {
@@ -59,26 +115,19 @@ async def confirm_import(request: ImportConfirmRequest):
     payload = request.model_dump()
     duplicate_action = payload.pop("duplicate_action", None)
     normalized_payload = normalize_import_payload(payload)
-    async with DATA_MUTATION_LOCK:
-        return await confirm_import_payload(normalized_payload, duplicate_action)
+    return await _confirm_import_with_lock(
+        normalized_payload,
+        duplicate_action,
+        failure_prefix="导入失败",
+    )
 
 
 @router.post("/upload/handle-duplicates")
 async def handle_duplicates(request: DuplicateHandleRequest):
     """兼容旧前端：处理重复物品。"""
-    try:
-        first = request.items_data[0] if request.items_data else {}
-        normalized_payload = normalize_import_payload({
-            "serial_number": first.get("serial_number", ""),
-            "department": first.get("department", ""),
-            "handler": first.get("handler", ""),
-            "request_date": first.get("request_date", ""),
-            "items": request.items_data,
-        })
-        async with DATA_MUTATION_LOCK:
-            return await confirm_import_payload(normalized_payload, request.action)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
+    normalized_payload = _normalize_payload_from_items_data(request.items_data)
+    return await _confirm_import_with_lock(
+        normalized_payload,
+        request.action,
+        failure_prefix="处理失败",
+    )
