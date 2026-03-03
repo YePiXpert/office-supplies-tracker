@@ -7,6 +7,8 @@ paddlepaddle==3.0.0
 pillow==11.1.0
 pydantic==2.10.0
 aiosqlite==0.20.0
+sqlalchemy==2.0.48
+alembic==1.18.4
 openpyxl==3.1.5
 pywebview==6.1
 pyinstaller==6.19.0

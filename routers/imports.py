@@ -1,6 +1,8 @@
 import aiosqlite
-from fastapi import APIRouter, File, HTTPException, UploadFile
-from starlette.concurrency import run_in_threadpool
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from pathlib import Path
+from threading import Lock
+from uuid import uuid4
 
 from api_utils import (
     MAX_DOCUMENT_UPLOAD_BYTES,
@@ -14,6 +16,10 @@ from parser import parse_document
 from schemas import DuplicateHandleRequest, ImportConfirmRequest
 
 router = APIRouter(prefix="/api")
+tasks: dict[str, dict] = {}
+_tasks_lock = Lock()
+_TERMINAL_TASK_STATUSES = {"completed", "failed"}
+_MAX_TRACKED_TASKS = 200
 
 
 def _normalize_payload_from_fields(
@@ -77,9 +83,58 @@ async def _confirm_import_with_lock(
         raise HTTPException(status_code=500, detail=f"{failure_prefix}: {str(e)}")
 
 
-@router.post("/upload")
-async def upload_and_parse(file: UploadFile = File(...)):
-    """上传文件并解析。"""
+def _set_task(task_id: str, *, status: str | None = None, result=None) -> None:
+    with _tasks_lock:
+        task = tasks.get(task_id)
+        if task is None:
+            return
+        if status is not None:
+            task["status"] = status
+        task["result"] = result
+
+
+def _prune_tasks() -> None:
+    with _tasks_lock:
+        if len(tasks) <= _MAX_TRACKED_TASKS:
+            return
+        for key in list(tasks.keys()):
+            if len(tasks) <= _MAX_TRACKED_TASKS:
+                break
+            status = str(tasks.get(key, {}).get("status", ""))
+            if status in _TERMINAL_TASK_STATUSES:
+                tasks.pop(key, None)
+
+
+def _run_parse_task(task_id: str, file_path: Path) -> None:
+    _set_task(task_id, status="processing", result=None)
+    try:
+        parsed = parse_document(str(file_path))
+        normalized_payload = _normalize_payload_from_parse_result(parsed)
+        preview_data = build_preview_data(normalized_payload, normalized_payload["items"])
+        _set_task(
+            task_id,
+            status="completed",
+            result={
+                "message": f"解析完成，共 {len(preview_data['items'])} 条，请确认后导入",
+                "parsed_data": preview_data,
+                "has_duplicates": False,
+                "requires_confirmation": True,
+            },
+        )
+    except Exception as e:
+        _set_task(
+            task_id,
+            status="failed",
+            result={"detail": f"解析失败: {str(e)}"},
+        )
+    finally:
+        safe_unlink(file_path)
+
+
+@router.post("/upload", status_code=202)
+@router.post("/upload-ocr", status_code=202)
+async def upload_and_parse(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    """上传文件并创建异步解析任务。"""
     file_path = build_upload_path(file.filename or "")
 
     try:
@@ -89,24 +144,34 @@ async def upload_and_parse(file: UploadFile = File(...)):
             max_bytes=MAX_DOCUMENT_UPLOAD_BYTES,
             file_label="上传文件",
         )
-        result = await run_in_threadpool(parse_document, str(file_path))
-        normalized_payload = _normalize_payload_from_parse_result(result)
-        preview_data = build_preview_data(normalized_payload, normalized_payload["items"])
-
-        return {
-            "message": f"解析完成，共 {len(preview_data['items'])} 条，请确认后导入",
-            "parsed_data": preview_data,
-            "has_duplicates": False,
-            "requires_confirmation": True,
-        }
+        task_id = uuid4().hex
+        with _tasks_lock:
+            tasks[task_id] = {"status": "pending", "result": None}
+        _prune_tasks()
+        background_tasks.add_task(_run_parse_task, task_id, file_path)
+        return {"task_id": task_id}
 
     except HTTPException:
+        safe_unlink(file_path)
         raise
     except Exception as e:
+        safe_unlink(file_path)
         raise HTTPException(status_code=500, detail=f"解析失败: {str(e)}")
     finally:
         await file.close()
-        safe_unlink(file_path)
+
+
+@router.get("/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    with _tasks_lock:
+        task = tasks.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="任务不存在或已过期")
+        return {
+            "task_id": task_id,
+            "status": task.get("status", "failed"),
+            "result": task.get("result"),
+        }
 
 
 @router.post("/import/confirm")

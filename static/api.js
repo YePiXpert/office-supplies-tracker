@@ -1314,8 +1314,99 @@
                         this.restoring = false;
                     }
                 },
-                handleFileSelect(e) { const files = e.target.files; if (files.length) this.uploadFile(files[0]); },
+                clearUploadTaskPolling() {
+                    if (this.uploadPollTimer) {
+                        clearInterval(this.uploadPollTimer);
+                        this.uploadPollTimer = null;
+                    }
+                    this.uploadPollInFlight = false;
+                },
+                updateUploadStatusText(status) {
+                    if (status === 'pending') {
+                        this.uploadStatusText = '任务排队中，等待后台解析...';
+                        return;
+                    }
+                    if (status === 'processing') {
+                        this.uploadStatusText = '正在提取关键字段...';
+                        return;
+                    }
+                    if (status === 'completed') {
+                        this.uploadStatusText = '解析完成，正在生成预览...';
+                        return;
+                    }
+                    if (status === 'failed') {
+                        this.uploadStatusText = '解析失败，请重试';
+                        return;
+                    }
+                    this.uploadStatusText = '智能深度扫描中，请稍候';
+                },
+                async pollUploadTaskStatus(taskId) {
+                    if (!taskId || this.uploadPollInFlight) return;
+                    this.uploadPollInFlight = true;
+                    try {
+                        const res = await axios.get(`/api/tasks/${encodeURIComponent(taskId)}`);
+                        const payload = res.data || {};
+                        const status = (payload.status || '').toString().toLowerCase();
+                        const result = payload.result || null;
+
+                        if (status === 'pending' || status === 'processing') {
+                            this.updateUploadStatusText(status);
+                            return;
+                        }
+
+                        if (status === 'completed') {
+                            this.updateUploadStatusText(status);
+                            this.clearUploadTaskPolling();
+                            this.uploading = false;
+                            this.uploadTaskId = '';
+                            this.parseResult = result?.parsed_data || null;
+                            if (!this.parseResult) {
+                                throw new Error('解析任务已完成，但未返回预览数据');
+                            }
+                            this.openImportPreview(this.parseResult);
+                            this.showToast(result?.message || '解析完成，请确认后导入', 'success');
+                            return;
+                        }
+
+                        if (status === 'failed') {
+                            this.updateUploadStatusText(status);
+                            this.clearUploadTaskPolling();
+                            this.uploading = false;
+                            this.uploadTaskId = '';
+                            const detail = result?.detail || '解析失败，请稍后重试';
+                            this.error = detail;
+                            this.showToast(detail, 'error');
+                            return;
+                        }
+
+                        throw new Error(`未知任务状态: ${payload.status}`);
+                    } catch (e) {
+                        this.clearUploadTaskPolling();
+                        this.uploading = false;
+                        this.uploadTaskId = '';
+                        const detail = e?.response?.data?.detail || e?.message || '未知错误';
+                        this.error = `任务查询失败: ${detail}`;
+                        this.showToast(this.error, 'error');
+                    } finally {
+                        this.uploadPollInFlight = false;
+                    }
+                },
+                startUploadTaskPolling(taskId) {
+                    this.clearUploadTaskPolling();
+                    this.uploadPollTimer = setInterval(() => {
+                        this.pollUploadTaskStatus(taskId);
+                    }, 2000);
+                },
+                handleFileSelect(e) {
+                    const files = e.target.files;
+                    if (files.length) this.uploadFile(files[0]);
+                    e.target.value = '';
+                },
                 async uploadFile(file) {
+                    if (this.uploading) {
+                        this.showToast('已有解析任务正在执行，请稍候', 'error');
+                        return;
+                    }
                     const validTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
                     const validExts = ['pdf', 'png', 'jpg', 'jpeg', 'jfif'];
                     const ext = (file.name.split('.').pop() || '').toLowerCase();
@@ -1324,7 +1415,10 @@
                         this.showToast(this.error, 'error');
                         return;
                     }
+                    this.clearUploadTaskPolling();
                     this.uploading = true;
+                    this.uploadTaskId = '';
+                    this.uploadStatusText = '正在上传文件并创建解析任务...';
                     this.error = null;
                     this.parseResult = null;
                     try {
@@ -1333,12 +1427,31 @@
                         const res = await axios.post('/api/upload', formData, {
                             headers: { 'Content-Type': 'multipart/form-data' }
                         });
-                        this.openImportPreview(res.data.parsed_data);
+                        const taskId = (res.data?.task_id || '').toString().trim();
+                        if (taskId) {
+                            this.uploadTaskId = taskId;
+                            this.uploadStatusText = '任务已创建，等待后台解析...';
+                            await this.pollUploadTaskStatus(taskId);
+                            if (this.uploading && this.uploadTaskId) {
+                                this.startUploadTaskPolling(taskId);
+                            }
+                            return;
+                        }
+
+                        // 兼容同步返回（历史版本接口）
+                        if (res.data?.parsed_data) {
+                            this.uploading = false;
+                            this.openImportPreview(res.data.parsed_data);
+                            return;
+                        }
+
+                        throw new Error('服务端未返回 task_id');
                     } catch(e) {
                         console.error('上传错误:', e);
                         this.error = '上传失败: ' + (e.response?.data?.detail || e.message);
                         this.showToast(this.error, 'error');
-                    } finally {
+                        this.clearUploadTaskPolling();
+                        this.uploadTaskId = '';
                         this.uploading = false;
                     }
                 },
