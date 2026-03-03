@@ -31,7 +31,7 @@ from .items import (
     normalize_update_payload,
     update_item,
 )
-from .reports import get_amount_report, get_stats_summary
+from .reports import get_amount_report, get_operations_report, get_stats_summary
 from .schema import init_db
 
 __all__ = [
@@ -46,6 +46,7 @@ __all__ = [
     "count_items",
     "get_stats_summary",
     "get_amount_report",
+    "get_operations_report",
     "get_execution_board",
     "get_item",
     "create_item",
