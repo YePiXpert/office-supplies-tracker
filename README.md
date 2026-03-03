@@ -27,7 +27,7 @@
 
 ## 技术栈
 
-- 后端：FastAPI + SQLite + aiosqlite
+- 后端：FastAPI + SQLite + aiosqlite + Alembic
 - 文档解析：pdfplumber + PaddleOCR
 - 前端：Vue 3 + TailwindCSS + Axios
 - 桌面端容器：pywebview（本地启动 FastAPI 并内嵌 Web 界面）
@@ -59,6 +59,19 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ### 3. 访问系统
 
 打开：`http://localhost:8000`
+
+## 数据库迁移（Alembic）
+
+- 应用启动时会自动执行 `alembic upgrade head`，用于平滑升级数据库结构
+- 初次接入采用基线版本 `initial baseline`
+
+手动执行迁移命令（可选）：
+
+```bash
+source venv/bin/activate
+alembic upgrade head
+alembic revision --autogenerate -m "your migration message"
+```
 
 ## 桌面版运行（无需打包）
 
@@ -295,3 +308,9 @@ office-supplies-tracker/
 - 图片上传建议使用高清截图，避免带审批系统按钮区域
 - 解析后请抽样核对关键字段（部门、日期、数量）
 - 数据库文件 `office_supplies.db` 默认在项目根目录（已被 `.gitignore` 忽略）
+
+## 💼 商业授权与企业版
+
+本项目免费提供给个人开发者学习使用。如果您希望在企业内部署、需要对接企业 OA 系统、或需要专业的审计功能定制与技术支持，请联系作者购买商业授权。企业版提供：无限制使用、专有合规功能更新、数据安全技术支持。
+
+联系邮箱：`i@yep.li`

@@ -98,6 +98,8 @@ try {
     "--windowed",
     "--name", "OfficeSuppliesTracker",
     "--add-data", "static;static",
+    "--add-data", "alembic;alembic",
+    "--add-data", "alembic.ini;.",
     "--collect-all", "webview",
     "--hidden-import", "uvicorn.loops.auto",
     "--hidden-import", "uvicorn.protocols.http.auto",

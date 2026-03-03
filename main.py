@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app_locks import MAINTENANCE_MODE
 from app_runtime import STATIC_DIR
 from database import init_db
+from db.migrations import upgrade_database_to_head
 from routers.imports import router as imports_router
 from routers.items import router as items_router
 from routers.system import router as system_router
@@ -14,7 +15,8 @@ from routers.system import router as system_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """启动时初始化数据库。"""
+    """启动时执行数据库迁移并初始化数据库。"""
+    upgrade_database_to_head()
     await init_db()
     yield
 

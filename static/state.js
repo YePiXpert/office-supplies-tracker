@@ -49,6 +49,10 @@
                     confirmModalDanger: false,
                     confirmModalResolver: null,
                     uploading: false,
+                    uploadTaskId: '',
+                    uploadPollTimer: null,
+                    uploadPollInFlight: false,
+                    uploadStatusText: '智能深度扫描中，请稍候',
                     restoring: false,
                     importSubmitting: false,
                     parseResult: null,
@@ -383,6 +387,10 @@
                 if (this.confirmModalResolver) {
                     this.confirmModalResolver(false);
                     this.confirmModalResolver = null;
+                }
+                if (this.uploadPollTimer) {
+                    clearInterval(this.uploadPollTimer);
+                    this.uploadPollTimer = null;
                 }
             },
     };
