@@ -599,8 +599,22 @@
                         if (this.filterStatus) params.status = this.filterStatus;
                         if (this.filterDepartment) params.department = this.filterDepartment;
                         if (this.filterMonth) params.month = this.filterMonth;
-                        const res = await axios.get('/api/reports/amount', { params });
-                        const data = res.data || {};
+                        const [amountResult, operationsResult] = await Promise.allSettled([
+                            axios.get('/api/reports/amount', { params }),
+                            axios.get('/api/reports/operations', { params }),
+                        ]);
+                        if (amountResult.status !== 'fulfilled') {
+                            throw amountResult.reason;
+                        }
+
+                        const data = amountResult.value?.data || {};
+                        const operations = operationsResult.status === 'fulfilled'
+                            ? (operationsResult.value?.data || {})
+                            : {};
+
+                        if (operationsResult.status !== 'fulfilled') {
+                            this.showToast('执行分析图加载失败，已展示金额报表', 'error');
+                        }
                         this.amountReport = {
                             summary: {
                                 totalRecords: data.summary?.total_records || 0,
@@ -611,6 +625,34 @@
                             byDepartment: Array.isArray(data.by_department) ? data.by_department : [],
                             byStatus: Array.isArray(data.by_status) ? data.by_status : [],
                             byMonth: Array.isArray(data.by_month) ? data.by_month : []
+                        };
+                        this.operationsReport = {
+                            funnel: Array.isArray(operations.funnel) ? operations.funnel : [],
+                            cycleDistribution: {
+                                requestToArrival: {
+                                    buckets: Array.isArray(operations.cycle_distribution?.request_to_arrival?.buckets)
+                                        ? operations.cycle_distribution.request_to_arrival.buckets
+                                        : [],
+                                    averageDays: Number(operations.cycle_distribution?.request_to_arrival?.average_days) || 0,
+                                    sampleSize: Number(operations.cycle_distribution?.request_to_arrival?.sample_size) || 0,
+                                },
+                                arrivalToDistribution: {
+                                    buckets: Array.isArray(operations.cycle_distribution?.arrival_to_distribution?.buckets)
+                                        ? operations.cycle_distribution.arrival_to_distribution.buckets
+                                        : [],
+                                    averageDays: Number(operations.cycle_distribution?.arrival_to_distribution?.average_days) || 0,
+                                    sampleSize: Number(operations.cycle_distribution?.arrival_to_distribution?.sample_size) || 0,
+                                },
+                            },
+                            monthlyAmountTrend: Array.isArray(operations.monthly_amount_trend)
+                                ? operations.monthly_amount_trend.map((row) => ({
+                                    month: row.month || '',
+                                    totalAmount: Number(row.total_amount) || 0,
+                                    paidAmount: Number(row.paid_amount) || 0,
+                                    unpaidAmount: Number(row.unpaid_amount) || 0,
+                                    recordCount: Number(row.record_count) || 0,
+                                }))
+                                : [],
                         };
                     } catch (e) {
                         this.showApiError('加载金额报表失败', e);

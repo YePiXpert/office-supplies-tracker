@@ -103,6 +103,22 @@
                         byStatus: [],
                         byMonth: []
                     },
+                    operationsReport: {
+                        funnel: [],
+                        cycleDistribution: {
+                            requestToArrival: {
+                                buckets: [],
+                                averageDays: 0,
+                                sampleSize: 0,
+                            },
+                            arrivalToDistribution: {
+                                buckets: [],
+                                averageDays: 0,
+                                sampleSize: 0,
+                            },
+                        },
+                        monthlyAmountTrend: [],
+                    },
                     historyLoading: false,
                     historyItems: [],
                     historyTotal: 0,
@@ -263,6 +279,90 @@
                         ...row,
                         _barHeight: maxAmount > 0 ? Math.max(16, (row._amount / maxAmount) * 150) : 16,
                     }));
+                },
+                reportFunnelRows() {
+                    const rows = Array.isArray(this.operationsReport?.funnel)
+                        ? this.operationsReport.funnel
+                        : [];
+                    const normalized = rows.map((row) => ({
+                        ...row,
+                        _count: Number(row?.count) || 0,
+                    }));
+                    const maxCount = normalized.reduce((max, row) => Math.max(max, row._count), 0);
+                    const firstCount = Number(normalized[0]?._count) || 0;
+                    return normalized.map((row, idx) => ({
+                        ...row,
+                        _ratio: maxCount > 0 ? (row._count / maxCount) * 100 : 0,
+                        _conversion: firstCount > 0 ? (row._count / firstCount) * 100 : 0,
+                        _stepDrop: idx > 0 ? Math.max(0, (normalized[idx - 1]?._count || 0) - row._count) : 0,
+                    }));
+                },
+                requestToArrivalRows() {
+                    const rows = Array.isArray(this.operationsReport?.cycleDistribution?.requestToArrival?.buckets)
+                        ? this.operationsReport.cycleDistribution.requestToArrival.buckets
+                        : [];
+                    const normalized = rows.map((row) => ({
+                        ...row,
+                        _count: Number(row?.count) || 0,
+                    }));
+                    const maxCount = normalized.reduce((max, row) => Math.max(max, row._count), 0);
+                    return normalized.map((row) => ({
+                        ...row,
+                        _ratio: maxCount > 0 ? (row._count / maxCount) * 100 : 0,
+                    }));
+                },
+                arrivalToDistributionRows() {
+                    const rows = Array.isArray(this.operationsReport?.cycleDistribution?.arrivalToDistribution?.buckets)
+                        ? this.operationsReport.cycleDistribution.arrivalToDistribution.buckets
+                        : [];
+                    const normalized = rows.map((row) => ({
+                        ...row,
+                        _count: Number(row?.count) || 0,
+                    }));
+                    const maxCount = normalized.reduce((max, row) => Math.max(max, row._count), 0);
+                    return normalized.map((row) => ({
+                        ...row,
+                        _ratio: maxCount > 0 ? (row._count / maxCount) * 100 : 0,
+                    }));
+                },
+                reportMonthlyTrendRows() {
+                    const rows = Array.isArray(this.operationsReport?.monthlyAmountTrend)
+                        ? this.operationsReport.monthlyAmountTrend
+                        : [];
+                    const normalized = rows
+                        .map((row) => {
+                            const totalAmount = Number(row?.totalAmount) || 0;
+                            const paidAmount = Number(row?.paidAmount) || 0;
+                            const unpaidAmount = Number(row?.unpaidAmount) || 0;
+                            return {
+                                ...row,
+                                _totalAmount: totalAmount,
+                                _paidAmount: paidAmount,
+                                _unpaidAmount: unpaidAmount,
+                            };
+                        })
+                        .sort((a, b) => String(a?.month || '').localeCompare(String(b?.month || '')))
+                        .slice(-12);
+
+                    const maxAmount = normalized.reduce((max, row) => Math.max(max, row._totalAmount), 0);
+                    const maxHeight = 150;
+                    return normalized.map((row) => {
+                        const totalHeight = maxAmount > 0 ? (row._totalAmount / maxAmount) * maxHeight : 0;
+                        const displayHeight = row._totalAmount > 0 ? Math.max(16, totalHeight) : 0;
+                        const otherAmount = Math.max(0, row._totalAmount - row._paidAmount - row._unpaidAmount);
+                        const baseAmount = row._totalAmount > 0 ? row._totalAmount : 1;
+                        const paidHeight = displayHeight * (row._paidAmount / baseAmount);
+                        const unpaidHeight = displayHeight * (row._unpaidAmount / baseAmount);
+                        const otherHeight = displayHeight * (otherAmount / baseAmount);
+                        return {
+                            ...row,
+                            _otherAmount: otherAmount,
+                            _totalHeight: displayHeight,
+                            _paidHeight: row._paidAmount > 0 ? paidHeight : 0,
+                            _unpaidHeight: row._unpaidAmount > 0 ? unpaidHeight : 0,
+                            _otherHeight: otherAmount > 0 ? otherHeight : 0,
+                        };
+                    });
                 },
             },
         mounted() {

@@ -700,6 +700,129 @@
                                         <div v-if="!reportMonthRows.length" class="sm:col-span-2 xl:col-span-4 py-10 text-center text-xs text-slate-500">暂无月度趋势</div>
                                     </div>
                                 </div>
+
+                                <div class="border border-slate-200 rounded-xl p-4">
+                                    <div class="flex items-center justify-between">
+                                        <h4 class="text-sm font-semibold text-slate-800">执行漏斗（按状态记录数）</h4>
+                                        <span class="text-[11px] text-slate-500">转化率基于首阶段</span>
+                                    </div>
+                                    <div class="mt-4 space-y-3">
+                                        <div
+                                            v-for="row in reportFunnelRows"
+                                            :key="`funnel-${row.key}`"
+                                            class="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                                        >
+                                            <div class="flex items-center justify-between gap-2">
+                                                <span class="text-sm font-medium text-slate-700">{{ row.label }}</span>
+                                                <span class="text-sm font-semibold font-mono text-blue-700">{{ row._count }} 条</span>
+                                            </div>
+                                            <div class="mt-2 h-2 rounded-full bg-slate-200/80 overflow-hidden">
+                                                <div class="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-500" :style="{ width: `${row._ratio.toFixed(2)}%` }"></div>
+                                            </div>
+                                            <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                                                <span>转化率 {{ row._conversion.toFixed(1) }}%</span>
+                                                <span v-if="row._stepDrop > 0">较上一阶段减少 {{ row._stepDrop }} 条</span>
+                                                <span v-else>较上一阶段无减少</span>
+                                            </div>
+                                        </div>
+                                        <div v-if="!reportFunnelRows.length" class="py-10 text-center text-xs text-slate-500">暂无执行漏斗数据</div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                    <div class="border border-slate-200 rounded-xl p-4">
+                                        <div class="flex items-center justify-between">
+                                            <h4 class="text-sm font-semibold text-slate-800">采购周期：申领到到货</h4>
+                                            <span class="text-[11px] text-slate-500">样本 {{ operationsReport.cycleDistribution.requestToArrival.sampleSize }} 条</span>
+                                        </div>
+                                        <div class="mt-2 text-[11px] text-slate-500">平均 {{ operationsReport.cycleDistribution.requestToArrival.averageDays.toFixed(2) }} 天</div>
+                                        <div class="mt-4 space-y-2">
+                                            <div
+                                                v-for="row in requestToArrivalRows"
+                                                :key="`req-arrival-${row.label}`"
+                                                class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                                            >
+                                                <div class="flex items-center justify-between text-xs text-slate-600">
+                                                    <span>{{ row.label }}</span>
+                                                    <span class="font-semibold font-mono text-slate-700">{{ row._count }}</span>
+                                                </div>
+                                                <div class="mt-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                                                    <div class="h-full rounded-full bg-blue-500" :style="{ width: `${row._ratio.toFixed(2)}%` }"></div>
+                                                </div>
+                                            </div>
+                                            <div v-if="!requestToArrivalRows.length" class="py-10 text-center text-xs text-slate-500">暂无周期样本</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="border border-slate-200 rounded-xl p-4">
+                                        <div class="flex items-center justify-between">
+                                            <h4 class="text-sm font-semibold text-slate-800">采购周期：到货到分发</h4>
+                                            <span class="text-[11px] text-slate-500">样本 {{ operationsReport.cycleDistribution.arrivalToDistribution.sampleSize }} 条</span>
+                                        </div>
+                                        <div class="mt-2 text-[11px] text-slate-500">平均 {{ operationsReport.cycleDistribution.arrivalToDistribution.averageDays.toFixed(2) }} 天</div>
+                                        <div class="mt-4 space-y-2">
+                                            <div
+                                                v-for="row in arrivalToDistributionRows"
+                                                :key="`arrival-distribute-${row.label}`"
+                                                class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                                            >
+                                                <div class="flex items-center justify-between text-xs text-slate-600">
+                                                    <span>{{ row.label }}</span>
+                                                    <span class="font-semibold font-mono text-slate-700">{{ row._count }}</span>
+                                                </div>
+                                                <div class="mt-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                                                    <div class="h-full rounded-full bg-emerald-500" :style="{ width: `${row._ratio.toFixed(2)}%` }"></div>
+                                                </div>
+                                            </div>
+                                            <div v-if="!arrivalToDistributionRows.length" class="py-10 text-center text-xs text-slate-500">暂无周期样本</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="border border-slate-200 rounded-xl p-4">
+                                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                        <h4 class="text-sm font-semibold text-slate-800">月度金额结构（总额 / 已付款 / 未付款）</h4>
+                                        <div class="flex items-center gap-3 text-[11px] text-slate-500">
+                                            <span class="inline-flex items-center gap-1"><i class="h-2.5 w-2.5 rounded-full bg-emerald-500"></i>已付款</span>
+                                            <span class="inline-flex items-center gap-1"><i class="h-2.5 w-2.5 rounded-full bg-amber-500"></i>未付款</span>
+                                            <span class="inline-flex items-center gap-1"><i class="h-2.5 w-2.5 rounded-full bg-slate-400"></i>其他</span>
+                                        </div>
+                                    </div>
+                                    <div class="mt-6 h-56 flex items-end gap-2">
+                                        <div
+                                            v-for="row in reportMonthlyTrendRows"
+                                            :key="`ops-month-${row.month}`"
+                                            class="flex-1 min-w-0 flex flex-col items-center gap-2"
+                                        >
+                                            <div class="w-full h-40 flex items-end justify-center">
+                                                <div
+                                                    class="w-full max-w-[52px] rounded-t-md bg-slate-100 border border-slate-200 overflow-hidden flex flex-col-reverse transition-all duration-500"
+                                                    :style="{ height: `${row._totalHeight}px`, opacity: row._totalAmount > 0 ? 0.95 : 0.35 }"
+                                                >
+                                                    <div v-if="row._paidHeight > 0" class="bg-emerald-500" :style="{ height: `${row._paidHeight}px` }"></div>
+                                                    <div v-if="row._unpaidHeight > 0" class="bg-amber-500" :style="{ height: `${row._unpaidHeight}px` }"></div>
+                                                    <div v-if="row._otherHeight > 0" class="bg-slate-400" :style="{ height: `${row._otherHeight}px` }"></div>
+                                                </div>
+                                            </div>
+                                            <div class="text-[10px] font-medium text-slate-500 truncate w-full text-center px-1">{{ row.month || '-' }}</div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                                        <div
+                                            v-for="row in reportMonthlyTrendRows"
+                                            :key="`ops-month-amount-${row.month}`"
+                                            class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                                        >
+                                            <div class="text-xs text-slate-500">{{ row.month || '-' }}</div>
+                                            <div class="mt-1 text-xs font-semibold font-mono text-slate-700">总额 ¥ {{ formatCurrency(row._totalAmount) }}</div>
+                                            <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                                                <span>已付 ¥ {{ formatCurrency(row._paidAmount) }}</span>
+                                                <span>未付 ¥ {{ formatCurrency(row._unpaidAmount) }}</span>
+                                            </div>
+                                        </div>
+                                        <div v-if="!reportMonthlyTrendRows.length" class="sm:col-span-2 xl:col-span-3 py-10 text-center text-xs text-slate-500">暂无月度金额结构数据</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

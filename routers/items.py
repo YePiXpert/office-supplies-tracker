@@ -23,6 +23,7 @@ from database import (
     get_item,
     get_item_history,
     get_items,
+    get_operations_report,
     list_deleted_items,
     purge_item,
     restore_item,
@@ -357,6 +358,22 @@ async def amount_report(
         status, department, month, keyword
     )
     return await get_amount_report(
+        status=status, department=department, month=month, keyword=keyword
+    )
+
+
+@router.get("/reports/operations")
+async def operations_report(
+    status: Optional[str] = None,
+    department: Optional[str] = None,
+    month: Optional[str] = None,
+    keyword: Optional[str] = None
+):
+    """执行漏斗、周期分布与月度金额趋势报表。"""
+    status, department, month, keyword = _normalize_item_filters(
+        status, department, month, keyword
+    )
+    return await get_operations_report(
         status=status, department=department, month=month, keyword=keyword
     )
 
