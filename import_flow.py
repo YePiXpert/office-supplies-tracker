@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from typing import Optional
 
 from fastapi import HTTPException
@@ -35,6 +36,8 @@ FULLWIDTH_TRANSLATION = str.maketrans({
     "－": "-",
     "　": " ",
 })
+DATE_CANONICAL_PATTERN = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})$")
+DATE_COMPACT_PATTERN = re.compile(r"^(\d{4})(\d{2})(\d{2})$")
 
 
 def normalize_text(value, max_length: Optional[int] = None) -> str:
@@ -47,6 +50,40 @@ def normalize_text(value, max_length: Optional[int] = None) -> str:
 
 def normalize_serial_number(value) -> str:
     return normalize_text(value, TEXT_LENGTH_LIMITS["serial_number"]).upper().replace(" ", "")
+
+
+def normalize_request_date(value) -> str:
+    """容错解析日期并统一为 YYYY-MM-DD。"""
+    raw = normalize_text(value, TEXT_LENGTH_LIMITS["request_date"])
+    normalized = (
+        raw.replace("年", "-")
+        .replace("月", "-")
+        .replace("日", "")
+        .replace("号", "")
+        .replace("/", "-")
+        .replace(".", "-")
+        .replace("T", " ")
+        .strip()
+    )
+    if " " in normalized:
+        normalized = normalized.split(" ", 1)[0].strip()
+    normalized = re.sub(r"-+", "-", normalized).strip("-")
+
+    matched = DATE_CANONICAL_PATTERN.fullmatch(normalized)
+    if matched:
+        year, month, day = matched.groups()
+    else:
+        compact = DATE_COMPACT_PATTERN.fullmatch(normalized)
+        if compact:
+            year, month, day = compact.groups()
+        else:
+            raise ValueError("申领日期格式应为 YYYY-MM-DD（支持 YYYY/M/D、YYYY年M月D日）")
+
+    try:
+        parsed = datetime(int(year), int(month), int(day))
+    except ValueError as exc:
+        raise ValueError("申领日期不是有效日期") from exc
+    return parsed.strftime("%Y-%m-%d")
 
 
 def normalize_url(value) -> Optional[str]:
@@ -198,6 +235,17 @@ def validate_import_header_fields(normalized_payload: dict) -> None:
     missing = [label for field, label in required_fields if not str(normalized_payload.get(field) or "").strip()]
     if missing:
         raise HTTPException(status_code=400, detail=f"请先补全字段：{'、'.join(missing)}")
+
+    request_date = str(normalized_payload.get("request_date") or "").strip()
+    try:
+        canonical_request_date = normalize_request_date(request_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    normalized_payload["request_date"] = canonical_request_date
+    for item in normalized_payload.get("items", []):
+        if isinstance(item, dict):
+            item["request_date"] = canonical_request_date
 
 
 async def confirm_import_payload(normalized_payload: dict, duplicate_action: Optional[str] = None) -> dict:

@@ -51,6 +51,21 @@ def _validate_pagination(page: int, page_size: int) -> None:
         raise HTTPException(status_code=400, detail="page_size 必须在 1-200 之间")
 
 
+def _is_unique_constraint_error(error: Exception) -> bool:
+    return "UNIQUE constraint failed" in str(error)
+
+
+def _raise_integrity_error(
+    error: Exception,
+    *,
+    unique_message: str,
+    invalid_message: str,
+) -> None:
+    if _is_unique_constraint_error(error):
+        raise HTTPException(status_code=409, detail=unique_message)
+    raise HTTPException(status_code=400, detail=invalid_message)
+
+
 def _normalize_item_filters(
     status: Optional[str],
     department: Optional[str],
@@ -136,9 +151,11 @@ async def batch_update_items_endpoint(request: BatchUpdateRequest):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except aiosqlite.IntegrityError as e:
-            if "UNIQUE constraint failed" in str(e):
-                raise HTTPException(status_code=409, detail="批量更新触发唯一约束冲突（流水号+物品名称+经办人）")
-            raise HTTPException(status_code=400, detail="批量更新失败：字段值不合法")
+            _raise_integrity_error(
+                e,
+                unique_message="批量更新触发唯一约束冲突（流水号+物品名称+经办人）",
+                invalid_message="批量更新失败：字段值不合法",
+            )
 
     updated_count = result.get("updated_count", 0)
     unchanged_count = result.get("unchanged_count", 0)
@@ -195,8 +212,14 @@ async def create_new_item(item: ItemCreate):
     async with DATA_MUTATION_LOCK:
         try:
             item_id = await create_item(item.model_dump())
-        except aiosqlite.IntegrityError:
-            raise HTTPException(status_code=409, detail="记录已存在（流水号+物品名称+经办人）")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except aiosqlite.IntegrityError as e:
+            _raise_integrity_error(
+                e,
+                unique_message="记录已存在（流水号+物品名称+经办人）",
+                invalid_message="创建失败：字段值不合法",
+            )
     return {"id": item_id, "message": "创建成功"}
 
 
@@ -214,9 +237,11 @@ async def update_item_endpoint(item_id: int, updates: ItemUpdate):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except aiosqlite.IntegrityError as e:
-            if "UNIQUE constraint failed" in str(e):
-                raise HTTPException(status_code=409, detail="记录已存在（流水号+物品名称+经办人）")
-            raise HTTPException(status_code=400, detail="更新失败：字段值不合法")
+            _raise_integrity_error(
+                e,
+                unique_message="记录已存在（流水号+物品名称+经办人）",
+                invalid_message="更新失败：字段值不合法",
+            )
     if not success:
         raise HTTPException(status_code=404, detail="物品不存在")
     return {"message": "更新成功"}
@@ -284,9 +309,11 @@ async def rollback_item_endpoint(item_id: int, request: ItemRollbackRequest):
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         except aiosqlite.IntegrityError as exc:
-            if "UNIQUE constraint failed" in str(exc):
-                raise HTTPException(status_code=409, detail="回滚会触发唯一约束冲突（流水号+物品名称+经办人）")
-            raise HTTPException(status_code=400, detail="回滚失败：字段值不合法")
+            _raise_integrity_error(
+                exc,
+                unique_message="回滚会触发唯一约束冲突（流水号+物品名称+经办人）",
+                invalid_message="回滚失败：字段值不合法",
+            )
     if not success:
         raise HTTPException(status_code=404, detail="物品或历史记录不存在")
     return {"message": "回滚成功"}

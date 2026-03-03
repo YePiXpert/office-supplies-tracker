@@ -134,10 +134,14 @@ def _normalize_invoice_issued(value) -> int:
         return DEFAULT_INVOICE_ISSUED
     if isinstance(value, bool):
         return 1 if value else 0
-    if isinstance(value, (int, float)):
-        int_value = int(value)
-        if int_value in (0, 1):
-            return int_value
+    if isinstance(value, int):
+        if value in (0, 1):
+            return value
+    if isinstance(value, float):
+        if value.is_integer():
+            int_value = int(value)
+            if int_value in (0, 1):
+                return int_value
     if isinstance(value, str):
         lowered = value.strip().lower()
         if lowered in {"1", "true", "yes", "y"}:

@@ -130,9 +130,12 @@ def inspect_backup_archive(archive_path: Path) -> dict:
     extract_dir = RUNTIME_DIR / f".backup_health_{uuid4().hex}"
     try:
         extract_dir.mkdir(parents=True, exist_ok=False)
-        with zipfile.ZipFile(archive_path, "r") as archive:
-            _validate_archive_members(archive)
-            archive.extractall(extract_dir)
+        try:
+            with zipfile.ZipFile(archive_path, "r") as archive:
+                _validate_archive_members(archive)
+                archive.extractall(extract_dir)
+        except zipfile.BadZipFile as exc:
+            raise ValueError("备份文件不是有效的 zip 压缩包") from exc
 
         restored_db = extract_dir / "office_supplies.db"
         restored_uploads = extract_dir / "uploads"
@@ -193,9 +196,12 @@ def restore_from_archive(
     try:
         extract_dir.mkdir(parents=True, exist_ok=False)
 
-        with zipfile.ZipFile(archive_path, "r") as archive:
-            _validate_archive_members(archive)
-            archive.extractall(extract_dir)
+        try:
+            with zipfile.ZipFile(archive_path, "r") as archive:
+                _validate_archive_members(archive)
+                archive.extractall(extract_dir)
+        except zipfile.BadZipFile as exc:
+            raise ValueError("备份文件不是有效的 zip 压缩包") from exc
 
         restored_db = extract_dir / "office_supplies.db"
         restored_uploads = extract_dir / "uploads"
