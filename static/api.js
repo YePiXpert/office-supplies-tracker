@@ -996,6 +996,105 @@
                         this.dataQualityLoading = false;
                     }
                 },
+                clearFocusedLedgerItem() {
+                    this.focusedLedgerItemId = null;
+                    if (this.focusedLedgerItemTimer) {
+                        clearTimeout(this.focusedLedgerItemTimer);
+                        this.focusedLedgerItemTimer = null;
+                    }
+                },
+                focusLedgerItem(itemId) {
+                    const id = Number(itemId);
+                    if (!Number.isFinite(id) || id <= 0) return;
+                    this.clearFocusedLedgerItem();
+                    this.focusedLedgerItemId = id;
+                    this.$nextTick(() => {
+                        const row = document.querySelector(`[data-ledger-item-id="${id}"]`);
+                        if (row && typeof row.scrollIntoView === 'function') {
+                            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    });
+                    this.focusedLedgerItemTimer = setTimeout(() => {
+                        if (Number(this.focusedLedgerItemId) === id) {
+                            this.focusedLedgerItemId = null;
+                        }
+                        this.focusedLedgerItemTimer = null;
+                    }, 6000);
+                },
+                async findLedgerPageByItemId(itemId, keyword = '') {
+                    const id = Number(itemId);
+                    if (!Number.isFinite(id) || id <= 0) return null;
+
+                    const pageSize = Math.max(1, Math.min(200, Number(this.pageSize) || 20));
+                    const baseParams = { page_size: pageSize };
+                    const normalizedKeyword = this.normalizeText(keyword);
+                    if (normalizedKeyword) {
+                        baseParams.keyword = normalizedKeyword;
+                    }
+
+                    let page = 1;
+                    let totalPages = 1;
+                    const maxProbePages = 120;
+                    while (page <= totalPages && page <= maxProbePages) {
+                        const res = await axios.get('/api/items', {
+                            params: { ...baseParams, page },
+                        });
+                        const rows = Array.isArray(res.data?.items) ? res.data.items : [];
+                        if (rows.some((entry) => Number(entry?.id) === id)) {
+                            return page;
+                        }
+                        const total = Number(res.data?.total) || rows.length;
+                        totalPages = Math.max(1, Math.ceil(total / pageSize));
+                        page += 1;
+                    }
+                    return null;
+                },
+                async jumpToQualityIssue(row) {
+                    const itemId = Number(row?.id);
+                    if (!Number.isFinite(itemId) || itemId <= 0) {
+                        this.showToast('条目 ID 无效，无法定位', 'error');
+                        return;
+                    }
+
+                    let item = null;
+                    try {
+                        const detailRes = await axios.get(`/api/items/${itemId}`);
+                        item = detailRes.data || null;
+                    } catch (e) {
+                        this.showApiError('读取条目详情失败', e);
+                        return;
+                    }
+
+                    const keyword = this.normalizeText(
+                        item?.serial_number ||
+                        row?.serial_number ||
+                        item?.item_name ||
+                        row?.item_name ||
+                        ''
+                    );
+
+                    this.filterStatus = '';
+                    this.filterDepartment = '';
+                    this.filterMonth = '';
+                    this.filterKeyword = keyword;
+
+                    const targetPage = await this.findLedgerPageByItemId(itemId, keyword);
+                    if (!targetPage) {
+                        this.showToast('未在台账中定位到该条目，请确认是否已删除', 'error');
+                        return;
+                    }
+
+                    this.showDataQualityModal = false;
+                    this.switchView('ledger');
+                    this.currentPage = targetPage;
+                    await this.loadItems();
+                    if (!this.items.some((entry) => Number(entry?.id) === itemId)) {
+                        this.showToast('定位失败：条目不在当前页，请重试', 'error');
+                        return;
+                    }
+                    this.focusLedgerItem(itemId);
+                    this.showToast(`已定位到问题条目 #${itemId}`, 'success');
+                },
                 normalizeDateText(value) {
                     const raw = (value || '').toString().trim();
                     if (!raw) return '';

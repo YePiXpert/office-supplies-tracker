@@ -92,6 +92,8 @@
                         duplicates: [],
                         scannedRows: 0,
                     },
+                    focusedLedgerItemId: null,
+                    focusedLedgerItemTimer: null,
                     showImportPreviewModal: false,
                     selectedItems: [],
                     selectAll: false,
@@ -481,6 +483,10 @@
                 if (this.uploadPollTimer) {
                     clearInterval(this.uploadPollTimer);
                     this.uploadPollTimer = null;
+                }
+                if (this.focusedLedgerItemTimer) {
+                    clearTimeout(this.focusedLedgerItemTimer);
+                    this.focusedLedgerItemTimer = null;
                 }
             },
     };

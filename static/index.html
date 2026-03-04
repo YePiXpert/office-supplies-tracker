@@ -254,7 +254,16 @@
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-slate-200">
-                                    <tr v-for="item in items" :key="item.id" :class="{'bg-slate-100/70': selectedItems.includes(item.id)}" class="hover:bg-slate-50 transition-colors duration-200 ease-in-out">
+                                    <tr
+                                        v-for="item in items"
+                                        :key="item.id"
+                                        :data-ledger-item-id="item.id"
+                                        :class="{
+                                            'bg-slate-100/70': selectedItems.includes(item.id),
+                                            'bg-amber-50/70': Number(item.id) === Number(focusedLedgerItemId),
+                                        }"
+                                        class="hover:bg-slate-50 transition-colors duration-200 ease-in-out"
+                                    >
                                         <td class="px-4 py-3 text-center align-middle sticky left-0 z-20 bg-white shadow-[1px_0_0_0_#e2e8f0]">
                                             <input type="checkbox" :value="item.id" v-model="selectedItems" class="rounded text-blue-600 focus:ring-blue-500/40">
                                         </td>
@@ -1320,6 +1329,7 @@
                                     <th class="px-3 py-2 text-left w-20">ID</th>
                                     <th class="px-3 py-2 text-left">流水号 / 物品</th>
                                     <th class="px-3 py-2 text-left">问题</th>
+                                    <th class="px-3 py-2 text-center w-24">操作</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100">
@@ -1340,9 +1350,17 @@
                                             </span>
                                         </div>
                                     </td>
+                                    <td class="px-3 py-2 text-center">
+                                        <button
+                                            @click="jumpToQualityIssue(row)"
+                                            class="h-7 px-2.5 rounded-md bg-white border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-200"
+                                        >
+                                            定位
+                                        </button>
+                                    </td>
                                 </tr>
                                 <tr v-if="!dataQualityReport.issues.length">
-                                    <td colspan="3" class="py-12 text-center text-slate-500 text-sm">未发现问题记录</td>
+                                    <td colspan="4" class="py-12 text-center text-slate-500 text-sm">未发现问题记录</td>
                                 </tr>
                             </tbody>
                         </table>
