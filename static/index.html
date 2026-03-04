@@ -1032,7 +1032,7 @@
                                         :placeholder="llmProtocol === 'google' ? '无代理请留空' : '例如: https://api.openai-hk.com/v1'"
                                     >
                                 </div>
-                                <p class="text-[11px] text-slate-500">配置仅保存在当前浏览器 localStorage，上传时随请求发送到后端。</p>
+                                <p class="text-[11px] text-slate-500">每个协议的 API Key / 模型 / Base URL 会独立保存在当前浏览器 localStorage，上传时按当前协议随请求发送到后端。</p>
                             </div>
                         </div>
 
@@ -1370,6 +1370,7 @@
                                 <tr>
                                     <th class="p-3 text-left">物品名称</th>
                                     <th class="p-3 text-center w-24">数量</th>
+                                    <th class="p-3 text-center w-28">单价</th>
                                     <th class="p-3 text-left">关联链接</th>
                                     <th class="p-3 text-center w-16">操作</th>
                                 </tr>
@@ -1378,6 +1379,7 @@
                                 <tr v-for="(row, idx) in importPreview.items" :key="idx" class="hover:bg-slate-50/50">
                                     <td class="p-2"><input v-model="row.item_name" class="w-full border-none focus:ring-1 focus:ring-blue-400 rounded px-2 py-1 font-bold"></td>
                                     <td class="p-2"><input v-model.number="row.quantity" type="number" class="w-full text-center border-none font-mono font-bold"></td>
+                                    <td class="p-2"><input v-model.number="row.unit_price" type="number" step="0.01" min="0" class="w-full text-center border-none font-mono font-bold" placeholder="-"></td>
                                     <td class="p-2"><input v-model="row.purchase_link" class="w-full text-[10px] text-slate-400 border-none px-2 py-1 font-mono"></td>
                                     <td class="p-2 text-center">
                                         <button @click="removePreviewItem(idx)" class="text-slate-300 hover:text-red-500 font-bold text-lg transition-all duration-200 ease-in-out">&times;</button>
@@ -1476,9 +1478,9 @@
 
     </div>
     
-    <script src="/static/state.js?v=1.1.0"></script>
-    <script src="/static/api.js?v=1.1.0"></script>
-    <script src="/static/ui.js?v=1.1.0"></script>
+    <script src="/static/state.js?v=1.1.1"></script>
+    <script src="/static/api.js?v=1.1.1"></script>
+    <script src="/static/ui.js?v=1.1.1"></script>
     <script>
         window.addEventListener('load', () => {
             setTimeout(() => {

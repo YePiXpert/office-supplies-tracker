@@ -9,25 +9,98 @@
                 closeAddModal() {
                     this.showAddModal = false;
                 },
+                normalizeLlmProtocol(protocol) {
+                    const normalized = (protocol || '').toString().trim().toLowerCase();
+                    return (normalized === 'google' || normalized === 'openai' || normalized === 'anthropic')
+                        ? normalized
+                        : 'openai';
+                },
+                getLlmStorageKey(protocol, field) {
+                    const normalizedProtocol = this.normalizeLlmProtocol(protocol);
+                    return `llm_${normalizedProtocol}_${field}`;
+                },
+                readLlmProtocolConfig(protocol) {
+                    const normalizedProtocol = this.normalizeLlmProtocol(protocol);
+                    return {
+                        apiKey: window.localStorage.getItem(
+                            this.getLlmStorageKey(normalizedProtocol, 'api_key')
+                        ) || '',
+                        modelName: window.localStorage.getItem(
+                            this.getLlmStorageKey(normalizedProtocol, 'model_name')
+                        ) || '',
+                        baseUrl: window.localStorage.getItem(
+                            this.getLlmStorageKey(normalizedProtocol, 'base_url')
+                        ) || '',
+                    };
+                },
+                persistLlmProtocolField(field, value, protocolOverride = null) {
+                    const protocol = this.normalizeLlmProtocol(protocolOverride || this.llmProtocol);
+                    window.localStorage.setItem(
+                        this.getLlmStorageKey(protocol, field),
+                        (value || '').toString()
+                    );
+                },
+                migrateLegacySharedLlmConfig(protocol) {
+                    const markerKey = 'llm_config_migrated_v2';
+                    if (window.localStorage.getItem(markerKey) === '1') {
+                        return;
+                    }
+                    const normalizedProtocol = this.normalizeLlmProtocol(protocol);
+                    const fields = ['api_key', 'model_name', 'base_url'];
+                    let hasLegacy = false;
+                    let migrated = false;
+                    for (const field of fields) {
+                        const legacyKey = `llm_${field}`;
+                        const legacyValue = window.localStorage.getItem(legacyKey);
+                        if (legacyValue === null || legacyValue === undefined) {
+                            continue;
+                        }
+                        hasLegacy = true;
+                        const scopedKey = this.getLlmStorageKey(normalizedProtocol, field);
+                        const scopedValue = window.localStorage.getItem(scopedKey);
+                        if (scopedValue === null || scopedValue === undefined) {
+                            window.localStorage.setItem(scopedKey, legacyValue);
+                            migrated = true;
+                        }
+                    }
+                    if (migrated || hasLegacy) {
+                        window.localStorage.setItem(markerKey, '1');
+                    }
+                },
+                migrateLegacyGoogleConfig() {
+                    const fields = ['api_key', 'model_name', 'base_url'];
+                    for (const field of fields) {
+                        const scopedKey = this.getLlmStorageKey('google', field);
+                        const scopedValue = window.localStorage.getItem(scopedKey);
+                        if (scopedValue !== null && scopedValue !== undefined) {
+                            continue;
+                        }
+                        const legacyKey = `gemini_${field}`;
+                        const legacyValue = window.localStorage.getItem(legacyKey);
+                        if (legacyValue !== null && legacyValue !== undefined) {
+                            window.localStorage.setItem(scopedKey, legacyValue);
+                        }
+                    }
+                },
+                applyStoredLlmConfigForProtocol(protocol) {
+                    const config = this.readLlmProtocolConfig(protocol);
+                    this.llmApiKey = config.apiKey;
+                    this.llmModelName = config.modelName;
+                    this.llmBaseUrl = config.baseUrl;
+                },
                 initOcrEngineSettings() {
                     try {
                         const engine = (window.localStorage.getItem('ocr_engine') || '').trim().toLowerCase();
                         this.ocrEngine = (engine === 'cloud' || engine === 'local')
                             ? engine
                             : ((engine === 'gemini') ? 'cloud' : 'local');
-                        const protocol = (window.localStorage.getItem('llm_protocol') || '').trim().toLowerCase();
-                        this.llmProtocol = (protocol === 'google' || protocol === 'openai' || protocol === 'anthropic')
-                            ? protocol
-                            : 'openai';
-                        this.llmApiKey = window.localStorage.getItem('llm_api_key')
-                            || window.localStorage.getItem('gemini_api_key')
-                            || '';
-                        this.llmModelName = window.localStorage.getItem('llm_model_name')
-                            || window.localStorage.getItem('gemini_model_name')
-                            || '';
-                        this.llmBaseUrl = window.localStorage.getItem('llm_base_url')
-                            || window.localStorage.getItem('gemini_base_url')
-                            || '';
+                        const protocol = this.normalizeLlmProtocol(window.localStorage.getItem('llm_protocol') || '');
+                        this.llmProtocol = protocol;
+                        this.migrateLegacySharedLlmConfig(protocol);
+                        if (protocol === 'google') {
+                            this.migrateLegacyGoogleConfig();
+                        }
+                        this.applyStoredLlmConfigForProtocol(protocol);
                     } catch (_) {
                         this.ocrEngine = 'local';
                         this.llmProtocol = 'openai';
@@ -1002,6 +1075,28 @@
                         return '';
                     }
                 },
+                normalizeUnitPriceValue(value) {
+                    if (value === null || value === undefined || value === '') {
+                        return null;
+                    }
+                    if (typeof value === 'number') {
+                        if (!Number.isFinite(value) || value < 0) return null;
+                        return value;
+                    }
+                    const raw = (value || '')
+                        .toString()
+                        .trim()
+                        .replace(/[￥¥]/g, '')
+                        .replace(/，/g, '.')
+                        .replace(/。/g, '.')
+                        .replace(/,/g, '');
+                    if (!raw) return null;
+                    const match = raw.match(/(\d+(?:\.\d+)?)/);
+                    if (!match) return null;
+                    const parsed = Number(match[1]);
+                    if (!Number.isFinite(parsed) || parsed < 0) return null;
+                    return parsed;
+                },
                 isPreviewRowNoise(itemName) {
                     const normalized = this.normalizeText(itemName).replace(/\s+/g, '');
                     if (!normalized) return true;
@@ -1027,10 +1122,12 @@
                                 const qty = Number(item?.quantity);
                                 const rawLink = (item?.purchase_link || '').toString();
                                 const normalizedLink = this.normalizeUrlText(rawLink);
+                                const unitPrice = this.normalizeUnitPriceValue(item?.unit_price);
                                 return {
                                     item_name: this.normalizeText(item?.item_name),
                                     quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
                                     purchase_link: normalizedLink || this.normalizeText(rawLink),
+                                    unit_price: unitPrice,
                                 };
                             })
                             .filter((item) => !this.isPreviewRowNoise(item.item_name))
@@ -1053,6 +1150,7 @@
                         item_name: '',
                         quantity: 1,
                         purchase_link: '',
+                        unit_price: null,
                     });
                 },
                 removePreviewItem(index) {
@@ -1062,11 +1160,19 @@
                     const normalized = this.normalizePreviewData(data);
                     const items = normalized.items
                         .filter((item) => item.item_name)
-                        .map((item) => ({
-                            item_name: this.normalizeText(item.item_name),
-                            quantity: Number.isFinite(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
-                            purchase_link: this.normalizeUrlText(item.purchase_link) || null,
-                        }));
+                        .map((item, idx) => {
+                            const rawUnitPrice = (item?.unit_price ?? '').toString().trim();
+                            const unitPrice = this.normalizeUnitPriceValue(rawUnitPrice);
+                            if (rawUnitPrice && unitPrice === null) {
+                                throw new Error(`第 ${idx + 1} 行单价格式无效，请输入非负数字`);
+                            }
+                            return {
+                                item_name: this.normalizeText(item.item_name),
+                                quantity: Number.isFinite(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+                                purchase_link: this.normalizeUrlText(item.purchase_link) || null,
+                                unit_price: unitPrice,
+                            };
+                        });
                     return {
                         serial_number: this.normalizeSerial(normalized.serial_number),
                         department: this.normalizeText(normalized.department),
@@ -1591,8 +1697,9 @@
                         this.showToast('没有可导入的数据', 'error');
                         return;
                     }
-                    const payload = this.sanitizeImportPayload(source);
+                    let payload = null;
                     try {
+                        payload = this.sanitizeImportPayload(source);
                         this.validateImportPayload(payload);
                     } catch (e) {
                         this.showToast(e.message, 'error');
