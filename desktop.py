@@ -17,21 +17,28 @@ WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 STARTUP_TIMEOUT_SECONDS = 45
 BACKEND_CRASH_LOG_FILENAME = "backend_crash.log"
-_DEVNULL_STREAM = None
+_FALLBACK_STREAM = None
 
 
-def _ensure_standard_streams() -> None:
+def _ensure_standard_streams(*, fallback_log_path: Optional[Path] = None) -> None:
     """在 --windowed 场景补齐 stdout/stderr，避免第三方库写日志时报错。"""
-    global _DEVNULL_STREAM
+    global _FALLBACK_STREAM
     if sys.stdout is not None and sys.stderr is not None:
         return
 
-    if _DEVNULL_STREAM is None:
-        _DEVNULL_STREAM = open(os.devnull, "w", encoding="utf-8", buffering=1)
+    if _FALLBACK_STREAM is None:
+        if fallback_log_path is not None:
+            try:
+                fallback_log_path.parent.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
+            _FALLBACK_STREAM = open(fallback_log_path, "a", encoding="utf-8", buffering=1)
+        else:
+            _FALLBACK_STREAM = open(os.devnull, "w", encoding="utf-8", buffering=1)
     if sys.stdout is None:
-        sys.stdout = _DEVNULL_STREAM
+        sys.stdout = _FALLBACK_STREAM
     if sys.stderr is None:
-        sys.stderr = _DEVNULL_STREAM
+        sys.stderr = _FALLBACK_STREAM
 
 
 def _runtime_dir() -> Path:
@@ -49,15 +56,25 @@ def _find_free_port(host: str) -> int:
         return int(sock.getsockname()[1])
 
 
+def _read_text_tail(path: Path, max_chars: int = 1600) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
 def _run_fastapi_server(host: str, port: int, runtime_dir: str) -> None:
     """子进程入口：启动 FastAPI 服务。"""
-    _ensure_standard_streams()
     runtime_path = Path(runtime_dir)
     crash_log_path = runtime_path / BACKEND_CRASH_LOG_FILENAME
     try:
         crash_log_path.unlink(missing_ok=True)
     except OSError:
         pass
+    _ensure_standard_streams(fallback_log_path=crash_log_path)
 
     os.chdir(runtime_dir)
     Path("uploads").mkdir(exist_ok=True)
@@ -78,7 +95,9 @@ def _run_fastapi_server(host: str, port: int, runtime_dir: str) -> None:
         )
     except BaseException:
         try:
-            crash_log_path.write_text(traceback.format_exc(), encoding="utf-8")
+            with crash_log_path.open("a", encoding="utf-8") as f:
+                f.write("\n\n=== Python Traceback ===\n")
+                f.write(traceback.format_exc())
         except OSError:
             pass
         raise
@@ -106,8 +125,10 @@ class DesktopApp:
                 exitcode = self.server_process.exitcode
                 crash_log = self.runtime_dir / BACKEND_CRASH_LOG_FILENAME
                 if crash_log.exists():
+                    log_tail = _read_text_tail(crash_log)
+                    tail_hint = f"\n--- 日志尾部 ---\n{log_tail}" if log_tail else ""
                     raise RuntimeError(
-                        f"FastAPI 后台进程已提前退出（exitcode={exitcode}），请查看日志：{crash_log}"
+                        f"FastAPI 后台进程已提前退出（exitcode={exitcode}），请查看日志：{crash_log}{tail_hint}"
                     )
                 raise RuntimeError(f"FastAPI 后台进程已提前退出（exitcode={exitcode}）")
             try:
