@@ -384,28 +384,74 @@
                 },
                 llmApiKey(next) {
                     try {
-                        window.localStorage.setItem('llm_api_key', (next || '').toString());
+                        if (typeof this.persistLlmProtocolField === 'function') {
+                            this.persistLlmProtocolField('api_key', next);
+                            return;
+                        }
+                        const protocol = (typeof this.normalizeLlmProtocol === 'function')
+                            ? this.normalizeLlmProtocol(this.llmProtocol)
+                            : ((this.llmProtocol === 'google' || this.llmProtocol === 'openai' || this.llmProtocol === 'anthropic')
+                                ? this.llmProtocol
+                                : 'openai');
+                        window.localStorage.setItem(
+                            `llm_${protocol}_api_key`,
+                            (next || '').toString()
+                        );
                     } catch (_) {
                     }
                 },
                 llmProtocol(next) {
                     try {
-                        const value = (next === 'google' || next === 'openai' || next === 'anthropic')
-                            ? next
-                            : 'openai';
+                        const value = (typeof this.normalizeLlmProtocol === 'function')
+                            ? this.normalizeLlmProtocol(next)
+                            : ((next === 'google' || next === 'openai' || next === 'anthropic') ? next : 'openai');
                         window.localStorage.setItem('llm_protocol', value);
+                        if (value === 'google' && typeof this.migrateLegacyGoogleConfig === 'function') {
+                            this.migrateLegacyGoogleConfig();
+                        }
+                        if (typeof this.applyStoredLlmConfigForProtocol === 'function') {
+                            this.applyStoredLlmConfigForProtocol(value);
+                            return;
+                        }
+                        this.llmApiKey = window.localStorage.getItem(`llm_${value}_api_key`) || '';
+                        this.llmModelName = window.localStorage.getItem(`llm_${value}_model_name`) || '';
+                        this.llmBaseUrl = window.localStorage.getItem(`llm_${value}_base_url`) || '';
                     } catch (_) {
                     }
                 },
                 llmModelName(next) {
                     try {
-                        window.localStorage.setItem('llm_model_name', (next || '').toString());
+                        if (typeof this.persistLlmProtocolField === 'function') {
+                            this.persistLlmProtocolField('model_name', next);
+                            return;
+                        }
+                        const protocol = (typeof this.normalizeLlmProtocol === 'function')
+                            ? this.normalizeLlmProtocol(this.llmProtocol)
+                            : ((this.llmProtocol === 'google' || this.llmProtocol === 'openai' || this.llmProtocol === 'anthropic')
+                                ? this.llmProtocol
+                                : 'openai');
+                        window.localStorage.setItem(
+                            `llm_${protocol}_model_name`,
+                            (next || '').toString()
+                        );
                     } catch (_) {
                     }
                 },
                 llmBaseUrl(next) {
                     try {
-                        window.localStorage.setItem('llm_base_url', (next || '').toString());
+                        if (typeof this.persistLlmProtocolField === 'function') {
+                            this.persistLlmProtocolField('base_url', next);
+                            return;
+                        }
+                        const protocol = (typeof this.normalizeLlmProtocol === 'function')
+                            ? this.normalizeLlmProtocol(this.llmProtocol)
+                            : ((this.llmProtocol === 'google' || this.llmProtocol === 'openai' || this.llmProtocol === 'anthropic')
+                                ? this.llmProtocol
+                                : 'openai');
+                        window.localStorage.setItem(
+                            `llm_${protocol}_base_url`,
+                            (next || '').toString()
+                        );
                     } catch (_) {
                     }
                 },

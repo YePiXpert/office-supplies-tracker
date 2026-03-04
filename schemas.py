@@ -43,6 +43,7 @@ class ImportItem(BaseModel):
     item_name: str = Field(default="", max_length=200)
     quantity: Optional[float] = None
     purchase_link: Optional[str] = Field(default=None, max_length=2000)
+    unit_price: Optional[float] = Field(default=None, ge=0)
 
 
 class ImportConfirmRequest(BaseModel):

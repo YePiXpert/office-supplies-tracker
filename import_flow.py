@@ -146,6 +146,33 @@ def safe_quantity(value) -> float:
         return 1.0
 
 
+def safe_unit_price(value) -> Optional[float]:
+    """单价兜底，非法值返回 None。"""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        price = float(value)
+        return price if price >= 0 else None
+
+    raw = normalize_text(value)
+    if not raw:
+        return None
+    raw = (
+        raw.replace("￥", "")
+        .replace("¥", "")
+        .replace("，", ".")
+        .replace("。", ".")
+    )
+    match = re.search(r"(\d+(?:\.\d+)?)", raw)
+    if not match:
+        return None
+    try:
+        price = float(match.group(1))
+        return price if price >= 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
 def normalize_import_payload(payload: dict) -> dict:
     """标准化导入数据，合并同键明细并清理空值。"""
     serial_number = normalize_serial_number(payload.get("serial_number"))
@@ -161,11 +188,14 @@ def normalize_import_payload(payload: dict) -> dict:
         key = (serial_number, item_name, handler)
         quantity = safe_quantity((raw or {}).get("quantity"))
         purchase_link = normalize_url((raw or {}).get("purchase_link"))
+        unit_price = safe_unit_price((raw or {}).get("unit_price"))
 
         if key in merged_items:
             merged_items[key]["quantity"] += quantity
             if not merged_items[key].get("purchase_link") and purchase_link:
                 merged_items[key]["purchase_link"] = purchase_link
+            if merged_items[key].get("unit_price") is None and unit_price is not None:
+                merged_items[key]["unit_price"] = unit_price
             continue
 
         merged_items[key] = {
@@ -176,6 +206,7 @@ def normalize_import_payload(payload: dict) -> dict:
             "item_name": item_name,
             "quantity": quantity,
             "purchase_link": purchase_link,
+            "unit_price": unit_price,
         }
 
     return {
@@ -199,6 +230,7 @@ def build_preview_data(normalized_payload: dict, items: list[dict]) -> dict:
                 "item_name": item.get("item_name", ""),
                 "quantity": safe_quantity(item.get("quantity")),
                 "purchase_link": item.get("purchase_link"),
+                "unit_price": safe_unit_price(item.get("unit_price")),
             }
             for item in items
         ],

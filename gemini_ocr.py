@@ -24,36 +24,46 @@ _GOOGLE_MODEL_LOCK = Lock()
 _GOOGLE_MODEL = None
 _GOOGLE_MODEL_SIGNATURE: tuple[str, str, str] | None = None
 
-_REQUEST_DATE_PATTERN = re.compile(r"^(\d{4})[-/年.](\d{1,2})[-/月.](\d{1,2})")
+_REQUEST_DATE_PATTERN = re.compile(r"(\d{4})[-/年.](\d{1,2})[-/月.](\d{1,2})")
 _SUPPORTED_PROTOCOLS = {"google", "openai", "anthropic"}
 _PAYLOAD_KEY_HINTS = {
     "流水号",
+    "申领部门",
+    "经办人",
     "物品明细",
+    "物品名称",
+    "采购链接",
     "供应商名称",
     "日期",
     "serial_number",
+    "handler",
     "items",
     "department",
     "request_date",
+    "purchase_link",
 }
 _DEFAULT_OPENAI_MODEL = "gpt-4o"
 _DEFAULT_ANTHROPIC_MODEL = "claude-3-5-sonnet-20241022"
+_HEADER_FIELD_KEYS = ("serial_number", "department", "handler", "request_date")
 
 _SYSTEM_PROMPT = """
-你是一个专业的企业内控与财务审计视觉助手。请精确分析这张采购单据/发票图片（或 PDF 单据）。
-请严格按照以下 JSON 格式返回，不得输出任何 Markdown 标记或额外说明：
+你是企业采购单据结构化抽取助手。请精确分析这张采购单据/发票图片（或 PDF 单据）。
+请严格按以下 JSON 结构返回，不得输出任何 Markdown 标记或额外说明：
 {
-  "流水号": "单据编号，无则为空",
+  "流水号": "单据编号，无则为空字符串",
+  "申领部门": "申领/申请/领用部门，无则空字符串",
+  "经办人": "经办/申领人姓名，无则空字符串",
+  "日期": "YYYY-MM-DD，无则空字符串",
   "物品明细": [
-    {"名称": "示例", "数量": 1, "单价": 0.0}
-  ],
-  "供应商名称": "示例供应商",
-  "日期": "YYYY-MM-DD"
+    {"物品名称": "示例", "数量": 1, "采购链接": "", "单价": 0.0}
+  ]
 }
 规则：
-1) 所有字段都必须存在；缺失时用 null 或默认值。
+1) 所有字段必须存在；缺失时使用空字符串或空数组，不得编造。
 2) 只返回 JSON 对象本体。
-3) "物品明细" 必须是数组，未识别时返回空数组。
+3) “申领部门”优先提取内部部门，不要误填供应商名称。
+4) "物品明细" 必须是数组，未识别时返回空数组。
+5) 若识别到链接，放入“采购链接”字段。
 """.strip()
 
 
@@ -113,6 +123,182 @@ def _normalize_unit_price(value: Any) -> float | None:
         return price if price >= 0 else None
     except (TypeError, ValueError):
         return None
+
+
+def _normalize_text(value: Any) -> str:
+    text = str(value or "").strip()
+    return re.sub(r"\s+", " ", text)
+
+
+def _normalize_purchase_link(value: Any) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    compact = (
+        text.replace("：", ":")
+        .replace("／", "/")
+        .replace("．", ".")
+        .replace("　", "")
+        .replace(" ", "")
+    )
+    compact = re.sub(r"[，。；;、）)\]>》]+$", "", compact)
+    if compact.lower().startswith("www."):
+        compact = f"https://{compact}"
+    if not re.match(r"^https?://", compact, re.IGNORECASE):
+        return None
+    return compact
+
+
+def _coalesce_value(raw: dict, keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if key in raw:
+            value = raw.get(key)
+            if value is not None and str(value).strip() != "":
+                return value
+    return ""
+
+
+def _extract_raw_items(payload: dict) -> list:
+    for key in ("物品明细", "明细", "采购明细", "items", "item_list", "line_items", "rows"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return value
+    return []
+
+
+def _normalize_item_name(value: Any) -> str:
+    name = _normalize_text(value)
+    if not name:
+        return ""
+    # 去掉常见行号与链接残留，降低噪音行进入概率。
+    name = re.sub(r"^\d+[\.\s、-]*", "", name).strip()
+    name = re.sub(r"https?://[^\s]+", "", name).strip()
+    return name
+
+
+def _normalize_item_record(raw: Any) -> dict | None:
+    if isinstance(raw, dict):
+        name_value = _coalesce_value(
+            raw,
+            ("物品名称", "名称", "物品", "品名", "item_name", "name", "title"),
+        )
+        quantity_value = _coalesce_value(
+            raw,
+            ("数量", "qty", "count", "quantity", "件数"),
+        )
+        link_value = _coalesce_value(
+            raw,
+            ("采购链接", "购买链接", "关联链接", "链接", "url", "link", "purchase_link"),
+        )
+        if not link_value:
+            link_value = _coalesce_value(raw, ("备注", "remark", "note", "说明"))
+        unit_price_value = _coalesce_value(
+            raw,
+            ("单价", "price", "unit_price", "含税单价"),
+        )
+    elif isinstance(raw, (list, tuple)):
+        compact_values = [_normalize_text(value) for value in raw if _normalize_text(value)]
+        if not compact_values:
+            return None
+        name_value = compact_values[0]
+        quantity_value = compact_values[1] if len(compact_values) > 1 else ""
+        link_value = ""
+        for value in compact_values:
+            normalized_link = _normalize_purchase_link(value)
+            if normalized_link:
+                link_value = normalized_link
+                break
+        unit_price_value = ""
+    else:
+        return None
+
+    item_name = _normalize_item_name(name_value)
+    if not item_name:
+        return None
+
+    item: dict[str, Any] = {
+        "item_name": item_name,
+        "quantity": _normalize_quantity(quantity_value),
+        "purchase_link": _normalize_purchase_link(link_value),
+    }
+    unit_price = _normalize_unit_price(unit_price_value)
+    if unit_price is not None:
+        item["unit_price"] = unit_price
+    return item
+
+
+def _normalize_items(raw_items: list[Any]) -> list[dict]:
+    normalized: list[dict] = []
+    for raw in raw_items:
+        item = _normalize_item_record(raw)
+        if not item:
+            continue
+        normalized.append(item)
+    return normalized
+
+
+def _should_use_local_supplement(parsed: dict) -> bool:
+    items = parsed.get("items") or []
+    if not items:
+        return True
+    for field in _HEADER_FIELD_KEYS:
+        if not _normalize_text(parsed.get(field)):
+            return True
+    return False
+
+
+def _merge_items_with_fallback(primary_items: list[dict], fallback_items: list[dict]) -> list[dict]:
+    merged = _normalize_items(primary_items)
+    if not fallback_items:
+        return merged
+
+    index: dict[tuple[str, float], int] = {}
+    for idx, item in enumerate(merged):
+        key = (
+            re.sub(r"\s+", "", str(item.get("item_name") or "")).lower(),
+            float(item.get("quantity") or 1.0),
+        )
+        index[key] = idx
+
+    for item in _normalize_items(fallback_items):
+        key = (
+            re.sub(r"\s+", "", str(item.get("item_name") or "")).lower(),
+            float(item.get("quantity") or 1.0),
+        )
+        existing_idx = index.get(key)
+        if existing_idx is None:
+            index[key] = len(merged)
+            merged.append(item)
+            continue
+        existing = merged[existing_idx]
+        if not existing.get("purchase_link") and item.get("purchase_link"):
+            existing["purchase_link"] = item.get("purchase_link")
+        if existing.get("unit_price") is None and item.get("unit_price") is not None:
+            existing["unit_price"] = item.get("unit_price")
+
+    return merged
+
+
+def _supplement_with_local_parser(file_path: Path, parsed: dict) -> dict:
+    if not _should_use_local_supplement(parsed):
+        return parsed
+    try:
+        from parser import parse_document
+
+        local_parsed_raw = parse_document(str(file_path))
+        local_parsed = _normalize_payload(local_parsed_raw if isinstance(local_parsed_raw, dict) else {})
+    except Exception:
+        return parsed
+
+    merged = dict(parsed)
+    for field in _HEADER_FIELD_KEYS:
+        if not _normalize_text(merged.get(field)):
+            merged[field] = _normalize_text(local_parsed.get(field))
+    merged["items"] = _merge_items_with_fallback(
+        merged.get("items") or [],
+        local_parsed.get("items") or [],
+    )
+    return merged
 
 
 def _safe_json_loads(value: str) -> dict:
@@ -282,37 +468,31 @@ def _extract_anthropic_response_text(response: Any) -> str:
 
 
 def _normalize_payload(payload: dict) -> dict:
-    raw_items = payload.get("物品明细")
-    if not isinstance(raw_items, list):
-        raw_items = payload.get("items") if isinstance(payload.get("items"), list) else []
+    if not isinstance(payload, dict):
+        payload = {}
 
-    items: list[dict] = []
-    for raw in raw_items:
-        if not isinstance(raw, dict):
-            continue
-        name = str(
-            raw.get("名称")
-            or raw.get("物品名称")
-            or raw.get("item_name")
-            or raw.get("name")
-            or ""
-        ).strip()
-        if not name:
-            continue
-        item = {
-            "item_name": name,
-            "quantity": _normalize_quantity(raw.get("数量") or raw.get("quantity")),
-        }
-        unit_price = _normalize_unit_price(raw.get("单价") or raw.get("unit_price") or raw.get("price"))
-        if unit_price is not None:
-            item["unit_price"] = unit_price
-        items.append(item)
+    serial_number = _normalize_text(
+        _coalesce_value(payload, ("流水号", "单号", "编号", "serial_number", "serialNo"))
+    )
+    department = _normalize_text(
+        _coalesce_value(
+            payload,
+            ("申领部门", "申请部门", "领用部门", "使用部门", "部门", "department"),
+        )
+    )
+    handler = _normalize_text(
+        _coalesce_value(payload, ("经办人", "申领人", "申请人", "handler", "operator"))
+    )
+    request_date = _normalize_date(
+        _coalesce_value(payload, ("日期", "申领日期", "申请日期", "request_date", "date"))
+    )
+    items = _normalize_items(_extract_raw_items(payload))
 
     return {
-        "serial_number": str(payload.get("流水号") or payload.get("serial_number") or "").strip(),
-        "department": str(payload.get("供应商名称") or payload.get("department") or "").strip(),
-        "handler": str(payload.get("经办人") or payload.get("handler") or "").strip(),
-        "request_date": _normalize_date(payload.get("日期") or payload.get("request_date")),
+        "serial_number": serial_number,
+        "department": department,
+        "handler": handler,
+        "request_date": request_date,
         "items": items,
     }
 
@@ -528,7 +708,7 @@ def _parse_with_openai(
                     "content": [
                         {
                             "type": "text",
-                            "text": "请提取流水号、物品明细（名称/数量/单价）、供应商名称、日期，并仅返回 JSON。",
+                            "text": "请提取流水号、申领部门、经办人、日期、物品明细（物品名称/数量/采购链接/单价），并仅返回 JSON。",
                         },
                         {
                             "type": "image_url",
@@ -582,7 +762,7 @@ def _parse_with_anthropic(
                     "content": [
                         {
                             "type": "text",
-                            "text": "请提取流水号、物品明细（名称/数量/单价）、供应商名称、日期，并仅返回 JSON。",
+                            "text": "请提取流水号、申领部门、经办人、日期、物品明细（物品名称/数量/采购链接/单价），并仅返回 JSON。",
                         },
                         {
                             "type": "image",
@@ -623,23 +803,27 @@ def parse_document_with_gemini(
         raise GeminiParseError("上传文件不存在，请重新上传。")
 
     normalized_protocol = _normalize_protocol(protocol)
+    parsed: dict
     if normalized_protocol == "openai":
-        return _parse_with_openai(
+        parsed = _parse_with_openai(
             path,
             api_key_override=api_key_override,
             model_name_override=model_name_override,
             base_url_override=base_url_override,
         )
-    if normalized_protocol == "anthropic":
-        return _parse_with_anthropic(
+    elif normalized_protocol == "anthropic":
+        parsed = _parse_with_anthropic(
             path,
             api_key_override=api_key_override,
             model_name_override=model_name_override,
             base_url_override=base_url_override,
         )
-    return _parse_with_google(
-        path,
-        api_key_override=api_key_override,
-        model_name_override=model_name_override,
-        base_url_override=base_url_override,
-    )
+    else:
+        parsed = _parse_with_google(
+            path,
+            api_key_override=api_key_override,
+            model_name_override=model_name_override,
+            base_url_override=base_url_override,
+        )
+
+    return _supplement_with_local_parser(path, parsed)
