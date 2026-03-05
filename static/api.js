@@ -909,6 +909,118 @@
                     }
                     return parts.join('；');
                 },
+                auditActionText(action) {
+                    const normalized = this.normalizeText(action).toUpperCase();
+                    if (normalized === 'CREATE') return '创建';
+                    if (normalized === 'UPDATE') return '更新';
+                    if (normalized === 'DELETE') return '删除';
+                    return normalized || '-';
+                },
+                auditActionBadgeClass(action) {
+                    const normalized = this.normalizeText(action).toUpperCase();
+                    if (normalized === 'CREATE') {
+                        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                    }
+                    if (normalized === 'DELETE') {
+                        return 'bg-rose-50 text-rose-700 border-rose-200';
+                    }
+                    return 'bg-blue-50 text-blue-700 border-blue-200';
+                },
+                formatAuditTimelineValue(value) {
+                    if (value === null || value === undefined || value === '') return '空';
+                    if (value === true) return '是';
+                    if (value === false) return '否';
+                    if (typeof value === 'number') return String(value);
+                    if (typeof value === 'object') {
+                        try {
+                            return JSON.stringify(value);
+                        } catch (_) {
+                            return String(value);
+                        }
+                    }
+                    return String(value);
+                },
+                auditTimelineSummary(log) {
+                    const changedFields = (log && typeof log.changed_fields === 'object' && log.changed_fields)
+                        ? log.changed_fields
+                        : {};
+                    const entries = Object.entries(changedFields);
+                    if (!entries.length) return '无字段变更明细';
+                    const parts = entries.slice(0, 3).map(([label, pair]) => (
+                        `${label}: ${this.formatAuditTimelineValue(pair?.old)} -> ${this.formatAuditTimelineValue(pair?.new)}`
+                    ));
+                    if (entries.length > 3) {
+                        parts.push(`等 ${entries.length} 项`);
+                    }
+                    return parts.join('；');
+                },
+                async openLedgerDetail(item) {
+                    const itemId = Number(item?.id);
+                    if (!Number.isFinite(itemId) || itemId <= 0) return;
+                    this.showLedgerDetailModal = true;
+                    this.ledgerDetailLoading = true;
+                    this.ledgerDetailAuditLoading = true;
+                    this.ledgerDetailItem = null;
+                    this.ledgerDetailAuditLogs = [];
+                    this.ledgerDetailAuditTotal = 0;
+                    this.ledgerDetailAuditPage = 1;
+                    try {
+                        const [itemRes, auditRes] = await Promise.all([
+                            axios.get(`/api/items/${itemId}`),
+                            axios.get('/api/audit-logs', {
+                                params: {
+                                    record_id: itemId,
+                                    page: 1,
+                                    page_size: this.ledgerDetailAuditPageSize,
+                                },
+                            }),
+                        ]);
+                        this.ledgerDetailItem = itemRes.data || null;
+                        this.ledgerDetailAuditLogs = Array.isArray(auditRes.data?.items)
+                            ? auditRes.data.items
+                            : [];
+                        this.ledgerDetailAuditTotal = Number(auditRes.data?.total) || this.ledgerDetailAuditLogs.length;
+                    } catch (e) {
+                        this.showApiError('加载台账详情失败', e);
+                    } finally {
+                        this.ledgerDetailLoading = false;
+                        this.ledgerDetailAuditLoading = false;
+                    }
+                },
+                closeLedgerDetailModal() {
+                    this.showLedgerDetailModal = false;
+                    this.ledgerDetailLoading = false;
+                    this.ledgerDetailAuditLoading = false;
+                    this.ledgerDetailItem = null;
+                    this.ledgerDetailAuditLogs = [];
+                    this.ledgerDetailAuditTotal = 0;
+                    this.ledgerDetailAuditPage = 1;
+                },
+                async loadMoreLedgerDetailAudit() {
+                    if (this.ledgerDetailAuditLoading) return;
+                    const itemId = Number(this.ledgerDetailItem?.id);
+                    if (!Number.isFinite(itemId) || itemId <= 0) return;
+                    if (this.ledgerDetailAuditPage >= this.ledgerDetailAuditTotalPages) return;
+                    const nextPage = this.ledgerDetailAuditPage + 1;
+                    this.ledgerDetailAuditLoading = true;
+                    try {
+                        const res = await axios.get('/api/audit-logs', {
+                            params: {
+                                record_id: itemId,
+                                page: nextPage,
+                                page_size: this.ledgerDetailAuditPageSize,
+                            },
+                        });
+                        const rows = Array.isArray(res.data?.items) ? res.data.items : [];
+                        this.ledgerDetailAuditLogs = [...this.ledgerDetailAuditLogs, ...rows];
+                        this.ledgerDetailAuditTotal = Number(res.data?.total) || this.ledgerDetailAuditTotal;
+                        this.ledgerDetailAuditPage = nextPage;
+                    } catch (e) {
+                        this.showApiError('加载审计轨迹失败', e);
+                    } finally {
+                        this.ledgerDetailAuditLoading = false;
+                    }
+                },
                 async loadHistory() {
                     this.auditInitialized = true;
                     this.historyLoading = true;

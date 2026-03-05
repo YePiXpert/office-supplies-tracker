@@ -3,6 +3,7 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Uploa
 from pathlib import Path
 from threading import Lock
 from uuid import uuid4
+from sqlalchemy.exc import IntegrityError as SAIntegrityError
 
 from api_utils import (
     MAX_DOCUMENT_UPLOAD_BYTES,
@@ -88,7 +89,7 @@ async def _confirm_import_with_lock(
         raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except aiosqlite.IntegrityError as e:
+    except (aiosqlite.IntegrityError, SAIntegrityError) as e:
         if "UNIQUE constraint failed" in str(e):
             raise HTTPException(status_code=409, detail="导入触发唯一约束冲突（流水号+物品名称+经办人）")
         raise HTTPException(status_code=400, detail="导入失败：字段值不合法")

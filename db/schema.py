@@ -90,6 +90,21 @@ async def _migrate_legacy_statuses(db: aiosqlite.Connection) -> None:
     await db.execute("UPDATE items SET status = '已分发' WHERE status = '已发放'")
 
 
+async def _ensure_audit_log_table(db: aiosqlite.Connection) -> None:
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            changed_fields TEXT NOT NULL,
+            operator_ip TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+
 async def init_db():
     """初始化数据库表。"""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -138,6 +153,7 @@ async def init_db():
             )
             """
         )
+        await _ensure_audit_log_table(db)
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at DESC)"
         )
@@ -167,5 +183,11 @@ async def init_db():
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_item_history_item_id ON item_history(item_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_logs_record_id_created_at ON audit_logs(record_id, created_at DESC)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC)"
         )
         await db.commit()

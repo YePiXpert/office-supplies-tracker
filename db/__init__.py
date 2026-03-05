@@ -6,6 +6,7 @@ from .constants import (
     ItemStatus,
     PaymentStatus,
 )
+from .audit import count_audit_logs, get_audit_logs
 from .history import count_item_history, get_item_history
 from .items import (
     batch_update_items,
@@ -66,6 +67,8 @@ __all__ = [
     "normalize_update_payload",
     "get_item_history",
     "count_item_history",
+    "get_audit_logs",
+    "count_audit_logs",
     "get_serial_numbers",
     "get_departments",
     "get_handlers",
