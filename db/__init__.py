@@ -8,6 +8,16 @@ from .constants import (
 )
 from .audit import count_audit_logs, get_audit_logs
 from .history import count_item_history, get_item_history
+from .security import (
+    append_auth_audit_log,
+    clear_login_lock_state,
+    get_lock_remaining_seconds,
+    get_system_security,
+    initialize_system_security,
+    is_system_initialized,
+    register_failed_login_attempt,
+    update_security_credentials,
+)
 from .items import (
     batch_update_items,
     batch_create_items,
@@ -69,6 +79,14 @@ __all__ = [
     "count_item_history",
     "get_audit_logs",
     "count_audit_logs",
+    "get_system_security",
+    "is_system_initialized",
+    "initialize_system_security",
+    "update_security_credentials",
+    "register_failed_login_attempt",
+    "clear_login_lock_state",
+    "get_lock_remaining_seconds",
+    "append_auth_audit_log",
     "get_serial_numbers",
     "get_departments",
     "get_handlers",

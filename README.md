@@ -2,9 +2,18 @@
 
 用于内部办公用品采购管理的单用户工具。支持上传领用单（PDF/图片）自动识别，在线维护采购流程，并可按条件筛选与导出 Excel。
 
-当前版本：`1.2.5`
+当前版本：`1.2.6`
 
 ## 更新日志 (Changelog)
+
+### v1.2.6 (2026-03-05)
+
+- 引入单管理员本地安全模型：首次初始化管理员密码，禁用注册入口。
+- 密码与恢复码统一采用 `Argon2id` 哈希存储，新增一次性恢复码重置流程。
+- 鉴权会话改为 `HttpOnly + SameSite=Strict` 签名 Cookie，不再依赖 localStorage Token。
+- 增加防爆破策略：连续 5 次失败锁定 15 分钟。
+- 增加闲置熔断：前端 30 分钟无操作自动登出，后端会话 `Max-Age=1800` 并进行滑动续期。
+- 新增物理兜底脚本 `reset_admin_password.py`，可将系统重置回未初始化状态。
 
 ### v1.2.5 (2026-03-05)
 
@@ -47,6 +56,8 @@ docker-compose up -d
 - 导入预览校正：入库前可逐项编辑，避免脏数据直接落库
 - OCR 兜底链路：可复制 PDF 优先结构化提取，扫描 PDF/图片自动走 OCR
 - 重复处理策略：按 `(流水号 + 物品名称 + 经办人)` 检测重复，支持跳过/合并数量/仅新增非重复项
+- 单管理员本地安全模型：首次初始化密码、Argon2id 哈希、HttpOnly + SameSite=Strict 会话 Cookie
+- 账号防护：连续 5 次密码错误锁定 15 分钟，30 分钟无操作自动退出登录
 - 台账在线编辑：关键字段可直接修改，支持批量修改与批量删除
 - 执行看板闭环：`待采购 → 待到货 → 待分发 → 已分发`，支持拖拽和一键流转
 - 报表筛选联动：台账筛选条件变更后，进入报表页会自动按最新筛选重算
@@ -110,6 +121,12 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ### 3. 访问系统
 
 打开：`http://localhost:8000`
+
+## 管理员密码找回与物理重置
+
+- 首次初始化后系统会展示一次性恢复码，请务必离线保存。
+- 若忘记密码可在登录页使用恢复码重置密码（重置后会生成新的恢复码）。
+- 若忘记密码且丢失恢复码，请在服务器或本地程序目录下执行 `python reset_admin_password.py` 重置系统。
 
 ## 数据库迁移（Alembic）
 
@@ -236,7 +253,7 @@ scripts\build_windows_installer.bat
 
 备注：
 - 首次执行 OCR 时可能会初始化模型缓存，启动会比平时慢
-- 运行数据（数据库、上传文件、WebDAV 配置）会落在 exe 所在目录
+- 运行数据优先写入程序目录，若目录不可写会自动回退到 `%APPDATA%/OfficeSuppliesTracker/data`
 - 当前前端默认通过 CDN 加载 `Vue/Tailwind/Axios`，桌面版首次运行建议保持网络可用；如需完全离线，请改为本地静态依赖
 
 ## 解析回归测试
@@ -256,6 +273,11 @@ python3 scripts/run_regression_suite.py
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/` | 前端页面 |
+| GET | `/api/auth/status` | 鉴权状态检查（是否初始化、是否已登录、锁定剩余秒数） |
+| POST | `/api/auth/setup` | 首次初始化管理员密码并返回一次性恢复码 |
+| POST | `/api/auth/login` | 管理员登录（5 次失败锁定 15 分钟） |
+| POST | `/api/auth/logout` | 退出登录并清除会话 Cookie |
+| POST | `/api/auth/recover` | 使用恢复码重置密码并下发新恢复码 |
 | GET | `/api/items` | 列表查询（支持 `keyword`/`status`/`department`/`month`/`page`/`page_size`） |
 | GET | `/api/execution-board` | 执行看板数据（按执行状态分组） |
 | GET | `/api/items/{id}` | 获取单条记录 |

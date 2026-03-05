@@ -8,16 +8,23 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from auth_security import (
+    AUTH_COOKIE_NAME,
+    clear_auth_cookie,
+    set_auth_cookie,
+    verify_auth_cookie,
+)
 from app_locks import MAINTENANCE_MODE
 from app_runtime import LOG_DIR, STATIC_DIR
-from database import init_db
+from database import init_db, is_system_initialized
 from db.audit_context import reset_current_operator_ip, set_current_operator_ip
 from db.migrations import upgrade_database_to_head
+from routers.auth import router as auth_router
 from routers.imports import router as imports_router
 from routers.items import router as items_router
 from routers.system import router as system_router
 
-APP_VERSION = "1.2.5"
+APP_VERSION = "1.2.6"
 
 
 @asynccontextmanager
@@ -52,6 +59,34 @@ async def audit_operator_context(request, call_next):
 
 
 @app.middleware("http")
+async def auth_guard(request, call_next):
+    path = request.url.path
+    if not path.startswith("/api") or path.startswith("/api/auth/"):
+        return await call_next(request)
+
+    if not await is_system_initialized():
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "系统尚未初始化，请先设置管理员密码"},
+        )
+
+    cookie_value = request.cookies.get(AUTH_COOKIE_NAME, "")
+    payload = verify_auth_cookie(cookie_value)
+    if payload is None:
+        response = JSONResponse(
+            status_code=401,
+            content={"detail": "未登录或会话已过期，请重新登录"},
+        )
+        clear_auth_cookie(response)
+        return response
+
+    response = await call_next(request)
+    if 200 <= response.status_code < 500:
+        set_auth_cookie(response, subject=str(payload.get("sub") or "admin"))
+    return response
+
+
+@app.middleware("http")
 async def maintenance_mode_guard(request, call_next):
     if MAINTENANCE_MODE.is_set():
         path = request.url.path
@@ -63,6 +98,7 @@ async def maintenance_mode_guard(request, call_next):
     return await call_next(request)
 
 
+app.include_router(auth_router)
 app.include_router(system_router)
 app.include_router(items_router)
 app.include_router(imports_router)

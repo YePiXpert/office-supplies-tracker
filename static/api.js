@@ -1,6 +1,287 @@
 (function (global) {
     global.AppApi = {
         methods: {
+                installAuthInterceptor() {
+                    if (this.authInterceptorInstalled) return;
+                    const vm = this;
+                    axios.interceptors.response.use(
+                        (response) => response,
+                        async (error) => {
+                            const status = Number(error?.response?.status || 0);
+                            const requestUrl = String(error?.config?.url || '');
+                            const isAuthApi = requestUrl.includes('/api/auth/');
+                            if (status === 401 && !isAuthApi) {
+                                await vm.handleUnauthorized('登录状态已失效，请重新登录');
+                            }
+                            return Promise.reject(error);
+                        }
+                    );
+                    this.authInterceptorInstalled = true;
+                },
+                async checkAuthStatus() {
+                    const res = await axios.get('/api/auth/status');
+                    return res?.data || {};
+                },
+                parseLockSecondsFromDetail(detail) {
+                    const text = (detail || '').toString();
+                    const match = text.match(/(\d+)/);
+                    if (!match) return 0;
+                    const seconds = Number(match[1]);
+                    return Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+                },
+                stopLockCountdown() {
+                    if (this.authLockTimer) {
+                        clearInterval(this.authLockTimer);
+                        this.authLockTimer = null;
+                    }
+                    this.authLockSeconds = 0;
+                },
+                startLockCountdown(seconds) {
+                    const total = Number(seconds) || 0;
+                    if (total <= 0) {
+                        this.stopLockCountdown();
+                        return;
+                    }
+                    this.stopLockCountdown();
+                    this.authLockSeconds = total;
+                    this.authLockTimer = setInterval(() => {
+                        if (this.authLockSeconds <= 1) {
+                            this.stopLockCountdown();
+                            return;
+                        }
+                        this.authLockSeconds -= 1;
+                    }, 1000);
+                },
+                attachIdleWatcher() {
+                    if (this.authActivityHandler) return;
+                    const events = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
+                    this.authActivityHandler = () => {
+                        this.resetIdleWatcher();
+                    };
+                    for (const eventName of events) {
+                        window.addEventListener(eventName, this.authActivityHandler, { passive: true });
+                    }
+                },
+                resetIdleWatcher() {
+                    if (!this.isAuthenticated) return;
+                    if (this.authIdleTimer) {
+                        clearTimeout(this.authIdleTimer);
+                    }
+                    this.authIdleTimer = setTimeout(() => {
+                        this.triggerIdleLogout();
+                    }, this.authIdleTimeoutMs);
+                },
+                teardownIdleWatcher() {
+                    if (this.authIdleTimer) {
+                        clearTimeout(this.authIdleTimer);
+                        this.authIdleTimer = null;
+                    }
+                    if (this.authActivityHandler) {
+                        const events = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
+                        for (const eventName of events) {
+                            window.removeEventListener(eventName, this.authActivityHandler);
+                        }
+                        this.authActivityHandler = null;
+                    }
+                },
+                resetAuthForms() {
+                    this.authSetupPassword = '';
+                    this.authSetupPasswordConfirm = '';
+                    this.authLoginPassword = '';
+                    this.authRecoveryCode = '';
+                    this.authRecoveryNewPassword = '';
+                },
+                async handleUnauthorized(message = '登录已失效，请重新登录') {
+                    this.isAuthenticated = false;
+                    this.teardownIdleWatcher();
+                    this.stopLockCountdown();
+                    if (this.hashChangeListener) {
+                        window.removeEventListener('hashchange', this.hashChangeListener);
+                        this.hashChangeListener = null;
+                    }
+                    this.authMessage = message;
+                    this.showRecoveryCodeModal = false;
+                    this.newRecoveryCode = '';
+                    try {
+                        const status = await this.checkAuthStatus();
+                        this.authInitialized = !!status.initialized;
+                        this.authView = this.authInitialized ? 'login' : 'setup';
+                        this.startLockCountdown(Number(status.lock_seconds) || 0);
+                    } catch (_) {
+                        this.authInitialized = true;
+                        this.authView = 'login';
+                    }
+                    this.resetAuthForms();
+                },
+                async initializeAuthLayer() {
+                    this.installAuthInterceptor();
+                    this.authLoading = true;
+                    this.authView = 'loading';
+                    this.authMessage = '';
+                    try {
+                        const status = await this.checkAuthStatus();
+                        this.authInitialized = !!status.initialized;
+                        this.startLockCountdown(Number(status.lock_seconds) || 0);
+                        if (!status.initialized) {
+                            this.isAuthenticated = false;
+                            this.authView = 'setup';
+                            return;
+                        }
+                        if (status.authenticated) {
+                            await this.onAuthReadyAfterLogin();
+                            return;
+                        }
+                        this.isAuthenticated = false;
+                        this.authView = 'login';
+                    } catch (e) {
+                        this.isAuthenticated = false;
+                        this.authView = 'login';
+                        this.authMessage = this.getErrorDetail(e, '鉴权状态检查失败');
+                    } finally {
+                        this.authLoading = false;
+                    }
+                },
+                async onAuthReadyAfterLogin() {
+                    this.authInitialized = true;
+                    this.isAuthenticated = true;
+                    this.authView = '';
+                    this.authMessage = '';
+                    this.stopLockCountdown();
+                    this.resetAuthForms();
+                    this.attachIdleWatcher();
+                    this.resetIdleWatcher();
+
+                    if (!this.authBootstrapped) {
+                        this.authBootstrapped = true;
+                        this.loadAutocomplete();
+                        this.loadItems();
+                        this.loadStats();
+                        this.initViewRouting();
+                        return;
+                    }
+                    await this.refreshDataViews({ autocomplete: true });
+                },
+                async handleAuthSetup() {
+                    if (this.authLoading) return;
+                    const password = (this.authSetupPassword || '').trim();
+                    const confirm = (this.authSetupPasswordConfirm || '').trim();
+                    if (password.length < 8) {
+                        this.authMessage = '密码长度至少 8 位';
+                        return;
+                    }
+                    if (password !== confirm) {
+                        this.authMessage = '两次输入的密码不一致';
+                        return;
+                    }
+                    this.authLoading = true;
+                    this.authMessage = '';
+                    try {
+                        const res = await axios.post('/api/auth/setup', { password });
+                        const recoveryCode = (res?.data?.recovery_code || '').toString().trim();
+                        if (!recoveryCode) {
+                            throw new Error('初始化成功，但未返回恢复码');
+                        }
+                        this.authInitialized = true;
+                        this.newRecoveryCode = recoveryCode;
+                        this.showRecoveryCodeModal = true;
+                        this.resetAuthForms();
+                    } catch (e) {
+                        this.authMessage = this.getErrorDetail(e, '初始化失败');
+                    } finally {
+                        this.authLoading = false;
+                    }
+                },
+                async handleAuthLogin() {
+                    if (this.authLoading || this.authLockSeconds > 0) return;
+                    const password = (this.authLoginPassword || '').toString();
+                    if (!password.trim()) {
+                        this.authMessage = '请输入管理员密码';
+                        return;
+                    }
+                    this.authLoading = true;
+                    this.authMessage = '';
+                    try {
+                        await axios.post('/api/auth/login', { password });
+                        await this.onAuthReadyAfterLogin();
+                    } catch (e) {
+                        const status = Number(e?.response?.status || 0);
+                        const detail = this.getErrorDetail(e, '登录失败');
+                        if (status === 423) {
+                            this.startLockCountdown(this.parseLockSecondsFromDetail(detail));
+                        }
+                        this.authMessage = detail;
+                    } finally {
+                        this.authLoading = false;
+                    }
+                },
+                async handleAuthRecover() {
+                    if (this.authLoading) return;
+                    const recoveryCode = (this.authRecoveryCode || '').trim();
+                    const password = (this.authRecoveryNewPassword || '').trim();
+                    if (!recoveryCode) {
+                        this.authMessage = '请输入恢复码';
+                        return;
+                    }
+                    if (password.length < 8) {
+                        this.authMessage = '新密码长度至少 8 位';
+                        return;
+                    }
+                    this.authLoading = true;
+                    this.authMessage = '';
+                    try {
+                        const res = await axios.post('/api/auth/recover', {
+                            recovery_code: recoveryCode,
+                            new_password: password,
+                        });
+                        const recovery = (res?.data?.recovery_code || '').toString().trim();
+                        if (!recovery) {
+                            throw new Error('找回成功，但未返回新的恢复码');
+                        }
+                        this.newRecoveryCode = recovery;
+                        this.showRecoveryCodeModal = true;
+                        this.resetAuthForms();
+                    } catch (e) {
+                        this.authMessage = this.getErrorDetail(e, '找回失败');
+                    } finally {
+                        this.authLoading = false;
+                    }
+                },
+                async authLogout(manual = true) {
+                    if (manual) {
+                        const ok = await this.openConfirmDialog({
+                            title: '退出登录',
+                            message: '确认退出当前管理员会话？',
+                            confirmText: '退出',
+                            cancelText: '取消',
+                            danger: false,
+                        });
+                        if (!ok) return;
+                    }
+                    try {
+                        await axios.post('/api/auth/logout');
+                    } catch (_) {
+                    } finally {
+                        this.teardownIdleWatcher();
+                        if (this.hashChangeListener) {
+                            window.removeEventListener('hashchange', this.hashChangeListener);
+                            this.hashChangeListener = null;
+                        }
+                        this.isAuthenticated = false;
+                        this.authView = this.authInitialized ? 'login' : 'setup';
+                        this.authMessage = manual ? '已退出登录' : '长时间无操作，已自动退出登录';
+                        this.resetAuthForms();
+                    }
+                },
+                async triggerIdleLogout() {
+                    if (!this.isAuthenticated) return;
+                    await this.authLogout(false);
+                },
+                async confirmRecoveryCodeSaved() {
+                    if (!this.newRecoveryCode) return;
+                    this.showRecoveryCodeModal = false;
+                    this.newRecoveryCode = '';
+                    await this.onAuthReadyAfterLogin();
+                },
                 openAddModal() {
                     this.showImportPreviewModal = false;
                     this.showDuplicateModal = false;
