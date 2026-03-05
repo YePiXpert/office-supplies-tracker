@@ -84,7 +84,8 @@ async def _drop_recipient_column(db: aiosqlite.Connection) -> None:
 
 async def _migrate_legacy_statuses(db: aiosqlite.Connection) -> None:
     # 兼容历史状态命名，迁移到新的执行流状态。
-    await db.execute("UPDATE items SET status = '已下单' WHERE status = '已采购'")
+    await db.execute("UPDATE items SET status = '待到货' WHERE status = '已采购'")
+    await db.execute("UPDATE items SET status = '待到货' WHERE status = '已下单'")
     await db.execute("UPDATE items SET status = '待分发' WHERE status = '已到货'")
     await db.execute("UPDATE items SET status = '已分发' WHERE status = '已发放'")
 

@@ -377,20 +377,13 @@
                                         <td class="px-4 py-3 text-center align-middle">
                                             <div class="flex items-center justify-center">
                                                 <div class="relative inline-flex items-center group">
-                                                    <span v-if="['待采购', '已下单', '待到货', '待分发'].includes(item.status)" class="absolute left-1.5 flex h-1.5 w-1.5 pointer-events-none">
-                                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                                        <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="item.status === '待采购' ? 'bg-amber-500' : 'bg-blue-500'"></span>
+                                                    <span v-if="isStatusBreathing(item.status)" class="absolute left-1.5 flex h-1.5 w-1.5 pointer-events-none">
+                                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" :class="statusPingClass(item.status)"></span>
+                                                        <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="statusDotClass(item.status)"></span>
                                                     </span>
-                                                    <select v-model="item.status" @change="updateItem(item.id, { status: item.status })"
-                                                            :class="{
-                                                                'bg-yellow-50 text-yellow-800 ring-1 ring-inset ring-yellow-600/20 pl-4': item.status === '待采购',
-                                                                'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-700/10 pl-4': item.status === '已下单',
-                                                                'bg-cyan-50 text-cyan-700 ring-1 ring-inset ring-cyan-700/10 pl-4': item.status === '待到货',
-                                                                'bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-700/10 pl-4': item.status === '待分发',
-                                                                'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 px-2': item.status === '已分发',
-                                                                'bg-slate-50 text-slate-700 ring-1 ring-inset ring-slate-600/20 px-2': !['待采购', '已下单', '待到货', '待分发', '已分发'].includes(item.status)
-                                                            }"
-                                                            class="inline-flex items-center min-w-[84px] py-0.5 text-xs font-medium rounded-md border-0 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200">
+                                                    <select :value="normalizeProcurementStatus(item.status)" @change="handleLedgerStatusChange(item, $event.target.value)"
+                                                            :class="statusSelectClass(item.status)"
+                                                            class="inline-flex items-center min-w-[84px] py-0.5 text-xs font-medium rounded-md border appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200">
                                                         <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
                                                     </select>
                                                 </div>
@@ -506,7 +499,7 @@
                         <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
                             <div>
                                 <h2 class="text-3xl font-semibold tracking-tight text-slate-900">采购执行看板</h2>
-                                <p class="mt-1 text-sm text-slate-500">按执行流程分栏管理：待采购、已下单、待到货、待分发（支持拖拽跨列流转）</p>
+                                <p class="mt-1 text-sm text-slate-500">按执行流程分栏管理：待采购、待到货、待分发（支持拖拽跨列流转）</p>
                             </div>
                             <div class="text-xs text-slate-500 text-right">
                                 <div>执行中记录：<span class="font-semibold text-slate-800">{{ executionBoard.total || 0 }}</span></div>
@@ -542,7 +535,7 @@
                             </svg>
                             <p class="mt-3 text-sm font-medium">执行看板加载中...</p>
                         </div>
-                        <div v-else class="grid grid-cols-4 gap-4 min-h-full">
+                        <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-h-full">
                             <div
                                 v-for="column in executionBoard.columns"
                                 :key="column.key"
@@ -552,18 +545,17 @@
                                 class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl min-h-0 min-w-0 flex flex-col transition-all duration-150"
                             >
                                 <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-                                    <span
-                                        :class="{
-                                            'bg-yellow-50 text-yellow-800 ring-yellow-600/20': column.key === 'pending_purchase',
-                                            'bg-blue-50 text-blue-700 ring-blue-700/10': column.key === 'ordered',
-                                            'bg-cyan-50 text-cyan-700 ring-cyan-700/10': column.key === 'pending_arrival',
-                                            'bg-indigo-50 text-indigo-700 ring-indigo-700/10': column.key === 'pending_distribution'
+                                        <span
+                                            :class="{
+                                            'bg-amber-100 text-amber-700 border-amber-200': column.key === 'pending_purchase',
+                                            'bg-blue-100 text-blue-700 border-blue-200': column.key === 'pending_arrival',
+                                            'bg-violet-100 text-violet-700 border-violet-200': column.key === 'pending_distribution'
                                         }"
-                                        class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ring-1 ring-inset"
+                                        class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold border"
                                     >
                                         <span class="relative flex h-1.5 w-1.5 mr-1.5">
-                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" :class="column.key === 'pending_purchase' ? 'bg-amber-400' : 'bg-blue-400'"></span>
-                                            <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="column.key === 'pending_purchase' ? 'bg-amber-500' : 'bg-blue-500'"></span>
+                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" :class="statusPingClass(column.status)"></span>
+                                            <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="statusDotClass(column.status)"></span>
                                         </span>
                                         {{ column.label }}
                                     </span>
@@ -605,10 +597,6 @@
                                         </div>
 
                                         <div v-if="column.key === 'pending_purchase'" class="pt-1">
-                                            <button @click="moveToOrdered(item)" class="w-full h-8 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">一键流转至已下单</button>
-                                        </div>
-
-                                        <div v-else-if="column.key === 'ordered'" class="pt-1">
                                             <button @click="moveToPendingArrival(item)" class="w-full h-8 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">一键流转至待到货</button>
                                         </div>
 

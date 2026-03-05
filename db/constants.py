@@ -31,7 +31,6 @@ class PaymentStatus(str, Enum):
 
 class ItemStatus(str, Enum):
     PENDING = "待采购"
-    ORDERED = "已下单"
     PENDING_ARRIVAL = "待到货"
     PENDING_DISTRIBUTION = "待分发"
     DISTRIBUTED = "已分发"
@@ -39,7 +38,6 @@ class ItemStatus(str, Enum):
 
 EXECUTION_BOARD_COLUMNS = (
     ("pending_purchase", ItemStatus.PENDING.value),
-    ("ordered", ItemStatus.ORDERED.value),
     ("pending_arrival", ItemStatus.PENDING_ARRIVAL.value),
     ("pending_distribution", ItemStatus.PENDING_DISTRIBUTION.value),
 )

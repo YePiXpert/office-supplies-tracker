@@ -5,7 +5,7 @@
                     items: [],
                     totalItems: 0,
                     stats: { total: 0, statusCount: {}, paymentCount: {}, invoiceCount: { issued: 0, notIssued: 0 }},
-                    statuses: ['待采购', '已下单', '待到货', '待分发', '已分发'],
+                    statuses: ['待采购', '待到货', '待分发', '已分发'],
                     departments: [],
                     handlers: [],
                     paymentStatuses: ['未付款', '已付款', '已报销'],

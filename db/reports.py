@@ -9,7 +9,6 @@ from .filters import build_item_filters
 
 FLOW_STAGES = (
     ("pending_purchase", "待采购"),
-    ("ordered", "已下单"),
     ("pending_arrival", "待到货"),
     ("pending_distribution", "待分发"),
     ("distributed", "已分发"),
