@@ -128,6 +128,57 @@
                     const gb = mb / 1024;
                     return `${gb.toFixed(2)} GB`;
                 },
+                getProcurementStatuses() {
+                    return ['待采购', '待到货', '待分发', '已分发'];
+                },
+                normalizeProcurementStatus(status) {
+                    return this.normalizeText(status);
+                },
+                isStatusBreathing(status) {
+                    const normalized = this.normalizeProcurementStatus(status);
+                    return (
+                        normalized === '待采购' ||
+                        normalized === '待到货' ||
+                        normalized === '待分发'
+                    );
+                },
+                statusPingClass(status) {
+                    const normalized = this.normalizeProcurementStatus(status);
+                    if (normalized === '待采购') return 'bg-amber-400';
+                    if (normalized === '待到货') return 'bg-blue-400';
+                    if (normalized === '待分发') return 'bg-violet-400';
+                    return 'bg-slate-400';
+                },
+                statusDotClass(status) {
+                    const normalized = this.normalizeProcurementStatus(status);
+                    if (normalized === '待采购') return 'bg-amber-500';
+                    if (normalized === '待到货') return 'bg-blue-500';
+                    if (normalized === '待分发') return 'bg-violet-500';
+                    if (normalized === '已分发') return 'bg-emerald-500';
+                    return 'bg-slate-500';
+                },
+                statusSelectClass(status) {
+                    const normalized = this.normalizeProcurementStatus(status);
+                    if (normalized === '待采购') {
+                        return 'bg-amber-100 text-amber-700 border-amber-200 pl-4';
+                    }
+                    if (normalized === '待到货') {
+                        return 'bg-blue-100 text-blue-700 border-blue-200 pl-4';
+                    }
+                    if (normalized === '待分发') {
+                        return 'bg-violet-100 text-violet-700 border-violet-200 pl-4';
+                    }
+                    if (normalized === '已分发') {
+                        return 'bg-emerald-100 text-emerald-700 border-emerald-200 px-2';
+                    }
+                    return 'bg-slate-50 text-slate-700 border-slate-200 px-2';
+                },
+                async handleLedgerStatusChange(item, status) {
+                    if (!item?.id) return;
+                    const nextStatus = this.normalizeProcurementStatus(status);
+                    item.status = nextStatus;
+                    await this.updateItem(item.id, { status: nextStatus });
+                },
                 compactPurchaseLink(value) {
                     const raw = (value || '').toString().trim();
                     if (!raw) return '未填写';
@@ -451,9 +502,6 @@
                     await this.refreshDataViews({ items: false });
                     this.showToast(successMessage, 'success');
                     return true;
-                },
-                async moveToOrdered(item) {
-                    await this.updateExecutionItem(item, { status: '已下单' }, '已流转到“已下单”');
                 },
                 async moveToPendingArrival(item) {
                     await this.updateExecutionItem(item, { status: '待到货' }, '已流转到“待到货”');
@@ -1358,8 +1406,10 @@
                         const res = await axios.get('/api/autocomplete');
                         this.departments = res.data.departments || [];
                         this.handlers = res.data.handlers || [];
-                        if (Array.isArray(res.data.statuses) && res.data.statuses.length) {
-                            this.statuses = res.data.statuses;
+                        this.statuses = this.getProcurementStatuses();
+                        this.filterStatus = this.normalizeProcurementStatus(this.filterStatus);
+                        if (this.filterStatus && !this.statuses.includes(this.filterStatus)) {
+                            this.filterStatus = '';
                         }
                         if (Array.isArray(res.data.payment_statuses) && res.data.payment_statuses.length) {
                             this.paymentStatuses = res.data.payment_statuses;
@@ -1379,7 +1429,11 @@
                         if (this.filterDepartment) params.department = this.filterDepartment;
                         if (this.filterMonth) params.month = this.filterMonth;
                         const res = await axios.get('/api/items', { params });
-                        this.items = Array.isArray(res.data.items) ? res.data.items : [];
+                        const rawItems = Array.isArray(res.data.items) ? res.data.items : [];
+                        this.items = rawItems.map((entry) => ({
+                            ...entry,
+                            status: this.normalizeProcurementStatus(entry?.status) || this.normalizeText(entry?.status),
+                        }));
                         this.totalItems = typeof res.data.total === 'number' ? res.data.total : this.items.length;
                         this.selectedItems = [];
                         this.selectAll = false;
@@ -1464,7 +1518,9 @@
                     };
                     for (const field of ['serial_number', 'department', 'handler', 'item_name', 'status', 'payment_status']) {
                         if (Object.prototype.hasOwnProperty.call(payload, field)) {
-                            const value = this.normalizeText(payload[field]);
+                            const value = field === 'status'
+                                ? this.normalizeProcurementStatus(payload[field])
+                                : this.normalizeText(payload[field]);
                             if (!value) {
                                 throw new Error(`${fieldLabels[field] || field} 不能为空`);
                             }
