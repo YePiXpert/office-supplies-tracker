@@ -38,6 +38,9 @@ jobs:
         run: |
           pyinstaller --name "办公用品采购系统-文件夹版" --onedir --noconsole --add-data "static;static" --hidden-import uvicorn --hidden-import fastapi main.py
 
+      - name: Download Chinese Language File for Inno Setup
+        run: Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseSimplified.isl" -OutFile "C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl"
+
       - name: Build Inno Setup installer
         run: |
           $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
