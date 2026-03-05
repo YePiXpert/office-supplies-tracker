@@ -13,7 +13,26 @@
                     filterStatus: '',
                     filterDepartment: '',
                     filterMonth: '',
-                    appVersion: '1.2.5',
+                    appVersion: '1.2.6',
+                    authInitialized: false,
+                    isAuthenticated: false,
+                    authView: 'loading',
+                    authLoading: false,
+                    authLockSeconds: 0,
+                    authMessage: '',
+                    authSetupPassword: '',
+                    authSetupPasswordConfirm: '',
+                    authLoginPassword: '',
+                    authRecoveryCode: '',
+                    authRecoveryNewPassword: '',
+                    showRecoveryCodeModal: false,
+                    newRecoveryCode: '',
+                    authInterceptorInstalled: false,
+                    authBootstrapped: false,
+                    authIdleTimeoutMs: 30 * 60 * 1000,
+                    authIdleTimer: null,
+                    authLockTimer: null,
+                    authActivityHandler: null,
                     currentView: 'dashboard',
                     executionLoading: false,
                     boardKeyword: '',
@@ -215,6 +234,13 @@
                 },
                 ledgerDetailAuditTotalPages() {
                     return Math.max(1, Math.ceil(this.ledgerDetailAuditTotal / this.ledgerDetailAuditPageSize));
+                },
+                authLockCountdownText() {
+                    const total = Number(this.authLockSeconds) || 0;
+                    if (total <= 0) return '';
+                    const minutes = Math.floor(total / 60);
+                    const seconds = total % 60;
+                    return `${minutes}:${String(seconds).padStart(2, '0')}`;
                 },
                 reportDepartmentRows() {
                     const rows = Array.isArray(this.amountReport?.byDepartment)
@@ -479,15 +505,21 @@
                 if (typeof this.initOcrEngineSettings === 'function') {
                     this.initOcrEngineSettings();
                 }
-                this.loadAutocomplete();
-                this.loadItems();
-                this.loadStats();
-                this.initViewRouting();
+                if (typeof this.initializeAuthLayer === 'function') {
+                    this.initializeAuthLayer();
+                }
             },
         beforeUnmount() {
+                if (typeof this.teardownIdleWatcher === 'function') {
+                    this.teardownIdleWatcher();
+                }
                 if (this.hashChangeListener) {
                     window.removeEventListener('hashchange', this.hashChangeListener);
                     this.hashChangeListener = null;
+                }
+                if (this.authLockTimer) {
+                    clearInterval(this.authLockTimer);
+                    this.authLockTimer = null;
                 }
                 for (const timer of this.toastTimers) {
                     clearTimeout(timer);

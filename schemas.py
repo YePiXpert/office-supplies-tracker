@@ -93,6 +93,19 @@ class GeminiModelsRequest(BaseModel):
     api_key: str = Field(default="", max_length=300)
 
 
+class AuthSetupRequest(BaseModel):
+    password: str = Field(min_length=8, max_length=128)
+
+
+class AuthLoginRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AuthRecoverRequest(BaseModel):
+    recovery_code: str = Field(min_length=8, max_length=64)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class BackupHealthCheckDbReport(BaseModel):
     integrity: str
     tables: list[str]

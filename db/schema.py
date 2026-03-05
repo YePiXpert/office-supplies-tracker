@@ -105,6 +105,20 @@ async def _ensure_audit_log_table(db: aiosqlite.Connection) -> None:
     )
 
 
+async def _ensure_system_security_table(db: aiosqlite.Connection) -> None:
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS system_security (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            password_hash TEXT NOT NULL,
+            recovery_code_hash TEXT NOT NULL,
+            failed_attempts INTEGER NOT NULL DEFAULT 0,
+            locked_until TIMESTAMP
+        )
+        """
+    )
+
+
 async def init_db():
     """初始化数据库表。"""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -154,6 +168,7 @@ async def init_db():
             """
         )
         await _ensure_audit_log_table(db)
+        await _ensure_system_security_table(db)
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at DESC)"
         )

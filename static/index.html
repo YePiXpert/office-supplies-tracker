@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/app.css?v=1.2.5">
+    <link rel="stylesheet" href="/static/app.css?v=1.2.6">
         <style>
             .toast-enter-active,
             .toast-leave-active {
@@ -53,6 +53,7 @@
         <input type="file" ref="fileInput" @change="handleFileSelect" accept=".pdf,.png,.jpg,.jpeg,.jfif" class="hidden">
         <input type="file" ref="restoreInput" @change="handleRestoreSelect" accept=".zip" class="hidden">
 
+        <template v-if="isAuthenticated">
         <aside class="w-64 shrink-0 bg-white border-r border-slate-200 flex flex-col">
             <div class="h-16 px-5 border-b border-slate-200 flex items-center gap-3">
                 <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm">
@@ -95,6 +96,10 @@
                         :class="currentView === 'settings' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-700/10' : 'text-slate-600 hover:bg-slate-50'"
                         class="w-full h-10 px-3 rounded-lg text-left text-sm font-medium transition-all duration-200 ease-in-out">
                     ⚙️ 系统设置
+                </button>
+                <button @click="authLogout(true)"
+                        class="mt-2 w-full h-10 px-3 rounded-lg text-left text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all duration-200 ease-in-out">
+                    🚪 退出登录
                 </button>
                 <div class="mt-2 px-3 text-[11px] text-slate-400">版本 v{{ appVersion }}</div>
             </div>
@@ -1580,6 +1585,78 @@
                 </div>
             </div>
         </div>
+        </template>
+
+        <template v-else>
+            <div class="flex-1 min-h-0 w-full bg-gradient-to-br from-slate-100 via-blue-50 to-slate-200 flex items-center justify-center p-6">
+                <div class="w-full max-w-md bg-white border border-slate-200 shadow-xl rounded-2xl overflow-hidden">
+                    <div class="px-6 py-5 border-b border-slate-200 bg-slate-50">
+                        <h2 class="text-lg font-semibold text-slate-900">办公用品采购系统 · 管理员安全入口</h2>
+                        <p class="mt-1 text-xs text-slate-500">单管理员本地安全模型（30 分钟闲置自动退出）</p>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div v-if="authView === 'loading'" class="py-10 text-center text-sm text-slate-500">正在检查系统安全状态...</div>
+
+                        <template v-else-if="authView === 'setup'">
+                            <h3 class="text-sm font-semibold text-slate-800">首次初始化管理员密码</h3>
+                            <input v-model="authSetupPassword" type="password" placeholder="请输入管理员密码（至少 8 位）" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <input v-model="authSetupPasswordConfirm" type="password" placeholder="请再次确认密码" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <button @click="handleAuthSetup" :disabled="authLoading" class="w-full h-11 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 transition-all duration-200">
+                                {{ authLoading ? '初始化中...' : '完成初始化' }}
+                            </button>
+                        </template>
+
+                        <template v-else-if="authView === 'recover'">
+                            <h3 class="text-sm font-semibold text-slate-800">使用恢复码重置密码</h3>
+                            <input v-model="authRecoveryCode" type="text" placeholder="请输入 16 位恢复码" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm font-mono uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <input v-model="authRecoveryNewPassword" type="password" placeholder="请输入新密码（至少 8 位）" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <button @click="handleAuthRecover" :disabled="authLoading" class="w-full h-11 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 transition-all duration-200">
+                                {{ authLoading ? '提交中...' : '重置密码并登录' }}
+                            </button>
+                            <button @click="authView = 'login'; authMessage = ''" class="w-full h-10 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200">
+                                返回登录
+                            </button>
+                        </template>
+
+                        <template v-else>
+                            <h3 class="text-sm font-semibold text-slate-800">管理员登录</h3>
+                            <input v-model="authLoginPassword" type="password" @keyup.enter="handleAuthLogin" placeholder="请输入管理员密码" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <button @click="handleAuthLogin" :disabled="authLoading || authLockSeconds > 0" class="w-full h-11 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 transition-all duration-200">
+                                {{ authLoading ? '登录中...' : (authLockSeconds > 0 ? `已锁定 ${authLockCountdownText}` : '登录系统') }}
+                            </button>
+                            <button @click="authView = 'recover'; authMessage = ''; stopLockCountdown()" class="w-full h-10 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200">
+                                使用恢复码找回密码
+                            </button>
+                        </template>
+
+                        <div v-if="authMessage" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                            {{ authMessage }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <div v-if="showRecoveryCodeModal" class="fixed inset-0 z-[90] bg-slate-900/50 backdrop-blur-[1px] flex items-center justify-center p-4">
+            <div class="w-full max-w-lg bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
+                <div class="px-5 py-4 bg-amber-50 border-b border-amber-100">
+                    <h3 class="text-base font-semibold text-amber-800">请立即保存恢复码（仅显示一次）</h3>
+                </div>
+                <div class="p-5 space-y-3">
+                    <p class="text-sm text-slate-600">恢复码用于忘记密码时重置管理员账号，请离线妥善保存。</p>
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-center">
+                        <div class="text-xs text-slate-500">恢复码</div>
+                        <div class="mt-1 text-xl font-mono font-semibold tracking-[0.2em] text-slate-900">{{ newRecoveryCode }}</div>
+                    </div>
+                </div>
+                <div class="px-5 py-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+                    <button @click="confirmRecoveryCodeSaved" class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200">
+                        我已保存恢复码，进入系统
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <datalist id="department-options">
             <option v-for="dep in departments" :key="`dep-${dep}`" :value="dep"></option>
         </datalist>
@@ -1609,9 +1686,9 @@
 
     </div>
     
-    <script src="/static/state.js?v=1.1.2"></script>
-    <script src="/static/api.js?v=1.1.2"></script>
-    <script src="/static/ui.js?v=1.1.2"></script>
+    <script src="/static/state.js?v=1.2.6"></script>
+    <script src="/static/api.js?v=1.2.6"></script>
+    <script src="/static/ui.js?v=1.2.6"></script>
     <script>
         window.addEventListener('load', () => {
             setTimeout(() => {
