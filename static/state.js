@@ -13,7 +13,7 @@
                     filterStatus: '',
                     filterDepartment: '',
                     filterMonth: '',
-                    appVersion: '1.2.4',
+                    appVersion: '1.2.5',
                     currentView: 'dashboard',
                     executionLoading: false,
                     boardKeyword: '',
