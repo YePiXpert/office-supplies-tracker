@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app_locks import MAINTENANCE_MODE
 from app_runtime import STATIC_DIR
 from database import init_db
+from db.audit_context import reset_current_operator_ip, set_current_operator_ip
 from db.migrations import upgrade_database_to_head
 from routers.imports import router as imports_router
 from routers.items import router as items_router
@@ -23,6 +24,25 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="办公用品采购系统", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+def _resolve_operator_ip(request) -> str:
+    forwarded_for = (request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded_for:
+        first = forwarded_for.split(",", 1)[0].strip()
+        if first:
+            return first
+    client_host = getattr(getattr(request, "client", None), "host", None)
+    return str(client_host or "unknown")
+
+
+@app.middleware("http")
+async def audit_operator_context(request, call_next):
+    token = set_current_operator_ip(_resolve_operator_ip(request))
+    try:
+        return await call_next(request)
+    finally:
+        reset_current_operator_ip(token)
 
 
 @app.middleware("http")

@@ -3,6 +3,7 @@ from typing import Optional
 import aiosqlite
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from sqlalchemy.exc import IntegrityError as SAIntegrityError
 
 from api_utils import normalize_history_action, normalize_month, normalize_text_filter
 from app_locks import DATA_MUTATION_LOCK
@@ -10,6 +11,7 @@ from database import (
     ItemStatus,
     PaymentStatus,
     batch_update_items,
+    count_audit_logs,
     count_deleted_items,
     count_item_history,
     count_items,
@@ -18,6 +20,7 @@ from database import (
     get_data_quality_report,
     get_amount_report,
     get_departments,
+    get_audit_logs,
     get_execution_board,
     get_handlers,
     get_item,
@@ -151,7 +154,7 @@ async def batch_update_items_endpoint(request: BatchUpdateRequest):
             result = await batch_update_items(request.ids, request.updates)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        except aiosqlite.IntegrityError as e:
+        except (aiosqlite.IntegrityError, SAIntegrityError) as e:
             _raise_integrity_error(
                 e,
                 unique_message="批量更新触发唯一约束冲突（流水号+物品名称+经办人）",
@@ -215,7 +218,7 @@ async def create_new_item(item: ItemCreate):
             item_id = await create_item(item.model_dump())
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        except aiosqlite.IntegrityError as e:
+        except (aiosqlite.IntegrityError, SAIntegrityError) as e:
             _raise_integrity_error(
                 e,
                 unique_message="记录已存在（流水号+物品名称+经办人）",
@@ -237,7 +240,7 @@ async def update_item_endpoint(item_id: int, updates: ItemUpdate):
             success = await update_item(item_id, update_data)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        except aiosqlite.IntegrityError as e:
+        except (aiosqlite.IntegrityError, SAIntegrityError) as e:
             _raise_integrity_error(
                 e,
                 unique_message="记录已存在（流水号+物品名称+经办人）",
@@ -309,7 +312,7 @@ async def rollback_item_endpoint(item_id: int, request: ItemRollbackRequest):
             success = await rollback_item_to_history(item_id, request.history_id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        except aiosqlite.IntegrityError as exc:
+        except (aiosqlite.IntegrityError, SAIntegrityError) as exc:
             _raise_integrity_error(
                 exc,
                 unique_message="回滚会触发唯一约束冲突（流水号+物品名称+经办人）",
@@ -394,6 +397,26 @@ async def history_list(
         page=page, page_size=page_size
     )
     total = await count_item_history(action=action, keyword=keyword, month=month)
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@router.get("/audit-logs")
+async def audit_logs(
+    record_id: Optional[int] = None,
+    page: int = 1,
+    page_size: int = DEFAULT_PAGE_SIZE,
+):
+    """字段级审计日志（只读）。"""
+    _validate_pagination(page, page_size)
+    if record_id is not None and record_id <= 0:
+        raise HTTPException(status_code=400, detail="record_id 必须为正整数")
+    items = await get_audit_logs(record_id=record_id, page=page, page_size=page_size)
+    total = await count_audit_logs(record_id=record_id)
     return {
         "items": items,
         "total": total,

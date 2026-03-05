@@ -138,6 +138,14 @@
                     historyKeyword: '',
                     historyAction: '',
                     historyMonth: '',
+                    showLedgerDetailModal: false,
+                    ledgerDetailItem: null,
+                    ledgerDetailLoading: false,
+                    ledgerDetailAuditLoading: false,
+                    ledgerDetailAuditLogs: [],
+                    ledgerDetailAuditTotal: 0,
+                    ledgerDetailAuditPage: 1,
+                    ledgerDetailAuditPageSize: 20,
                     importPreview: {
                         serial_number: '',
                         department: '',
@@ -203,6 +211,9 @@
                 },
                 historyTotalPages() {
                     return Math.max(1, Math.ceil(this.historyTotal / this.historyPageSize));
+                },
+                ledgerDetailAuditTotalPages() {
+                    return Math.max(1, Math.ceil(this.ledgerDetailAuditTotal / this.ledgerDetailAuditPageSize));
                 },
                 reportDepartmentRows() {
                     const rows = Array.isArray(this.amountReport?.byDepartment)
