@@ -89,13 +89,19 @@ def _load_webdav_config() -> dict:
             keep_backups = int(data.get("keep_backups") or 0)
         except (TypeError, ValueError):
             keep_backups = 0
-        return {
+        config = {
             "base_url": str(data.get("base_url") or "").strip(),
             "username": str(data.get("username") or "").strip(),
             "password": str(data.get("password") or ""),
             "remote_dir": str(data.get("remote_dir") or "").strip(),
             "keep_backups": keep_backups,
         }
+        if config.get("base_url"):
+            try:
+                return normalize_webdav_config(config)
+            except WebDAVError:
+                pass
+        return config
     except (OSError, json.JSONDecodeError):
         return {}
 

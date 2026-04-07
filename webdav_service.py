@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 DEFAULT_TIMEOUT_SECONDS = 20
 MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024  # 1 GB
 STREAM_CHUNK_SIZE = 1024 * 1024
+JIANGUOYUN_DEFAULT_REMOTE_DIR = "office-supplies/backups"
 
 
 class WebDAVError(RuntimeError):
@@ -48,24 +49,37 @@ def _normalize_remote_dir(remote_dir: Optional[str]) -> str:
     return "/".join(parts)
 
 
+def _is_jianguoyun_base_url(base_url: str) -> bool:
+    parsed = urlparse(base_url)
+    return "jianguoyun.com" in parsed.netloc.lower()
+
+
+def _resolve_remote_dir(base_url: str, remote_dir: Optional[str]) -> str:
+    normalized = _normalize_remote_dir(remote_dir)
+    if not _is_jianguoyun_base_url(base_url):
+        return normalized
+
+    path = (urlparse(base_url).path or "").rstrip("/").lower()
+    if not path.startswith("/dav"):
+        raise WebDAVError("坚果云地址应填写为 https://dav.jianguoyun.com/dav/")
+    if normalized.startswith("dav/"):
+        normalized = normalized[4:]
+    if not normalized:
+        # Jianguoyun does not accept PUT uploads directly under the DAV root.
+        normalized = JIANGUOYUN_DEFAULT_REMOTE_DIR
+    return normalized
+
+
 def normalize_webdav_config(payload: dict) -> dict:
     base_url = _normalize_base_url(str(payload.get("base_url") or ""))
-    parsed = urlparse(base_url)
     username = str(payload.get("username") or "").strip()
     password = str(payload.get("password") or "")
-    remote_dir = _normalize_remote_dir(payload.get("remote_dir"))
+    remote_dir = _resolve_remote_dir(base_url, payload.get("remote_dir"))
     keep_backups_raw = payload.get("keep_backups", 0)
     try:
         keep_backups = max(0, int(keep_backups_raw or 0))
     except (TypeError, ValueError):
         raise WebDAVError("keep_backups 必须是非负整数")
-    if "jianguoyun.com" in parsed.netloc.lower():
-        # 坚果云 WebDAV 地址必须指向 /dav 根路径。
-        path = (parsed.path or "").rstrip("/").lower()
-        if not path.startswith("/dav"):
-            raise WebDAVError("坚果云地址应填写为 https://dav.jianguoyun.com/dav/")
-        if remote_dir.startswith("dav/"):
-            remote_dir = remote_dir[4:]
     if len(username) > 200:
         raise WebDAVError("username 长度不能超过 200")
     if len(password) > 200:
@@ -150,7 +164,7 @@ def ensure_remote_dir(base_url: str, remote_dir: str, auth_headers: dict[str, st
 def test_connection(config: dict) -> None:
     auth_headers = _build_auth_header(config.get("username", ""), config.get("password", ""))
     base_url = _normalize_base_url(config.get("base_url", ""))
-    remote_dir = _normalize_remote_dir(config.get("remote_dir"))
+    remote_dir = _resolve_remote_dir(base_url, config.get("remote_dir"))
     ensure_remote_dir(base_url, remote_dir, auth_headers)
     target = _compose_collection_url(base_url, remote_dir)
     headers = {
@@ -171,7 +185,7 @@ def upload_bytes(config: dict, filename: str, content: bytes) -> str:
     if not filename or "/" in filename or "\\" in filename:
         raise WebDAVError("文件名不合法")
     base_url = _normalize_base_url(config.get("base_url", ""))
-    remote_dir = _normalize_remote_dir(config.get("remote_dir"))
+    remote_dir = _resolve_remote_dir(base_url, config.get("remote_dir"))
     auth_headers = _build_auth_header(config.get("username", ""), config.get("password", ""))
     ensure_remote_dir(base_url, remote_dir, auth_headers)
     remote_path = str(PurePosixPath(remote_dir) / filename) if remote_dir else filename
@@ -191,7 +205,7 @@ def _build_backup_target(config: dict, filename: str) -> tuple[str, dict[str, st
     if not filename or "/" in filename or "\\" in filename:
         raise WebDAVError("文件名不合法")
     base_url = _normalize_base_url(config.get("base_url", ""))
-    remote_dir = _normalize_remote_dir(config.get("remote_dir"))
+    remote_dir = _resolve_remote_dir(base_url, config.get("remote_dir"))
     auth_headers = _build_auth_header(config.get("username", ""), config.get("password", ""))
     ensure_remote_dir(base_url, remote_dir, auth_headers)
     remote_path = str(PurePosixPath(remote_dir) / filename) if remote_dir else filename
@@ -280,7 +294,7 @@ def _http_datetime_sort_key(value: str) -> float:
 
 def list_backups(config: dict) -> list[dict]:
     base_url = _normalize_base_url(config.get("base_url", ""))
-    remote_dir = _normalize_remote_dir(config.get("remote_dir"))
+    remote_dir = _resolve_remote_dir(base_url, config.get("remote_dir"))
     auth_headers = _build_auth_header(config.get("username", ""), config.get("password", ""))
     ensure_remote_dir(base_url, remote_dir, auth_headers)
     target = _compose_collection_url(base_url, remote_dir)
