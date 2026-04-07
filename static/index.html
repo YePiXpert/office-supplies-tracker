@@ -139,6 +139,44 @@
                         @clear-filters="clearFilters"
                     ></ledger-filter-panel>
 
+                    <ledger-batch-toolbar
+                        v-if="selectedItems.length"
+                        :selected-count="selectedItems.length"
+                        :batch-edit-field="batchEditField"
+                        :batch-edit-value="batchEditValue"
+                        :statuses="statuses"
+                        :payment-statuses="paymentStatuses"
+                        @update:batch-edit-field="batchEditField = $event"
+                        @update:batch-edit-value="batchEditValue = $event"
+                        @field-change="onBatchFieldChange"
+                        @apply-update="batchUpdate"
+                        @batch-delete="batchDelete"
+                    ></ledger-batch-toolbar>
+
+                    <div class="flex-1 min-h-0 bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl overflow-hidden flex flex-col">
+                        <ledger-table-panel
+                            :items="items"
+                            :selected-items="selectedItems"
+                            :select-all="selectAll"
+                            :focused-ledger-item-id="focusedLedgerItemId"
+                            :statuses="statuses"
+                            :payment-statuses="paymentStatuses"
+                            :page-range-start="pageRangeStart"
+                            :page-range-end="pageRangeEnd"
+                            :total-items="totalItems"
+                            :page-size="pageSize"
+                            :page-size-options="pageSizeOptions"
+                            :current-page="currentPage"
+                            :page-tokens="pageTokens"
+                            :total-pages="totalPages"
+                            :jump-page="jumpPage"
+                            @update:selected-items="selectedItems = $event"
+                            @update:select-all="selectAll = $event"
+                            @update:page-size="pageSize = $event"
+                            @update:jump-page="jumpPage = $event"
+                        ></ledger-table-panel>
+                    </div>
+
                 </section>
 
                 <section v-else-if="currentView === 'execution'" class="view-pane h-full min-h-0 flex flex-col gap-4">
