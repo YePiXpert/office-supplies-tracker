@@ -2,11 +2,8 @@ name: Build Windows Packages
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -68,9 +65,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const tag = context.ref.startsWith('refs/tags/v')
-              ? context.ref.replace('refs/tags/', '')
-              : 'latest';
+            const tag = context.ref.replace('refs/tags/', '');
             const targetNames = new Set([
               'office-supplies-portable.exe',
               'office-supplies-setup.exe',
@@ -106,10 +101,10 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
+          tag: ${{ github.ref_name }}
           commit: ${{ github.sha }}
-          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '🚀 最新开发版' }}
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          name: ${{ github.ref_name }}
+          prerelease: false
           artifacts: dist/office-supplies-portable.exe,dist/office-supplies-setup.exe
           allowUpdates: true
           removeArtifacts: false
