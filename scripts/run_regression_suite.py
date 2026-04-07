@@ -36,13 +36,14 @@ def _normalize_text(value: Any) -> str:
 
 def _load_suite(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
-        raise FileNotFoundError(f"回归用例不存在: {path}")
+        raise FileNotFoundError(f"Regression suite file not found: {path}")
+
     data = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(data, list):
         return data
     if isinstance(data, dict) and isinstance(data.get("cases"), list):
         return data["cases"]
-    raise ValueError("用例格式错误，应为列表或包含 cases 列表的对象")
+    raise ValueError("Regression suite format is invalid: expected a list or an object with a 'cases' list.")
 
 
 def _get_item_names(parsed: dict[str, Any]) -> list[str]:
@@ -70,6 +71,7 @@ def _evaluate_case(case: dict[str, Any], root: Path) -> CaseResult:
 
     try:
         from parser import parse_document
+
         parsed = parse_document(str(case_file))
     except Exception:
         issues.append("parse:exception")
@@ -122,13 +124,13 @@ def run_suite(suite_path: Path, save_report: Path | None = None) -> int:
     try:
         import pdfplumber  # noqa: F401
     except ModuleNotFoundError:
-        print("缺少依赖：pdfplumber。请先安装 requirements.txt 后再执行回归。")
+        print("Missing dependency: pdfplumber. Install requirements.txt before running regression checks.")
         return 2
 
     root = Path.cwd()
     cases = _load_suite(suite_path)
     if not cases:
-        print("回归套件为空，没有可执行用例。")
+        print("Regression suite is empty; no cases to execute.")
         return 0
 
     results: list[CaseResult] = []
@@ -191,18 +193,18 @@ def main() -> None:
         "--suite",
         type=Path,
         default=DEFAULT_SUITE,
-        help=f"回归用例 JSON 路径（默认: {DEFAULT_SUITE}）",
+        help=f"Path to the regression suite JSON file. Default: {DEFAULT_SUITE}",
     )
     parser.add_argument(
         "--report",
         type=Path,
         default=DEFAULT_REPORT,
-        help=f"报告输出路径（默认: {DEFAULT_REPORT}）",
+        help=f"Path to write the regression report. Default: {DEFAULT_REPORT}",
     )
     parser.add_argument(
         "--no-report",
         action="store_true",
-        help="不写报告文件",
+        help="Skip writing the regression report file.",
     )
     args = parser.parse_args()
 
