@@ -13,6 +13,9 @@ jobs:
   bump-version:
     if: ${{ github.event_name == 'workflow_dispatch' || (github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      release_tag: ${{ steps.release.outputs.tag }}
 
     steps:
       - name: Checkout
@@ -36,13 +39,25 @@ jobs:
           python scripts/bump_version.py --bump patch
           echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
+      - name: Compute release tag
+        id: release
+        run: |
+          echo "tag=v${{ steps.bump.outputs.version }}" >> "$GITHUB_OUTPUT"
+
       - name: Commit version bump
         run: |
           git add VERSION main.py static/state.js static/index.html installer.iss installer/OfficeSuppliesTracker.iss README.md USAGE.md
           git commit -m "chore: bump version to v${{ steps.bump.outputs.version }} [skip ci]"
-          git tag "v${{ steps.bump.outputs.version }}"
+          git tag "${{ steps.release.outputs.tag }}"
 
       - name: Push commit and tag
         run: |
           git push origin HEAD:main
-          git push origin "v${{ steps.bump.outputs.version }}"
+          git push origin "${{ steps.release.outputs.tag }}"
+
+  build-windows-release:
+    needs: bump-version
+    uses: ./.github/workflows/build-windows-exe.yml
+    with:
+      release_tag: ${{ needs.bump-version.outputs.release_tag }}
+    secrets: inherit
