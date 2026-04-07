@@ -1,10 +1,19 @@
 (function (global) {
     const { createApp } = Vue;
 
-    createApp({
+    const app = createApp({
         ...global.AppState,
         ...global.AppApi,
-    }).mount('#app');
+    });
+
+    if (global.LedgerFilterPanel) {
+        app.component('ledger-filter-panel', global.LedgerFilterPanel);
+    }
+    if (global.LedgerBatchToolbar) {
+        app.component('ledger-batch-toolbar', global.LedgerBatchToolbar);
+    }
+
+    app.mount('#app');
 
     document.getElementById('app').style.display = '';
 })(window);

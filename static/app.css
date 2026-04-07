@@ -127,6 +127,145 @@ body {
 .table-input:hover { border-color: var(--line-border); background: #ffffff; }
 .table-input:focus { border-color: var(--brand-secondary); background: #ffffff; outline: none; }
 
+/* 台账筛选头：从大模板中抽离出的独立块 */
+.ledger-filter-card {
+    background: var(--bg-card);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    border: 1px solid rgb(15 23 42 / 0.05);
+    box-shadow: var(--shadow-sm);
+}
+
+.ledger-filter-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.ledger-filter-copy {
+    min-width: 0;
+}
+
+.ledger-filter-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    color: #0f172a;
+}
+
+.ledger-filter-description {
+    margin: 0.25rem 0 0;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+.ledger-filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.ledger-filter-row {
+    margin-top: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+.ledger-filter-search {
+    position: relative;
+    flex: 1 1 260px;
+    min-width: 260px;
+}
+
+.ledger-filter-search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    width: 1rem;
+    height: 1rem;
+    color: #94a3b8;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.ledger-filter-control {
+    height: 2.5rem;
+    padding: 0 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    background: #ffffff;
+    color: var(--text-main);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+}
+
+.ledger-filter-control::placeholder {
+    color: #94a3b8;
+    font-weight: 400;
+}
+
+.ledger-filter-control:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 4px rgb(59 130 246 / 0.12);
+}
+
+.ledger-filter-control-search {
+    width: 100%;
+    padding-left: 2.5rem;
+    font-weight: 400;
+}
+
+.ledger-batch-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1.25rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.ledger-batch-toolbar-count {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.ledger-batch-toolbar-control {
+    height: 2rem;
+    padding: 0 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    background: #ffffff;
+    color: #334155;
+    transition: all 0.2s ease-in-out;
+}
+
+.ledger-batch-toolbar-control:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 4px rgb(59 130 246 / 0.12);
+}
+
+.ledger-batch-toolbar-spacer {
+    margin-left: auto;
+}
+
+@media (min-width: 1024px) {
+    .ledger-filter-header {
+        flex-direction: row;
+        align-items: flex-end;
+        justify-content: space-between;
+    }
+}
+
 /* 弹窗：稳重且规范 */
 .modal-overlay {
     background: rgba(15, 23, 42, 0.4);

@@ -195,6 +195,19 @@
                     if (!this.totalItems) return 0;
                     return Math.min(this.currentPage * this.pageSize, this.totalItems);
                 },
+                navPrimaryViews() {
+                    return window.AppViewConfig?.primaryNav || [];
+                },
+                navSecondaryViews() {
+                    return window.AppViewConfig?.secondaryNav || [];
+                },
+                currentViewMeta() {
+                    const config = window.AppViewConfig?.views || {};
+                    return config[this.currentView] || config.dashboard || {
+                        id: 'dashboard',
+                        title: '\u6982\u89c8\u770b\u677f',
+                    };
+                },
                 pageTokens() {
                     const total = this.totalPages;
                     const current = this.currentPage;

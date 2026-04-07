@@ -507,7 +507,7 @@
                     }
                 },
                 isValidView(view) {
-                    return ['dashboard', 'ledger', 'execution', 'reports', 'audit', 'settings'].includes(view);
+                    return (global.AppViewConfig?.ids || ['dashboard', 'ledger', 'execution', 'reports', 'audit', 'settings']).includes(view);
                 },
                 normalizeView(view) {
                     return this.isValidView(view) ? view : 'dashboard';

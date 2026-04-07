@@ -65,37 +65,25 @@
                 </div>
             </div>
             <nav class="p-3 space-y-1">
-                <button @click="switchView('dashboard')"
-                        :class="currentView === 'dashboard' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-700/10' : 'text-slate-600 hover:bg-slate-50'"
-                        class="w-full h-10 px-3 rounded-lg text-left text-sm font-medium transition-all duration-200 ease-in-out">
-                    📊 概览
-                </button>
-                <button @click="switchView('ledger')"
-                        :class="currentView === 'ledger' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-700/10' : 'text-slate-600 hover:bg-slate-50'"
-                        class="w-full h-10 px-3 rounded-lg text-left text-sm font-medium transition-all duration-200 ease-in-out">
-                    📄 台账
-                </button>
-                <button @click="switchView('execution')"
-                        :class="currentView === 'execution' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-700/10' : 'text-slate-600 hover:bg-slate-50'"
-                        class="w-full h-10 px-3 rounded-lg text-left text-sm font-medium transition-all duration-200 ease-in-out">
-                    🧭 执行看板
-                </button>
-                <button @click="switchView('reports')"
-                        :class="currentView === 'reports' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-700/10' : 'text-slate-600 hover:bg-slate-50'"
-                        class="w-full h-10 px-3 rounded-lg text-left text-sm font-medium transition-all duration-200 ease-in-out">
-                    📊 统计报表
-                </button>
-                <button @click="switchView('audit')"
-                        :class="currentView === 'audit' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-700/10' : 'text-slate-600 hover:bg-slate-50'"
-                        class="w-full h-10 px-3 rounded-lg text-left text-sm font-medium transition-all duration-200 ease-in-out">
-                    🛡️ 审计日志
+                <button
+                    v-for="view in navPrimaryViews"
+                    :key="view.id"
+                    @click="switchView(view.id)"
+                    :class="currentView === view.id ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-700/10' : 'text-slate-600 hover:bg-slate-50'"
+                    class="w-full h-10 px-3 rounded-lg text-left text-sm font-medium transition-all duration-200 ease-in-out"
+                >
+                    {{ view.icon }} {{ view.label }}
                 </button>
             </nav>
             <div class="mt-auto p-3 border-t border-slate-200">
-                <button @click="switchView('settings')"
-                        :class="currentView === 'settings' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-700/10' : 'text-slate-600 hover:bg-slate-50'"
-                        class="w-full h-10 px-3 rounded-lg text-left text-sm font-medium transition-all duration-200 ease-in-out">
-                    ⚙️ 系统设置
+                <button
+                    v-for="view in navSecondaryViews"
+                    :key="view.id"
+                    @click="switchView(view.id)"
+                    :class="currentView === view.id ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-700/10' : 'text-slate-600 hover:bg-slate-50'"
+                    class="w-full h-10 px-3 rounded-lg text-left text-sm font-medium transition-all duration-200 ease-in-out"
+                >
+                    {{ view.icon }} {{ view.label }}
                 </button>
                 <button @click="authLogout(true)"
                         class="mt-2 w-full h-10 px-3 rounded-lg text-left text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all duration-200 ease-in-out">
@@ -108,15 +96,7 @@
         <div class="flex-1 min-w-0 flex flex-col">
             <header class="h-16 bg-white border-b border-slate-200 px-6 flex items-center">
                 <div class="text-sm text-slate-500">
-                    <span class="font-medium text-slate-800">
-                        {{
-                            currentView === 'dashboard' ? '概览看板' :
-                            (currentView === 'ledger' ? '采购台账明细' :
-                            (currentView === 'execution' ? '采购执行看板' :
-                            (currentView === 'reports' ? '统计报表' :
-                            (currentView === 'audit' ? '审计日志' : '系统设置'))))
-                        }}
-                    </span>
+                    <span class="font-medium text-slate-800">{{ currentViewMeta.title }}</span>
                 </div>
             </header>
 
@@ -178,65 +158,38 @@
                 </section>
 
                 <section v-else-if="currentView === 'ledger'" class="view-pane h-full min-h-0 flex flex-col gap-3">
-                    <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-4 shrink-0">
-                        <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-                            <div>
-                                <h2 class="text-2xl font-semibold tracking-tight text-slate-900">采购台账</h2>
-                                <p class="mt-1 text-sm text-slate-500">采购明细、审批状态与付款进度的统一视图</p>
-                            </div>
-                            <div class="flex flex-wrap items-center gap-2">
-                                <button @click="$refs.fileInput && $refs.fileInput.click()" class="h-9 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">导入单据</button>
-                                <button @click="openAddModal" class="h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">手动新增</button>
-                                <button @click="exportExcel" class="h-9 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">导出 EXCEL</button>
-                            </div>
-                        </div>
-
-                        <div class="mt-4 flex flex-wrap items-center gap-2.5">
-                            <div class="relative flex-1 min-w-[260px]">
-                                <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                                <input v-model="filterKeyword" @keyup.enter="handleFilter" class="toolbar-control w-full pl-10 h-10 border border-slate-300 rounded-lg bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="搜索流水号 / 部门 / 物品名称...">
-                            </div>
-                            <select v-model="filterStatus" @change="handleFilter" class="h-10 px-3 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                                <option value="">采购状态</option>
-                                <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
-                            </select>
-                            <select v-model="filterDepartment" @change="handleFilter" class="h-10 px-3 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                                <option value="">部门筛选</option>
-                                <option v-for="d in departments" :key="d" :value="d">{{ d }}</option>
-                            </select>
-                            <input type="month" v-model="filterMonth" @change="handleFilter" class="h-10 px-3 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                            <button @click="handleFilter" class="h-10 px-5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 ease-in-out">搜索</button>
-                            <button @click="clearFilters" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">清空</button>
-                        </div>
-                    </div>
+                    <ledger-filter-panel
+                        :filter-keyword="filterKeyword"
+                        :filter-status="filterStatus"
+                        :filter-department="filterDepartment"
+                        :filter-month="filterMonth"
+                        :statuses="statuses"
+                        :departments="departments"
+                        @update:filter-keyword="filterKeyword = $event"
+                        @update:filter-status="filterStatus = $event"
+                        @update:filter-department="filterDepartment = $event"
+                        @update:filter-month="filterMonth = $event"
+                        @import-docs="$refs.fileInput && $refs.fileInput.click()"
+                        @add-item="openAddModal"
+                        @export-excel="exportExcel"
+                        @search="handleFilter"
+                        @clear-filters="clearFilters"
+                    ></ledger-filter-panel>
 
                     <div class="flex-1 min-h-0 bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl overflow-hidden flex flex-col">
-                        <div v-if="selectedItems.length > 0" class="px-5 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-3">
-                            <span class="text-xs font-semibold text-slate-600">已选 {{ selectedItems.length }} 条</span>
-                            <select v-model="batchEditField" @change="onBatchFieldChange" class="h-8 py-0 px-2 text-[11px] bg-white border border-slate-300 rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                                <option value="">批量修改字段...</option>
-                                <option value="status">采购状态</option>
-                                <option value="payment_status">付款状态</option>
-                            </select>
-                            <select
-                                v-if="batchEditField === 'status'"
-                                v-model="batchEditValue"
-                                class="h-8 py-0 px-2 text-[11px] bg-white border border-slate-300 rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out"
-                            >
-                                <option value="">选择采购状态...</option>
-                                <option v-for="s in statuses" :key="`batch-s-${s}`" :value="s">{{ s }}</option>
-                            </select>
-                            <select
-                                v-if="batchEditField === 'payment_status'"
-                                v-model="batchEditValue"
-                                class="h-8 py-0 px-2 text-[11px] bg-white border border-slate-300 rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out"
-                            >
-                                <option value="">选择付款状态...</option>
-                                <option v-for="p in paymentStatuses" :key="`batch-p-${p}`" :value="p">{{ p }}</option>
-                            </select>
-                            <button @click="batchUpdate" v-if="batchEditField" class="h-8 px-4 rounded-md bg-blue-600 text-white text-[11px] font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">应用修改</button>
-                            <button @click="batchDelete" class="h-8 px-4 rounded-md bg-white border border-rose-200 text-rose-600 text-[11px] font-semibold ml-auto hover:bg-rose-50 transition-all duration-200 ease-in-out">批量删除</button>
-                        </div>
+                        <ledger-batch-toolbar
+                            v-if="selectedItems.length > 0"
+                            :selected-count="selectedItems.length"
+                            :batch-edit-field="batchEditField"
+                            :batch-edit-value="batchEditValue"
+                            :statuses="statuses"
+                            :payment-statuses="paymentStatuses"
+                            @update:batch-edit-field="batchEditField = $event"
+                            @update:batch-edit-value="batchEditValue = $event"
+                            @field-change="onBatchFieldChange"
+                            @apply-update="batchUpdate"
+                            @batch-delete="batchDelete"
+                        ></ledger-batch-toolbar>
 
                         <div class="flex-1 min-h-0 overflow-x-auto border-b border-slate-200">
                             <table v-if="items.length > 0" class="w-full min-w-max whitespace-nowrap text-left border-separate border-spacing-0">
@@ -1688,9 +1641,101 @@
         </div>
 
     </div>
+
+    <template id="ledger-filter-panel-template">
+        <div class="ledger-filter-card shrink-0">
+            <div class="ledger-filter-header">
+                <div class="ledger-filter-copy">
+                    <h2 class="ledger-filter-title">采购台账</h2>
+                    <p class="ledger-filter-description">采购明细、审批状态与付款进度的统一视图</p>
+                </div>
+                <div class="ledger-filter-actions">
+                    <button @click="$emit('import-docs')" class="h-9 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">导入单据</button>
+                    <button @click="$emit('add-item')" class="h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">手动新增</button>
+                    <button @click="$emit('export-excel')" class="h-9 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">导出 EXCEL</button>
+                </div>
+            </div>
+
+            <div class="ledger-filter-row">
+                <label class="ledger-filter-search">
+                    <svg class="ledger-filter-search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    <input
+                        :value="filterKeyword"
+                        @input="$emit('update:filterKeyword', $event.target.value)"
+                        @keyup.enter="$emit('search')"
+                        class="ledger-filter-control ledger-filter-control-search"
+                        placeholder="搜索流水号 / 部门 / 物品名称..."
+                    >
+                </label>
+                <select
+                    :value="filterStatus"
+                    @change="$emit('update:filterStatus', $event.target.value); $emit('search')"
+                    class="ledger-filter-control"
+                >
+                    <option value="">采购状态</option>
+                    <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
+                </select>
+                <select
+                    :value="filterDepartment"
+                    @change="$emit('update:filterDepartment', $event.target.value); $emit('search')"
+                    class="ledger-filter-control"
+                >
+                    <option value="">部门筛选</option>
+                    <option v-for="d in departments" :key="d" :value="d">{{ d }}</option>
+                </select>
+                <input
+                    type="month"
+                    :value="filterMonth"
+                    @input="$emit('update:filterMonth', $event.target.value)"
+                    @change="$emit('search')"
+                    class="ledger-filter-control"
+                >
+                <button @click="$emit('search')" class="h-10 px-5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 ease-in-out">搜索</button>
+                <button @click="$emit('clear-filters')" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">清空</button>
+            </div>
+        </div>
+    </template>
+
+    <template id="ledger-batch-toolbar-template">
+        <div class="ledger-batch-toolbar">
+            <span class="ledger-batch-toolbar-count">已选 {{ selectedCount }} 条</span>
+            <select
+                :value="batchEditField"
+                @change="$emit('update:batchEditField', $event.target.value); $emit('field-change')"
+                class="ledger-batch-toolbar-control"
+            >
+                <option value="">批量修改字段...</option>
+                <option value="status">采购状态</option>
+                <option value="payment_status">付款状态</option>
+            </select>
+            <select
+                v-if="batchEditField === 'status'"
+                :value="batchEditValue"
+                @change="$emit('update:batchEditValue', $event.target.value)"
+                class="ledger-batch-toolbar-control"
+            >
+                <option value="">选择采购状态...</option>
+                <option v-for="s in statuses" :key="`batch-s-${s}`" :value="s">{{ s }}</option>
+            </select>
+            <select
+                v-if="batchEditField === 'payment_status'"
+                :value="batchEditValue"
+                @change="$emit('update:batchEditValue', $event.target.value)"
+                class="ledger-batch-toolbar-control"
+            >
+                <option value="">选择付款状态...</option>
+                <option v-for="p in paymentStatuses" :key="`batch-p-${p}`" :value="p">{{ p }}</option>
+            </select>
+            <button @click="$emit('apply-update')" v-if="batchEditField" class="h-8 px-4 rounded-md bg-blue-600 text-white text-[11px] font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">应用修改</button>
+            <button @click="$emit('batch-delete')" class="ledger-batch-toolbar-spacer h-8 px-4 rounded-md bg-white border border-rose-200 text-rose-600 text-[11px] font-semibold hover:bg-rose-50 transition-all duration-200 ease-in-out">批量删除</button>
+        </div>
+    </template>
     
+    <script src="/static/view-config.js?v=1.2.11"></script>
     <script src="/static/state.js?v=1.2.11"></script>
     <script src="/static/api.js?v=1.2.11"></script>
+    <script src="/static/ledger-filter-panel.js?v=1.2.11"></script>
+    <script src="/static/ledger-batch-toolbar.js?v=1.2.11"></script>
     <script src="/static/ui.js?v=1.2.11"></script>
     <script>
         window.addEventListener('load', () => {
