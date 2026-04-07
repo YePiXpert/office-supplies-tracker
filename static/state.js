@@ -13,7 +13,7 @@
                     filterStatus: '',
                     filterDepartment: '',
                     filterMonth: '',
-                    appVersion: '1.2.10',
+                    appVersion: '1.2.11',
                     authInitialized: false,
                     isAuthenticated: false,
                     authView: 'loading',
