@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -29,6 +30,31 @@ def bump_version(version: str, bump_type: str) -> str:
     if bump_type == "patch":
         return format_version((major, minor, patch + 1))
     raise ValueError(f"Unsupported bump type: {bump_type}")
+
+
+def list_release_tags() -> set[str]:
+    try:
+        result = subprocess.run(
+            ["git", "tag", "--list", "v*"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return set()
+
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
+def next_available_version(current_version: str, bump_type: str) -> str:
+    existing_tags = list_release_tags()
+    candidate = bump_version(current_version, bump_type)
+
+    while f"v{candidate}" in existing_tags:
+        candidate = bump_version(candidate, bump_type)
+
+    return candidate
 
 
 def replace_pattern(path: Path, pattern: str, replacement: str, *, expected_count: int | None = 1) -> None:
@@ -92,13 +118,25 @@ def main() -> None:
         dest="set_version",
         help="Set an explicit semantic version instead of bumping.",
     )
+    parser.add_argument(
+        "--avoid-existing-tags",
+        action="store_true",
+        help="When bumping, skip over versions whose release tags already exist.",
+    )
     args = parser.parse_args()
 
     if bool(args.bump) == bool(args.set_version):
         raise SystemExit("Specify exactly one of --bump or --set.")
 
     current_version = VERSION_FILE.read_text(encoding="utf-8").strip()
-    next_version = args.set_version or bump_version(current_version, args.bump)
+    if args.set_version:
+        next_version = args.set_version
+        if args.avoid_existing_tags and f"v{next_version}" in list_release_tags():
+            raise SystemExit(f"Release tag already exists: v{next_version}")
+    elif args.avoid_existing_tags:
+        next_version = next_available_version(current_version, args.bump)
+    else:
+        next_version = bump_version(current_version, args.bump)
     parse_version(next_version)
     sync_version(next_version)
     print(next_version)

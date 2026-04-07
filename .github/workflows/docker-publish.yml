@@ -40,7 +40,9 @@ jobs:
       - name: Prepare image tags
         id: prep
         run: |
-          IMAGE="ghcr.io/percivalee/office-supplies-tracker"
+          OWNER="${GITHUB_REPOSITORY_OWNER:-${GITHUB_REPOSITORY%%/*}}"
+          OWNER="$(echo "${OWNER}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE="ghcr.io/${OWNER}/office-supplies-tracker"
           TAGS="${IMAGE}:latest\n${IMAGE}:sha-${GITHUB_SHA}"
 
           if [ "${GITHUB_EVENT_NAME}" = "release" ]; then

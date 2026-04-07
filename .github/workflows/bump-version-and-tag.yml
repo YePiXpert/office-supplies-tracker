@@ -23,6 +23,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Refresh tags
+        run: git fetch --tags --force
+
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -39,7 +42,7 @@ jobs:
       - name: Bump patch version
         id: bump
         run: |
-          python scripts/bump_version.py --bump patch
+          python scripts/bump_version.py --bump patch --avoid-existing-tags
           echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Compute release tag
@@ -51,6 +54,9 @@ jobs:
         run: |
           git add VERSION main.py static/state.js static/index.html installer.iss installer/OfficeSuppliesTracker.iss README.md USAGE.md
           git commit -m "chore: bump version to v${{ steps.bump.outputs.version }} [skip ci]"
+
+      - name: Create release tag
+        run: |
           git tag "${{ steps.release.outputs.tag }}"
 
       - name: Push commit and tag
