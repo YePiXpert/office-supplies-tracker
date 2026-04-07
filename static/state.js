@@ -175,7 +175,7 @@
                     },
                     newItem: {
                         serial_number: '', department: '', handler: '',
-                        request_date: new Date().toISOString().split('T')[0],
+                        request_date: global.AppTime ? global.AppTime.todayDateText() : '',
                         item_name: '', quantity: 1, unit_price: null, purchase_link: ''
                     }
                 };

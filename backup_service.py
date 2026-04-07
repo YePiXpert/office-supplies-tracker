@@ -3,7 +3,6 @@ import shutil
 import sqlite3
 import stat
 import zipfile
-from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Callable, Optional
@@ -12,6 +11,7 @@ from uuid import uuid4
 from api_utils import safe_unlink
 from app_runtime import APP_STATE_DIR, UPLOAD_DIR
 from database import DB_PATH
+from time_utils import beijing_filename_timestamp
 
 MAX_BACKUP_ENTRIES = 5000
 MAX_BACKUP_TOTAL_SIZE = 1024 * 1024 * 1024  # 1 GB
@@ -167,7 +167,7 @@ def _build_archive(target: zipfile.ZipFile) -> None:
 def build_backup_archive() -> tuple[BytesIO, str]:
     """打包数据库与上传目录为 zip。"""
     buffer = BytesIO()
-    filename = f"office_supplies_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    filename = f"office_supplies_backup_{beijing_filename_timestamp()}.zip"
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         _build_archive(archive)
     buffer.seek(0)

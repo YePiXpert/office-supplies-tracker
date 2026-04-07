@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi import HTTPException
 
 from app_runtime import UPLOAD_DIR
+from time_utils import beijing_filename_timestamp
 
 ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".jfif"}
 MAX_DOCUMENT_UPLOAD_BYTES = 30 * 1024 * 1024  # 30MB
@@ -61,7 +62,7 @@ def build_upload_path(filename: str) -> Path:
     if extension not in ALLOWED_UPLOAD_EXTENSIONS:
         raise HTTPException(status_code=400, detail="仅支持 PDF / PNG / JPG / JPEG / JFIF 文件")
 
-    unique_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid4().hex}{extension}"
+    unique_name = f"{beijing_filename_timestamp()}_{datetime.now().strftime('%f')}_{uuid4().hex}{extension}"
     return UPLOAD_DIR / unique_name
 
 

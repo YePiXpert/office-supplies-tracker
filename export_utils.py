@@ -3,6 +3,8 @@ from io import BytesIO
 from typing import Any, Iterable, Mapping, Optional
 from urllib.parse import quote
 
+from time_utils import beijing_filename_timestamp
+
 EXPORT_HEADERS = (
     "流水号", "申领日期", "申领部门", "经办人", "物品名称",
     "数量", "单价", "状态", "到货日期", "分发日期", "签收备注",
@@ -57,7 +59,7 @@ def build_items_excel_stream(items: Iterable[Mapping[str, Any]]) -> BytesIO:
 
 
 def build_export_content_disposition(now: Optional[datetime] = None) -> str:
-    timestamp = (now or datetime.now()).strftime("%Y%m%d_%H%M%S")
+    timestamp = beijing_filename_timestamp(now)
     filename = f"{EXPORT_DISPLAY_NAME_PREFIX}_{timestamp}.xlsx"
     encoded_filename = quote(filename)
     return (

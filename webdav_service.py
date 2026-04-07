@@ -12,6 +12,8 @@ from urllib.request import Request, urlopen
 from uuid import uuid4
 import xml.etree.ElementTree as ET
 
+from time_utils import format_http_datetime_beijing
+
 
 DEFAULT_TIMEOUT_SECONDS = 20
 MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024  # 1 GB
@@ -262,19 +264,7 @@ def upload_file(config: dict, filename: str, file_path: Path) -> str:
 
 
 def _parse_http_datetime(value: str) -> str:
-    raw = (value or "").strip()
-    if not raw:
-        return ""
-    try:
-        dt = parsedate_to_datetime(raw)
-        if dt is None:
-            return raw
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        dt = dt.astimezone(timezone.utc)
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
-    except (TypeError, ValueError, IndexError):
-        return raw
+    return format_http_datetime_beijing(value)
 
 
 def _http_datetime_sort_key(value: str) -> float:

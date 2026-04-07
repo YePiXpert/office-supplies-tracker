@@ -98,26 +98,105 @@
             </header>
 
             <main class="flex-1 min-h-0 p-6 overflow-hidden">
-                <section v-if="currentView === 'dashboard'" class="view-pane h-full overflow-y-auto space-y-6 pr-1">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                        <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-5">
-                            <div class="text-sm font-medium text-slate-500">所有采购项</div>
-                            <div class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ stats.total }}</div>
+                <section v-if="currentView === 'dashboard'" class="dashboard-pane view-pane h-full overflow-y-auto space-y-6 pr-1">
+                    <div class="dashboard-hero">
+                        <div class="dashboard-hero-copy">
+                            <div class="dashboard-eyebrow">采购概览</div>
+                            <h2 class="dashboard-hero-title">办公用品采购的统一总览</h2>
+                            <p class="dashboard-hero-description">从台账数量、发票进度到当前待办，一屏掌握采购执行状态。</p>
                         </div>
-                        <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-5">
-                            <div class="text-sm font-medium text-slate-500">待采购申请</div>
-                            <div class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ stats.statusCount['待采购'] || 0 }}</div>
-                        </div>
-                        <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-5">
-                            <div class="text-sm font-medium text-slate-500">已开具发票</div>
-                            <div class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ stats.invoiceCount.issued }}</div>
-                        </div>
-                        <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-5">
-                            <div class="text-sm font-medium text-slate-500">已完成报销</div>
-                            <div class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ stats.paymentCount['已报销'] || 0 }}</div>
+                        <div class="dashboard-hero-summary">
+                            <div class="dashboard-summary-label">当前采购总量</div>
+                            <div class="dashboard-summary-value">{{ stats.total }}</div>
+                            <div class="dashboard-summary-meta">含待采购、待到货、待分发与已分发记录</div>
                         </div>
                     </div>
 
+                    <div class="dashboard-grid">
+                        <div class="dashboard-card dashboard-card-accent">
+                            <div class="dashboard-card-label">待采购申请</div>
+                            <div class="dashboard-card-value">{{ stats.statusCount['待采购'] || 0 }}</div>
+                            <div class="dashboard-card-meta">等待采购下单的记录数</div>
+                        </div>
+                        <div class="dashboard-card">
+                            <div class="dashboard-card-label">待到货</div>
+                            <div class="dashboard-card-value">{{ stats.statusCount['待到货'] || 0 }}</div>
+                            <div class="dashboard-card-meta">已下单，等待收货确认</div>
+                        </div>
+                        <div class="dashboard-card">
+                            <div class="dashboard-card-label">已开具发票</div>
+                            <div class="dashboard-card-value">{{ stats.invoiceCount.issued }}</div>
+                            <div class="dashboard-card-meta">可继续跟进付款与报销</div>
+                        </div>
+                        <div class="dashboard-card">
+                            <div class="dashboard-card-label">已完成报销</div>
+                            <div class="dashboard-card-value">{{ stats.paymentCount['已报销'] || 0 }}</div>
+                            <div class="dashboard-card-meta">当前已闭环的付款记录</div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-content-grid">
+                        <div class="dashboard-panel">
+                            <div class="dashboard-panel-header">
+                                <div>
+                                    <div class="dashboard-panel-title">状态分布</div>
+                                    <div class="dashboard-panel-subtitle">采购流转当前停留位置</div>
+                                </div>
+                            </div>
+                            <div class="dashboard-status-list">
+                                <div class="dashboard-status-item">
+                                    <div class="dashboard-status-copy">
+                                        <span class="dashboard-status-dot dashboard-status-dot-amber"></span>
+                                        <span>待采购</span>
+                                    </div>
+                                    <span class="dashboard-status-value">{{ stats.statusCount['待采购'] || 0 }}</span>
+                                </div>
+                                <div class="dashboard-status-item">
+                                    <div class="dashboard-status-copy">
+                                        <span class="dashboard-status-dot dashboard-status-dot-blue"></span>
+                                        <span>待到货</span>
+                                    </div>
+                                    <span class="dashboard-status-value">{{ stats.statusCount['待到货'] || 0 }}</span>
+                                </div>
+                                <div class="dashboard-status-item">
+                                    <div class="dashboard-status-copy">
+                                        <span class="dashboard-status-dot dashboard-status-dot-violet"></span>
+                                        <span>待分发</span>
+                                    </div>
+                                    <span class="dashboard-status-value">{{ stats.statusCount['待分发'] || 0 }}</span>
+                                </div>
+                                <div class="dashboard-status-item">
+                                    <div class="dashboard-status-copy">
+                                        <span class="dashboard-status-dot dashboard-status-dot-emerald"></span>
+                                        <span>已分发</span>
+                                    </div>
+                                    <span class="dashboard-status-value">{{ stats.statusCount['已分发'] || 0 }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="dashboard-panel">
+                            <div class="dashboard-panel-header">
+                                <div>
+                                    <div class="dashboard-panel-title">最近新增台账</div>
+                                    <div class="dashboard-panel-subtitle">按记录 ID 倒序展示最近 5 条</div>
+                                </div>
+                            </div>
+                            <div v-if="latestItems.length" class="dashboard-recent-list">
+                                <div v-for="item in latestItems" :key="`recent-${item.id}`" class="dashboard-recent-item">
+                                    <div class="dashboard-recent-main">
+                                        <div class="dashboard-recent-name">{{ item.item_name || '未命名物品' }}</div>
+                                        <div class="dashboard-recent-meta">{{ item.department || '未分配部门' }} · {{ item.handler || '未登记经办人' }}</div>
+                                    </div>
+                                    <div class="dashboard-recent-side">
+                                        <div class="dashboard-recent-serial">{{ item.serial_number || `REC-${item.id}` }}</div>
+                                        <div class="dashboard-recent-status">{{ item.status || '-' }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="dashboard-recent-empty">当前还没有可展示的台账记录</div>
+                        </div>
+                    </div>
                 </section>
 
                 <section v-else-if="currentView === 'ledger'" class="view-pane h-full min-h-0 flex flex-col gap-3">
@@ -878,7 +957,7 @@
                                 >
                                     <div class="flex flex-wrap items-center gap-2">
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-semibold" :class="$root.auditActionBadgeClass(log.action)">{{ $root.auditActionText(log.action) }}</span>
-                                        <span class="text-xs font-mono text-slate-500">{{ log.created_at || '-' }}</span>
+                                        <span class="text-xs font-mono text-slate-500">{{ $root.formatBeijingDateTime(log.created_at) }}</span>
                                         <span class="text-xs text-slate-400 ml-auto">IP: {{ log.operator_ip || 'unknown' }}</span>
                                     </div>
                                     <div class="mt-2 text-xs text-slate-600 whitespace-normal">{{ $root.auditTimelineSummary(log) }}</div>
@@ -1216,7 +1295,7 @@
                             </tr>
                             <template v-else>
                                 <tr v-for="row in $root.historyItems" :key="row.id" class="hover:bg-slate-50">
-                                    <td class="px-4 py-3.5 text-xs text-slate-700 font-medium font-mono">{{ row.created_at }}</td>
+                                    <td class="px-4 py-3.5 text-xs text-slate-700 font-medium font-mono">{{ $root.formatBeijingDateTime(row.created_at) }}</td>
                                     <td class="px-4 py-3.5">
                                         <span :class="{ 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20': row.action==='create', 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-700/10': row.action==='update', 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20': row.action==='delete' }" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold">
                                             {{ row.action === 'create' ? '新增' : (row.action === 'update' ? '变更' : '删除') }}
@@ -1284,7 +1363,7 @@
                                             <td class="px-3 py-2.5 text-slate-800 font-medium">{{ item.item_name || '-' }}</td>
                                             <td class="px-3 py-2.5 text-slate-600 font-mono text-xs">{{ item.serial_number || '-' }}</td>
                                             <td class="px-3 py-2.5 text-slate-600">{{ item.department || '-' }} / {{ item.handler || '-' }}</td>
-                                            <td class="px-3 py-2.5 text-slate-600 text-xs font-mono">{{ item.deleted_at || '-' }}</td>
+                                            <td class="px-3 py-2.5 text-slate-600 text-xs font-mono">{{ $root.formatBeijingDateTime(item.deleted_at) }}</td>
                                             <td class="px-3 py-2.5">
                                                 <div class="flex items-center justify-end gap-2">
                                                     <button @click="$root.restoreFromRecycleBin(item)" class="h-7 px-2 rounded-md border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition-all duration-200 ease-in-out">恢复</button>
@@ -1428,12 +1507,12 @@
     </template>
 
     <template id="ledger-table-panel-template">
-        <div class="flex-1 min-h-0 flex flex-col">
-            <div class="flex-1 min-h-0 overflow-x-auto border-b border-slate-200">
-                <table v-if="items.length > 0" class="w-full min-w-max whitespace-nowrap text-left border-separate border-spacing-0">
+        <div class="ledger-table-shell flex-1 min-h-0 flex flex-col">
+            <div class="ledger-table-scroll flex-1 min-h-0 overflow-x-auto border-b border-slate-200">
+                <table v-if="items.length > 0" class="ledger-table w-full min-w-max whitespace-nowrap text-left border-separate border-spacing-0">
                     <thead class="sticky top-0 z-20 bg-slate-50 shadow-[0_1px_0_0_#e2e8f0]">
                         <tr class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                            <th class="px-4 py-3 text-center w-12 sticky left-0 z-20 bg-white shadow-[1px_0_0_0_#e2e8f0]"><input type="checkbox" v-model="selectAllModel" @change="$root.toggleSelectAll()" class="rounded text-blue-600 focus:ring-blue-500/40"></th>
+                            <th class="ledger-table-sticky-col px-4 py-3 text-center w-12 sticky left-0 z-20 bg-white shadow-[1px_0_0_0_#e2e8f0]"><input type="checkbox" v-model="selectAllModel" @change="$root.toggleSelectAll()" class="rounded text-blue-600 focus:ring-blue-500/40"></th>
                             <th class="px-4 py-3 min-w-[96px]">流水号</th>
                             <th class="px-4 py-3 min-w-[120px]">部门</th>
                             <th class="px-4 py-3 min-w-[72px]">经办人</th>
@@ -1447,21 +1526,21 @@
                             <th class="px-4 py-3 min-w-[180px]">签收备注</th>
                             <th class="px-4 py-3 text-center w-24">发票</th>
                             <th class="px-4 py-3 text-center w-32">付款进度</th>
-                            <th class="px-4 py-3 text-center w-24 sticky right-0 z-20 bg-white shadow-[-1px_0_0_0_#e2e8f0]">操作</th>
+                            <th class="ledger-table-sticky-action px-4 py-3 text-center w-24 sticky right-0 z-20 bg-white shadow-[-1px_0_0_0_#e2e8f0]">操作</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-200">
+                    <tbody class="ledger-table-body divide-y divide-slate-200">
                         <tr
                             v-for="item in items"
                             :key="item.id"
                             :data-ledger-item-id="item.id"
                             :class="{
-                                'bg-slate-100/70': selectedItemsModel.includes(item.id),
-                                'bg-amber-50/70': Number(item.id) === Number(focusedLedgerItemId),
+                                'ledger-row-selected bg-slate-100/70': selectedItemsModel.includes(item.id),
+                                'ledger-row-focused bg-amber-50/70': Number(item.id) === Number(focusedLedgerItemId),
                             }"
-                            class="hover:bg-slate-50 transition-colors duration-200 ease-in-out"
+                            class="ledger-row hover:bg-slate-50 transition-colors duration-200 ease-in-out"
                         >
-                            <td class="px-4 py-3 text-center align-middle sticky left-0 z-20 bg-white shadow-[1px_0_0_0_#e2e8f0]">
+                            <td class="ledger-table-sticky-col px-4 py-3 text-center align-middle sticky left-0 z-20 bg-white shadow-[1px_0_0_0_#e2e8f0]">
                                 <input type="checkbox" :value="item.id" v-model="selectedItemsModel" class="rounded text-blue-600 focus:ring-blue-500/40">
                             </td>
                             <td class="px-4 py-3 align-middle">
@@ -1648,7 +1727,7 @@
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-4 py-3 text-center align-middle sticky right-0 z-20 bg-white shadow-[-1px_0_0_0_#e2e8f0]">
+                            <td class="ledger-table-sticky-action px-4 py-3 text-center align-middle sticky right-0 z-20 bg-white shadow-[-1px_0_0_0_#e2e8f0]">
                                 <div class="flex items-center justify-center gap-1">
                                     <button @click="$root.openLedgerDetail(item)" class="text-slate-400 hover:text-blue-600 p-1 transition-colors duration-200" title="详情 / 审计轨迹"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
                                     <button @click="$root.deleteItem(item.id)" class="text-slate-400 hover:text-red-600 p-1 transition-colors duration-200" title="删除"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
@@ -1657,7 +1736,7 @@
                         </tr>
                     </tbody>
                 </table>
-                <div v-if="items.length === 0" class="flex flex-col items-center justify-center py-24 px-6 text-center">
+                <div v-if="items.length === 0" class="ledger-empty-state flex flex-col items-center justify-center py-24 px-6 text-center">
                     <div class="inline-flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
                         <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7.5A2.5 2.5 0 015.5 5h13A2.5 2.5 0 0121 7.5v9A2.5 2.5 0 0118.5 19h-13A2.5 2.5 0 013 16.5v-9zM8 9h8M8 12h8M8 15h5"/>
@@ -1668,31 +1747,32 @@
                 </div>
             </div>
 
-            <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-col lg:flex-row items-start lg:items-center gap-3 lg:gap-4 justify-between">
-                <div class="text-xs text-slate-600">
+            <div class="ledger-table-footer p-4 bg-slate-50 border-t border-slate-200 flex flex-col lg:flex-row items-start lg:items-center gap-3 lg:gap-4 justify-between">
+                <div class="ledger-table-footer-copy text-xs text-slate-600">
                     显示 <span class="font-semibold text-slate-900">{{ pageRangeStart }}</span>-<span class="font-semibold text-slate-900">{{ pageRangeEnd }}</span> / <span class="font-semibold text-slate-900">{{ totalItems }}</span> 条
                 </div>
-                <div class="flex items-center gap-2 flex-wrap">
+                <div class="ledger-pagination flex items-center gap-2 flex-wrap">
                     <label class="text-xs text-slate-500">每页</label>
-                    <select v-model.number="pageSizeModel" @change="$root.changePageSize()" class="h-9 px-2 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                    <select v-model.number="pageSizeModel" @change="$root.changePageSize()" class="ledger-pagination-control h-9 px-2 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20">
                         <option v-for="size in pageSizeOptions" :key="`size-${size}`" :value="size">{{ size }}</option>
                     </select>
                     <div class="w-px h-5 bg-slate-300 mx-1"></div>
-                    <button @click="$root.goToPage(currentPage - 1)" :disabled="currentPage <= 1" class="h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50 transition-colors duration-200">上一页</button>
+                    <button @click="$root.goToPage(currentPage - 1)" :disabled="currentPage <= 1" class="ledger-pagination-button h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50 transition-colors duration-200">上一页</button>
                     <template v-for="(token, idx) in pageTokens" :key="`pt-${idx}-${token}`">
                         <span v-if="token === 'ellipsis'" class="h-9 px-2 inline-flex items-center text-slate-400">…</span>
-                        <button v-else @click="$root.goToPage(token)" :class="token === currentPage ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'" class="h-9 min-w-[36px] px-2 border rounded-lg text-xs font-medium transition-colors duration-200">{{ token }}</button>
+                        <button v-else @click="$root.goToPage(token)" :class="token === currentPage ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'" class="ledger-pagination-button h-9 min-w-[36px] px-2 border rounded-lg text-xs font-medium transition-colors duration-200">{{ token }}</button>
                     </template>
-                    <button @click="$root.goToPage(currentPage + 1)" :disabled="currentPage >= totalPages" class="h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50 transition-colors duration-200">下一页</button>
+                    <button @click="$root.goToPage(currentPage + 1)" :disabled="currentPage >= totalPages" class="ledger-pagination-button h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50 transition-colors duration-200">下一页</button>
                     <div class="w-px h-5 bg-slate-300 mx-1"></div>
-                    <input v-model.number="jumpPageModel" @keyup.enter="$root.jumpToPage()" type="number" min="1" :max="totalPages" class="h-9 w-20 px-2 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="页码">
-                    <button @click="$root.jumpToPage()" class="h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-200">跳转</button>
+                    <input v-model.number="jumpPageModel" @keyup.enter="$root.jumpToPage()" type="number" min="1" :max="totalPages" class="ledger-pagination-control h-9 w-20 px-2 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="页码">
+                    <button @click="$root.jumpToPage()" class="ledger-pagination-button h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-200">跳转</button>
                 </div>
             </div>
         </div>
     </template>
     
     <script src="/static/view-config.js?v=1.2.17"></script>
+    <script src="/static/time-utils.js?v=1.2.17"></script>
     <script src="/static/state.js?v=1.2.17"></script>
     <script src="/static/api.js?v=1.2.17"></script>
     <script src="/static/ledger-filter-panel.js?v=1.2.17"></script>

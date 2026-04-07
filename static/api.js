@@ -788,10 +788,13 @@
                     }
                 },
                 todayDateText() {
-                    const now = new Date();
-                    const mm = String(now.getMonth() + 1).padStart(2, '0');
-                    const dd = String(now.getDate()).padStart(2, '0');
-                    return `${now.getFullYear()}-${mm}-${dd}`;
+                    return global.AppTime ? global.AppTime.todayDateText() : '';
+                },
+                formatBeijingDateTime(value, fallback = '-') {
+                    if (global.AppTime && typeof global.AppTime.formatDateTime === 'function') {
+                        return global.AppTime.formatDateTime(value, fallback);
+                    }
+                    return value ? String(value) : fallback;
                 },
                 async updateExecutionItem(item, patch, successMessage = '状态已更新') {
                     if (!item?.id) return false;
@@ -2389,8 +2392,7 @@
                         // 如果用户没填流水号，自动生成一个
                         let sn = this.normalizeSerial(this.newItem.serial_number);
                         if (!sn) {
-                            const now = new Date();
-                            const ts = now.toISOString().replace(/[-:T]/g, '').slice(2, 12);
+                            const ts = global.AppTime ? global.AppTime.compactTimestamp() : '';
                             sn = `REQ-${ts}`;
                         }
 
