@@ -8,6 +8,7 @@ from auth_security import (
     hash_secret,
     normalize_recovery_code,
     set_auth_cookie,
+    should_use_secure_cookie,
     verify_auth_cookie,
     verify_secret,
 )
@@ -63,7 +64,7 @@ async def auth_status(request: Request):
 
 
 @router.post("/setup")
-async def auth_setup(request: AuthSetupRequest):
+async def auth_setup(request: AuthSetupRequest, http_request: Request):
     if await is_system_initialized():
         raise HTTPException(status_code=409, detail="系统已完成初始化")
 
@@ -85,12 +86,16 @@ async def auth_setup(request: AuthSetupRequest):
             "recovery_code": recovery_code,
         }
     )
-    set_auth_cookie(response, subject="admin")
+    set_auth_cookie(
+        response,
+        subject="admin",
+        secure=should_use_secure_cookie(http_request),
+    )
     return response
 
 
 @router.post("/login")
-async def auth_login(request: AuthLoginRequest):
+async def auth_login(request: AuthLoginRequest, http_request: Request):
     security = await get_system_security()
     if not security:
         raise HTTPException(status_code=400, detail="系统尚未初始化，请先设置管理员密码")
@@ -120,7 +125,11 @@ async def auth_login(request: AuthLoginRequest):
     await clear_login_lock_state()
     await _safe_append_auth_audit("AUTH_LOGIN", {"result": "success"})
     response = JSONResponse({"message": "登录成功"})
-    set_auth_cookie(response, subject="admin")
+    set_auth_cookie(
+        response,
+        subject="admin",
+        secure=should_use_secure_cookie(http_request),
+    )
     return response
 
 
@@ -133,7 +142,7 @@ async def auth_logout():
 
 
 @router.post("/recover")
-async def auth_recover(request: AuthRecoverRequest):
+async def auth_recover(request: AuthRecoverRequest, http_request: Request):
     security = await get_system_security()
     if not security:
         raise HTTPException(status_code=400, detail="系统尚未初始化，无法找回密码")
@@ -156,5 +165,9 @@ async def auth_recover(request: AuthRecoverRequest):
             "recovery_code": new_recovery_code,
         }
     )
-    set_auth_cookie(response, subject="admin")
+    set_auth_cookie(
+        response,
+        subject="admin",
+        secure=should_use_secure_cookie(http_request),
+    )
     return response

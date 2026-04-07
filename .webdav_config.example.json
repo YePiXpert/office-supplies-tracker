@@ -1,0 +1,7 @@
+{
+  "base_url": "https://dav.example.com/dav/",
+  "username": "your-account@example.com",
+  "password": "your-app-password",
+  "remote_dir": "office-supplies/backups",
+  "keep_backups": 7
+}

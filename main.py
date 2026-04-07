@@ -12,6 +12,7 @@ from auth_security import (
     AUTH_COOKIE_NAME,
     clear_auth_cookie,
     set_auth_cookie,
+    should_use_secure_cookie,
     verify_auth_cookie,
 )
 from app_locks import MAINTENANCE_MODE
@@ -82,7 +83,11 @@ async def auth_guard(request, call_next):
 
     response = await call_next(request)
     if 200 <= response.status_code < 500:
-        set_auth_cookie(response, subject=str(payload.get("sub") or "admin"))
+        set_auth_cookie(
+            response,
+            subject=str(payload.get("sub") or "admin"),
+            secure=should_use_secure_cookie(request),
+        )
     return response
 
 

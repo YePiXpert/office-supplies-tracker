@@ -28,6 +28,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Validate project
+        run: python scripts/validate_project.py
+
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"

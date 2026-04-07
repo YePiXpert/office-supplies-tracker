@@ -1,3 +1,4 @@
+import os
 import secrets
 import string
 from pathlib import Path
@@ -20,6 +21,32 @@ RECOVERY_CODE_LENGTH = 16
 _PASSWORD_CONTEXT = CryptContext(schemes=["argon2"], deprecated="auto")
 _RECOVERY_ALPHABET = string.ascii_uppercase + string.digits
 _serializer: Optional[URLSafeTimedSerializer] = None
+
+
+def _resolve_secure_cookie_override() -> Optional[bool]:
+    raw = os.environ.get("OFFICE_AUTH_COOKIE_SECURE", "").strip().lower()
+    if raw in {"", "auto"}:
+        return None
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError(
+        "Invalid OFFICE_AUTH_COOKIE_SECURE value. Use auto, true, or false."
+    )
+
+
+def should_use_secure_cookie(request=None) -> bool:
+    override = _resolve_secure_cookie_override()
+    if override is not None:
+        return override
+    if request is None:
+        return False
+
+    forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").strip().lower()
+    if forwarded_proto:
+        return forwarded_proto.split(",", 1)[0].strip() == "https"
+    return str(getattr(getattr(request, "url", None), "scheme", "")).lower() == "https"
 
 
 def hash_secret(raw_value: str) -> str:
@@ -93,7 +120,7 @@ def verify_auth_cookie(cookie_value: str, max_age_seconds: int = AUTH_COOKIE_MAX
     }
 
 
-def set_auth_cookie(response, subject: str = "admin") -> str:
+def set_auth_cookie(response, subject: str = "admin", *, secure: bool = False) -> str:
     token = create_auth_cookie(subject=subject)
     response.set_cookie(
         key=AUTH_COOKIE_NAME,
@@ -101,7 +128,7 @@ def set_auth_cookie(response, subject: str = "admin") -> str:
         max_age=AUTH_COOKIE_MAX_AGE_SECONDS,
         httponly=True,
         samesite=AUTH_COOKIE_SAMESITE,
-        secure=False,
+        secure=secure,
         path="/",
     )
     return token

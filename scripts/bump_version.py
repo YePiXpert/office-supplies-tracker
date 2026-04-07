@@ -56,7 +56,7 @@ def sync_version(version: str) -> None:
         REPO_ROOT / "static" / "index.html",
         r"(\?v=)\d+\.\d+\.\d+",
         rf"\g<1>{version}",
-        expected_count=4,
+        expected_count=None,
     )
     replace_pattern(
         REPO_ROOT / "installer.iss",

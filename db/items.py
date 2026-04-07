@@ -4,7 +4,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import aiosqlite
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 
 from .constants import (
     ALLOWED_COLUMNS,
@@ -347,6 +347,34 @@ def _append_item_history_record(
     )
 
 
+def _item_unique_key(source) -> tuple[str, str, str]:
+    if isinstance(source, dict):
+        serial_number = source.get("serial_number")
+        item_name = source.get("item_name")
+        handler = source.get("handler")
+    else:
+        serial_number = getattr(source, "serial_number", None)
+        item_name = getattr(source, "item_name", None)
+        handler = getattr(source, "handler", None)
+    return (
+        str(serial_number or "").strip(),
+        str(item_name or "").strip(),
+        str(handler or "").strip(),
+    )
+
+
+async def _load_items_by_unique_keys(session, keys: list[tuple[str, str, str]]) -> dict[tuple[str, str, str], Item]:
+    unique_keys = list(dict.fromkeys(keys))
+    if not unique_keys:
+        return {}
+
+    stmt = select(Item).where(
+        tuple_(Item.serial_number, Item.item_name, Item.handler).in_(unique_keys)
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    return {_item_unique_key(item): item for item in rows}
+
+
 async def get_items(
     status: Optional[str] = None,
     department: Optional[str] = None,
@@ -577,21 +605,21 @@ async def delete_item(item_id: int) -> bool:
 
 async def batch_create_items(items: list[dict]) -> list[int]:
     """批量创建物品记录。"""
+    normalized_items = [normalize_item_payload(raw_item) for raw_item in items]
     created_ids = []
     async with AsyncSessionLocal() as session:
-        for raw_item in items:
-            payload = normalize_item_payload(raw_item)
-            existing_stmt = (
-                select(Item)
-                .where(
-                    Item.serial_number == payload["serial_number"],
-                    Item.item_name == payload["item_name"],
-                    Item.handler == payload["handler"],
-                )
-                .limit(1)
-            )
-            existing = (await session.execute(existing_stmt)).scalar_one_or_none()
-            if existing and existing.deleted_at is None:
+        existing_by_key = await _load_items_by_unique_keys(
+            session,
+            [_item_unique_key(payload) for payload in normalized_items],
+        )
+        active_keys = {
+            key for key, item in existing_by_key.items() if item.deleted_at is None
+        }
+
+        for payload in normalized_items:
+            key = _item_unique_key(payload)
+            existing = existing_by_key.get(key)
+            if key in active_keys:
                 continue
             if existing and existing.deleted_at is not None:
                 before_data = _item_snapshot(existing)
@@ -613,6 +641,7 @@ async def batch_create_items(items: list[dict]) -> list[int]:
                     changed_fields=changed_fields or ["deleted_at"],
                 )
                 created_ids.append(int(existing.id))
+                active_keys.add(key)
                 continue
 
             created = Item(**payload)
@@ -628,6 +657,8 @@ async def batch_create_items(items: list[dict]) -> list[int]:
                 changed_fields=sorted(ALLOWED_COLUMNS),
             )
             created_ids.append(int(created.id))
+            existing_by_key[key] = created
+            active_keys.add(key)
         await session.commit()
     return created_ids
 
