@@ -3,6 +3,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 from db.constants import ItemStatus, PaymentStatus
+from gemini_config import DEFAULT_GEMINI_MODEL_NAME
 
 
 class ItemCreate(BaseModel):
@@ -85,7 +86,7 @@ class WebDAVRestoreRequest(BaseModel):
 
 class GeminiConfigRequest(BaseModel):
     api_key: str = Field(default="", max_length=300)
-    model_name: str = Field(default="gemini-1.5-flash", max_length=120)
+    model_name: str = Field(default=DEFAULT_GEMINI_MODEL_NAME, max_length=120)
     request_timeout_seconds: int = Field(default=90, ge=10, le=300)
 
 

@@ -15,6 +15,7 @@ from auth_security import (
     should_use_secure_cookie,
     verify_auth_cookie,
 )
+from app_metadata import APP_VERSION
 from app_locks import MAINTENANCE_MODE
 from app_runtime import LOG_DIR, STATIC_DIR
 from database import init_db, is_system_initialized
@@ -24,9 +25,6 @@ from routers.auth import router as auth_router
 from routers.imports import router as imports_router
 from routers.items import router as items_router
 from routers.system import router as system_router
-
-APP_VERSION = "1.2.12"
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -62,7 +60,7 @@ async def audit_operator_context(request, call_next):
 @app.middleware("http")
 async def auth_guard(request, call_next):
     path = request.url.path
-    if not path.startswith("/api") or path.startswith("/api/auth/"):
+    if not path.startswith("/api") or path.startswith("/api/auth/") or path == "/api/app/metadata":
         return await call_next(request)
 
     if not await is_system_initialized():

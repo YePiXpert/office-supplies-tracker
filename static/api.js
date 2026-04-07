@@ -390,6 +390,23 @@
                         this.llmBaseUrl = '';
                     }
                 },
+                async loadAppMetadata() {
+                    try {
+                        const res = await axios.get('/api/app/metadata');
+                        const payload = res?.data || {};
+                        const version = (payload.version || '').toString().trim();
+                        const gemini = payload.gemini || {};
+                        const geminiModelName = (gemini.model_name || '').toString().trim();
+
+                        if (version) {
+                            this.appVersion = version;
+                        }
+                        if (this.llmProtocol === 'google' && !this.llmModelName && geminiModelName) {
+                            this.llmModelName = geminiModelName;
+                        }
+                    } catch (_) {
+                    }
+                },
                 formatCurrency(value) {
                     const amount = Number(value);
                     if (!Number.isFinite(amount)) return '0.00';

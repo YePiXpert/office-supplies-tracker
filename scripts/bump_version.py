@@ -69,16 +69,6 @@ def sync_version(version: str) -> None:
     VERSION_FILE.write_text(f"{version}\n", encoding="utf-8")
 
     replace_pattern(
-        REPO_ROOT / "main.py",
-        r'^(APP_VERSION = ")[^"]+(")$',
-        rf'\g<1>{version}\g<2>',
-    )
-    replace_pattern(
-        REPO_ROOT / "static" / "state.js",
-        r"(appVersion:\s*')[^']+(')",
-        rf'\g<1>{version}\g<2>',
-    )
-    replace_pattern(
         REPO_ROOT / "static" / "index.html",
         r"(\?v=)\d+\.\d+\.\d+",
         rf"\g<1>{version}",

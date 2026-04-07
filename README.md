@@ -254,7 +254,19 @@ scripts\build_windows_installer.bat
 备注：
 - 首次执行 OCR 时可能会初始化模型缓存，启动会比平时慢
 - 运行数据优先写入程序目录，若目录不可写会自动回退到 `%APPDATA%/OfficeSuppliesTracker/data`
-- 当前前端默认通过 CDN 加载 `Vue/Tailwind/Axios`，桌面版首次运行建议保持网络可用；如需完全离线，请改为本地静态依赖
+- 前端运行依赖已内置到 `static/vendor/`，`Vue/Tailwind/Axios` 不再依赖公网 CDN，Windows 安装包与便携版可离线启动界面
+
+## 版本与运行元数据
+
+- 项目版本以根目录 `VERSION` 文件为唯一来源
+- 后端启动时通过 `app_metadata.py` 读取版本，不再在 `main.py` 和前端状态中重复写死
+- 前端启动后会请求 `/api/app/metadata`，用于显示当前版本，并读取 Gemini 默认模型等运行元数据
+
+## Gemini 默认配置
+
+- Gemini 默认模型统一由 `gemini_config.py` 中的 `DEFAULT_GEMINI_MODEL_NAME` 定义
+- `/api/gemini/config` 与 `/api/app/metadata` 返回的模型名会去掉 `models/` 前缀，便于前端显示和编辑
+- 当前默认模型为 `gemini-3.0-flash`
 
 ## 解析回归测试
 
@@ -310,6 +322,7 @@ python3 scripts/run_regression_suite.py
 | GET | `/api/webdav/backups` | 列出 WebDAV 远端备份 |
 | POST | `/api/webdav/backup` | 上传当前备份到 WebDAV |
 | POST | `/api/webdav/restore` | 从 WebDAV 下载并恢复指定备份 |
+| GET | `/api/app/metadata` | 获取应用版本与 Gemini 运行元数据 |
 | GET | `/api/gemini/config` | 读取 Gemini 默认配置（脱敏） |
 | PUT | `/api/gemini/config` | 保存 Gemini 默认配置 |
 | POST | `/api/gemini/models` | 按 API Key 拉取可用 Gemini 模型 |

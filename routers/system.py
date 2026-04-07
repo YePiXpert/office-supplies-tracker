@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from api_utils import safe_unlink, save_upload_file_with_limit
+from app_metadata import APP_VERSION
 from app_locks import DATA_MUTATION_LOCK, MAINTENANCE_MODE
 from app_runtime import APP_STATE_DIR, STATIC_DIR, UPLOAD_DIR
 from backup_service import (
@@ -262,6 +263,20 @@ async def get_gemini_config():
     public = public_gemini_config(config)
     public["model_name"] = _to_public_model_name(public.get("model_name", ""))
     return public
+
+
+@router.get("/api/app/metadata")
+async def get_app_metadata():
+    config = load_gemini_config()
+    public = public_gemini_config(config)
+    return {
+        "version": APP_VERSION,
+        "gemini": {
+            "configured": bool(public.get("configured")),
+            "model_name": _to_public_model_name(public.get("model_name", "")),
+            "request_timeout_seconds": int(public.get("request_timeout_seconds") or 0),
+        },
+    }
 
 
 @router.put("/api/gemini/config")

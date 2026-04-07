@@ -233,9 +233,20 @@ python desktop.py
 2. `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1`
 3. `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1`
 
-### 12.4 桌面版离线白屏
+### 12.4 桌面版离线运行
 
-当前前端默认通过 CDN 加载 `Vue/Tailwind/Axios`，完全离线环境可能出现白屏。建议首次运行保持网络可用；若要彻底离线，需要将这些前端依赖改为本地静态文件。
+当前前端依赖已经内置到 `static/vendor/`，`Vue/Tailwind/Axios` 不再通过公网 CDN 加载。
+
+这意味着：
+
+- 安装包和便携版在离线环境下也可以正常打开前端界面
+- 如果出现白屏，优先检查是否为本地静态文件缺失、缓存未更新，或桌面端打包产物未包含最新 `static` 目录
+
+### 12.5 版本与模型配置
+
+- 界面右下角显示的版本号来自根目录 `VERSION` 文件
+- 前端启动时会读取 `/api/app/metadata`
+- Google 协议下如果没有手动填写模型名，系统会自动使用后端统一的 Gemini 默认模型
 
 ## 14. 数据落盘位置
 

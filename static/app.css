@@ -18,7 +18,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; font-family: "Inter", "Noto Sans SC", system-ui, sans-serif; }
+html, body { height: 100%; font-family: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Segoe UI", system-ui, sans-serif; }
 
 body {
     margin: 0;

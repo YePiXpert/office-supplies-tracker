@@ -13,7 +13,7 @@
                     filterStatus: '',
                     filterDepartment: '',
                     filterMonth: '',
-                    appVersion: '1.2.12',
+                    appVersion: '',
                     authInitialized: false,
                     isAuthenticated: false,
                     authView: 'loading',
@@ -514,12 +514,18 @@
                     }
                 },
             },
-        mounted() {
+        async mounted() {
+                if (typeof this.loadAppMetadata === 'function') {
+                    await this.loadAppMetadata();
+                }
                 if (typeof this.initOcrEngineSettings === 'function') {
                     this.initOcrEngineSettings();
                 }
+                if (typeof this.loadAppMetadata === 'function') {
+                    await this.loadAppMetadata();
+                }
                 if (typeof this.initializeAuthLayer === 'function') {
-                    this.initializeAuthLayer();
+                    await this.initializeAuthLayer();
                 }
             },
         beforeUnmount() {
