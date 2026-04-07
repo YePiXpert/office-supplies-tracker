@@ -118,40 +118,6 @@
                         </div>
                     </div>
 
-                    <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-6">
-                        <h3 class="text-sm font-semibold text-slate-900">快捷操作</h3>
-                        <p class="text-xs text-slate-500 mt-1">上传单据、手动新增与导出</p>
-                        <div class="mt-4 grid grid-cols-1 xl:grid-cols-3 gap-4">
-                            <div class="xl:col-span-2 relative overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50 group">
-                                <button v-if="!uploading" @click="$refs.fileInput && $refs.fileInput.click()"
-                                        class="w-full py-14 text-center hover:border-blue-300 hover:bg-blue-50/50 transition-all duration-200 ease-in-out">
-                                    <div class="mx-auto mb-3 inline-flex h-11 w-11 items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 group-hover:text-blue-600 transition-colors duration-200">
-                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M12 11v8m0 0l-3-3m3 3l3-3"/></svg>
-                                    </div>
-                                    <p class="text-sm font-medium text-slate-700">上传采购单据</p>
-                                    <p class="text-xs text-slate-500 mt-1">支持 PDF / 图片，自动识别字段</p>
-                                </button>
-                                <div v-else class="w-full py-14 flex flex-col items-center justify-center bg-blue-50/30">
-                                    <div class="absolute inset-0 pointer-events-none">
-                                        <div class="absolute left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_#3b82f6] animate-scan"></div>
-                                    </div>
-                                    <div class="relative z-10 text-center">
-                                        <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600 animate-pulse">
-                                            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                                        </div>
-                                        <p class="text-sm font-semibold text-blue-700 animate-pulse">{{ uploadStatusText || '正在使用 AI 引擎提取单据字段...' }}</p>
-                                        <p class="text-[11px] text-blue-500 mt-2">{{ uploadTaskId ? ('任务ID: ' + uploadTaskId) : '智能深度扫描中，请稍候' }}</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="space-y-3">
-                                <button @click="openAddModal" class="w-full h-11 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">手动新增</button>
-                                <button @click="exportExcel" class="w-full h-11 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">导出 EXCEL</button>
-                                <button @click="switchView('execution')" class="w-full h-11 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">进入执行看板</button>
-                                <button @click="switchView('ledger')" class="w-full h-11 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">进入台账明细</button>
-                            </div>
-                        </div>
-                    </div>
                 </section>
 
                 <section v-else-if="currentView === 'ledger'" class="view-pane h-full min-h-0 flex flex-col gap-3">
@@ -173,286 +139,10 @@
                         @clear-filters="clearFilters"
                     ></ledger-filter-panel>
 
-                    <div class="flex-1 min-h-0 bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl overflow-hidden flex flex-col">
-                        <ledger-batch-toolbar
-                            v-if="selectedItems.length > 0"
-                            :selected-count="selectedItems.length"
-                            :batch-edit-field="batchEditField"
-                            :batch-edit-value="batchEditValue"
-                            :statuses="statuses"
-                            :payment-statuses="paymentStatuses"
-                            @update:batch-edit-field="batchEditField = $event"
-                            @update:batch-edit-value="batchEditValue = $event"
-                            @field-change="onBatchFieldChange"
-                            @apply-update="batchUpdate"
-                            @batch-delete="batchDelete"
-                        ></ledger-batch-toolbar>
-
-                        <div class="flex-1 min-h-0 overflow-x-auto border-b border-slate-200">
-                            <table v-if="items.length > 0" class="w-full min-w-max whitespace-nowrap text-left border-separate border-spacing-0">
-                                <thead class="sticky top-0 z-20 bg-slate-50 shadow-[0_1px_0_0_#e2e8f0]">
-                                    <tr class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                        <th class="px-4 py-3 text-center w-12 sticky left-0 z-20 bg-white shadow-[1px_0_0_0_#e2e8f0]"><input type="checkbox" v-model="selectAll" @change="toggleSelectAll" class="rounded text-blue-600 focus:ring-blue-500/40"></th>
-                                        <th class="px-4 py-3 min-w-[96px]">流水号</th>
-                                        <th class="px-4 py-3 min-w-[120px]">部门</th>
-                                        <th class="px-4 py-3 min-w-[72px]">经办人</th>
-                                        <th class="px-4 py-3 min-w-[280px]">物品规格与名称</th>
-                                        <th class="px-4 py-3 min-w-[220px]">采购链接</th>
-                                        <th class="px-4 py-3 text-center w-20">数量</th>
-                                        <th class="px-4 py-3 text-center w-24">单价(¥)</th>
-                                        <th class="px-4 py-3 text-center w-32">状态</th>
-                                        <th class="px-4 py-3 text-center min-w-[140px]">到货日期</th>
-                                        <th class="px-4 py-3 text-center min-w-[140px]">分发日期</th>
-                                        <th class="px-4 py-3 min-w-[180px]">签收备注</th>
-                                        <th class="px-4 py-3 text-center w-24">发票</th>
-                                        <th class="px-4 py-3 text-center w-32">付款进度</th>
-                                        <th class="px-4 py-3 text-center w-24 sticky right-0 z-20 bg-white shadow-[-1px_0_0_0_#e2e8f0]">操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-200">
-                                    <tr
-                                        v-for="item in items"
-                                        :key="item.id"
-                                        :data-ledger-item-id="item.id"
-                                        :class="{
-                                            'bg-slate-100/70': selectedItems.includes(item.id),
-                                            'bg-amber-50/70': Number(item.id) === Number(focusedLedgerItemId),
-                                        }"
-                                        class="hover:bg-slate-50 transition-colors duration-200 ease-in-out"
-                                    >
-                                        <td class="px-4 py-3 text-center align-middle sticky left-0 z-20 bg-white shadow-[1px_0_0_0_#e2e8f0]">
-                                            <input type="checkbox" :value="item.id" v-model="selectedItems" class="rounded text-blue-600 focus:ring-blue-500/40">
-                                        </td>
-                                        <td class="px-4 py-3 align-middle">
-                                            <input type="text" v-model="item.serial_number" @blur="updateItem(item.id, { serial_number: item.serial_number })" :placeholder="item.id ? `REC-${item.id}` : '自动生成'" class="w-full px-2 py-1 text-xs font-mono text-slate-500 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                                        </td>
-                                        <td class="px-4 py-3 align-middle">
-                                            <input type="text" v-model="item.department" @blur="updateItem(item.id, { department: item.department })" class="w-full px-2 py-1 text-sm font-medium text-slate-500 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                                        </td>
-                                        <td class="px-4 py-3 align-middle">
-                                            <input type="text" v-model="item.handler" @blur="updateItem(item.id, { handler: item.handler })" class="w-full px-2 py-1 text-sm text-slate-500 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                                        </td>
-                                        <td class="px-4 py-3 align-middle">
-                                            <div class="max-w-[280px] overflow-hidden text-ellipsis whitespace-nowrap" :title="item.item_name || ''">
-                                                <input type="text" v-model="item.item_name" @blur="updateItem(item.id, { item_name: item.item_name })" class="w-full px-2 py-1 text-sm font-medium text-slate-700 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all truncate" placeholder="物品名称">
-                                            </div>
-                                        </td>
-                                        <td class="px-4 py-3 align-middle">
-                                            <div class="flex items-center gap-2">
-                                                <div v-if="isInlineEditing(item.id, 'purchase_link')" class="flex-1 min-w-0">
-                                                    <input
-                                                        :ref="(el) => setInlineEditRef(item.id, 'purchase_link', el)"
-                                                        type="url"
-                                                        v-model="item.purchase_link"
-                                                        @keydown.enter.prevent="commitInlineEdit(item, 'purchase_link')"
-                                                        @keydown.esc.prevent="cancelInlineEdit"
-                                                        @blur="commitInlineEdit(item, 'purchase_link')"
-                                                        placeholder="https://..."
-                                                        class="h-7 w-full min-w-[180px] px-2 text-xs font-mono text-slate-700 bg-white border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                    >
-                                                </div>
-                                                <button
-                                                    v-else
-                                                    @click="item.purchase_link ? copyPurchaseLink(item.purchase_link) : startInlineEdit(item.id, 'purchase_link')"
-                                                    type="button"
-                                                    class="group flex-1 min-w-0 inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-slate-100 transition-colors duration-150"
-                                                    :title="item.purchase_link ? '点击复制链接' : '点击录入链接'"
-                                                >
-                                                    <span
-                                                        class="truncate text-xs font-mono text-slate-700"
-                                                        :title="item.purchase_link || ''"
-                                                    >
-                                                        {{ compactPurchaseLink(item.purchase_link) }}
-                                                    </span>
-                                                    <svg class="w-3.5 h-3.5 text-gray-300 opacity-0 group-hover:opacity-100 group-hover:text-blue-500 transition-all duration-150" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 013.536 3.536L12.536 16.536a4 4 0 01-1.789 1.05L8 18l.414-2.747A4 4 0 019.464 13.464z"/>
-                                                    </svg>
-                                                </button>
-                                                <button
-                                                    @click="startInlineEdit(item.id, 'purchase_link')"
-                                                    type="button"
-                                                    class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-50 transition-colors duration-200 shrink-0"
-                                                    title="编辑链接"
-                                                >
-                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 013.536 3.536L12.536 16.536a4 4 0 01-1.789 1.05L8 18l.414-2.747A4 4 0 019.464 13.464z"/></svg>
-                                                </button>
-                                                <a
-                                                    v-if="item.purchase_link"
-                                                    :href="item.purchase_link"
-                                                    target="_blank"
-                                                    class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-50 transition-colors duration-200 shrink-0"
-                                                    title="打开链接"
-                                                >
-                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                                                </a>
-                                            </div>
-                                        </td>
-                                        <td class="px-4 py-3 text-center align-middle">
-                                            <div class="flex items-center justify-center">
-                                                <div v-if="isInlineEditing(item.id, 'quantity')" class="inline-flex">
-                                                    <input
-                                                        :ref="(el) => setInlineEditRef(item.id, 'quantity', el)"
-                                                        type="number"
-                                                        v-model.number="item.quantity"
-                                                        @keydown.enter.prevent="commitInlineEdit(item, 'quantity')"
-                                                        @keydown.esc.prevent="cancelInlineEdit"
-                                                        @blur="commitInlineEdit(item, 'quantity')"
-                                                        class="h-7 w-20 px-2 text-right text-xs font-mono text-slate-700 bg-white border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                    >
-                                                </div>
-                                                <button v-else @click="startInlineEdit(item.id, 'quantity')" type="button" class="group inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-slate-100 transition-colors duration-150">
-                                                    <span class="font-mono text-slate-700">{{ item.quantity }}</span>
-                                                    <svg class="w-3.5 h-3.5 text-gray-300 opacity-0 group-hover:opacity-100 group-hover:text-blue-500 transition-all duration-150" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 013.536 3.536L12.536 16.536a4 4 0 01-1.789 1.05L8 18l.414-2.747A4 4 0 019.464 13.464z"/>
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        </td>
-                                        <td class="px-4 py-3 text-center align-middle">
-                                            <div class="flex items-center justify-center">
-                                                <div v-if="isInlineEditing(item.id, 'unit_price')" class="inline-flex">
-                                                    <input
-                                                        :ref="(el) => setInlineEditRef(item.id, 'unit_price', el)"
-                                                        type="number"
-                                                        step="0.01"
-                                                        v-model.number="item.unit_price"
-                                                        @keydown.enter.prevent="commitInlineEdit(item, 'unit_price')"
-                                                        @keydown.esc.prevent="cancelInlineEdit"
-                                                        @blur="commitInlineEdit(item, 'unit_price')"
-                                                        class="h-7 w-24 px-2 text-right text-xs font-mono text-slate-700 bg-white border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                                    >
-                                                </div>
-                                                <button v-else @click="startInlineEdit(item.id, 'unit_price')" type="button" class="group inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-slate-100 transition-colors duration-150">
-                                                    <span class="font-mono text-slate-700">{{ item.unit_price === null || item.unit_price === undefined ? '-' : formatCurrency(item.unit_price) }}</span>
-                                                    <svg class="w-3.5 h-3.5 text-gray-300 opacity-0 group-hover:opacity-100 group-hover:text-blue-500 transition-all duration-150" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 013.536 3.536L12.536 16.536a4 4 0 01-1.789 1.05L8 18l.414-2.747A4 4 0 019.464 13.464z"/>
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        </td>
-                                        <td class="px-4 py-3 text-center align-middle">
-                                            <div class="flex items-center justify-center">
-                                                <div class="relative inline-flex items-center group">
-                                                    <span v-if="isStatusBreathing(item.status)" class="absolute left-1.5 flex h-1.5 w-1.5 pointer-events-none">
-                                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" :class="statusPingClass(item.status)"></span>
-                                                        <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="statusDotClass(item.status)"></span>
-                                                    </span>
-                                                    <select :value="normalizeProcurementStatus(item.status)" @change="handleLedgerStatusChange(item, $event.target.value)"
-                                                            :class="statusSelectClass(item.status)"
-                                                            class="inline-flex items-center min-w-[84px] py-0.5 text-xs font-medium rounded-md border appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200">
-                                                        <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td class="px-4 py-3 text-center align-middle">
-                                            <input
-                                                type="date"
-                                                v-model="item.arrival_date"
-                                                @change="updateItem(item.id, { arrival_date: item.arrival_date })"
-                                                :class="!item.arrival_date ? 'text-transparent focus:text-slate-500' : 'text-slate-500'"
-                                                class="w-full bg-transparent border-none focus:ring-0 p-0 text-xs text-center align-middle [&::-webkit-calendar-picker-indicator]:opacity-0 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 transition-colors"
-                                            >
-                                        </td>
-                                        <td class="px-4 py-3 text-center align-middle">
-                                            <input
-                                                type="date"
-                                                v-model="item.distribution_date"
-                                                @change="updateItem(item.id, { distribution_date: item.distribution_date })"
-                                                :class="!item.distribution_date ? 'text-transparent focus:text-slate-500' : 'text-slate-500'"
-                                                class="w-full bg-transparent border-none focus:ring-0 p-0 text-xs text-center align-middle [&::-webkit-calendar-picker-indicator]:opacity-0 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 transition-colors"
-                                            >
-                                        </td>
-                                        <td class="px-4 py-3 align-middle">
-                                            <div class="max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" :title="item.signoff_note || ''">
-                                                <input
-                                                    type="text"
-                                                    v-model="item.signoff_note"
-                                                    @blur="updateItem(item.id, { signoff_note: item.signoff_note })"
-                                                    class="w-full px-2 py-1 text-sm text-slate-500 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all truncate"
-                                                    placeholder="签收备注"
-                                                >
-                                            </div>
-                                        </td>
-                                        <td class="px-4 py-3 text-center align-middle">
-                                            <div class="flex items-center justify-center">
-                                                <button @click="toggleInvoice(item)"
-                                                        :class="item.invoice_issued ? 'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20' : 'bg-yellow-50 text-yellow-800 ring-1 ring-inset ring-yellow-600/20'"
-                                                        class="inline-flex items-center justify-center whitespace-nowrap min-w-[64px] px-2 py-0.5 text-xs font-medium rounded-md transition-colors duration-200">
-                                                    <span v-if="!item.invoice_issued" class="relative flex h-1.5 w-1.5 mr-1">
-                                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                                                        <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-yellow-500"></span>
-                                                    </span>
-                                                    {{ item.invoice_issued ? '已入账' : '待报' }}
-                                                </button>
-                                            </div>
-                                        </td>
-                                        <td class="px-4 py-3 text-center align-middle">
-                                            <div class="flex items-center justify-center">
-                                                <div class="relative inline-flex items-center">
-                                                    <span v-if="item.payment_status === '未付款'" class="absolute left-1.5 flex h-1.5 w-1.5 pointer-events-none">
-                                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                                        <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
-                                                    </span>
-                                                    <select v-model="item.payment_status" @change="updateItem(item.id, { payment_status: item.payment_status })"
-                                                            :class="{
-                                                                'bg-yellow-50 text-yellow-800 ring-1 ring-inset ring-yellow-600/20 pl-4': item.payment_status === '未付款',
-                                                                'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-700/10 px-2': item.payment_status === '已付款',
-                                                                'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 px-2': item.payment_status === '已报销',
-                                                                'bg-slate-50 text-slate-700 ring-1 ring-inset ring-slate-600/20 px-2': item.payment_status !== '未付款' && item.payment_status !== '已付款' && item.payment_status !== '已报销'
-                                                            }"
-                                                            class="inline-flex items-center min-w-[84px] py-0.5 text-xs font-medium rounded-md border-0 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200">
-                                                        <option v-for="p in paymentStatuses" :key="p" :value="p">{{ p }}</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td class="px-4 py-3 text-center align-middle sticky right-0 z-20 bg-white shadow-[-1px_0_0_0_#e2e8f0]">
-                                            <div class="flex items-center justify-center gap-1">
-                                                <button @click="openLedgerDetail(item)" class="text-slate-400 hover:text-blue-600 p-1 transition-colors duration-200" title="详情 / 审计轨迹"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
-                                                <button @click="deleteItem(item.id)" class="text-slate-400 hover:text-red-600 p-1 transition-colors duration-200" title="删除"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                            <div v-if="items.length === 0" class="flex flex-col items-center justify-center py-24 px-6 text-center">
-                                <div class="inline-flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
-                                    <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7.5A2.5 2.5 0 015.5 5h13A2.5 2.5 0 0121 7.5v9A2.5 2.5 0 0118.5 19h-13A2.5 2.5 0 013 16.5v-9zM8 9h8M8 12h8M8 15h5"/>
-                                    </svg>
-                                </div>
-                                <p class="mt-4 text-base font-semibold text-slate-700">暂无采购数据</p>
-                                <p class="mt-1 text-sm text-slate-500">请点击上方“手动新增”或“导入单据”开始录入</p>
-                            </div>
-                        </div>
-
-                        <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-col lg:flex-row items-start lg:items-center gap-3 lg:gap-4 justify-between">
-                            <div class="text-xs text-slate-600">
-                                显示 <span class="font-semibold text-slate-900">{{ pageRangeStart }}</span>-<span class="font-semibold text-slate-900">{{ pageRangeEnd }}</span> / <span class="font-semibold text-slate-900">{{ totalItems }}</span> 条
-                            </div>
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <label class="text-xs text-slate-500">每页</label>
-                                <select v-model.number="pageSize" @change="changePageSize" class="h-9 px-2 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20">
-                                    <option v-for="size in pageSizeOptions" :key="`size-${size}`" :value="size">{{ size }}</option>
-                                </select>
-                                <div class="w-px h-5 bg-slate-300 mx-1"></div>
-                                <button @click="goToPage(currentPage - 1)" :disabled="currentPage <= 1" class="h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50 transition-colors duration-200">上一页</button>
-                                <template v-for="(token, idx) in pageTokens" :key="`pt-${idx}-${token}`">
-                                    <span v-if="token === 'ellipsis'" class="h-9 px-2 inline-flex items-center text-slate-400">…</span>
-                                    <button v-else @click="goToPage(token)" :class="token === currentPage ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'" class="h-9 min-w-[36px] px-2 border rounded-lg text-xs font-medium transition-colors duration-200">{{ token }}</button>
-                                </template>
-                                <button @click="goToPage(currentPage + 1)" :disabled="currentPage >= totalPages" class="h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50 transition-colors duration-200">下一页</button>
-                                <div class="w-px h-5 bg-slate-300 mx-1"></div>
-                                <input v-model.number="jumpPage" @keyup.enter="jumpToPage" type="number" min="1" :max="totalPages" class="h-9 w-20 px-2 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="页码">
-                                <button @click="jumpToPage" class="h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-200">跳转</button>
-                            </div>
-                        </div>
-                    </div>
                 </section>
 
                 <section v-else-if="currentView === 'execution'" class="view-pane h-full min-h-0 flex flex-col gap-4">
-                    <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-6">
+                    <div v-if="false" class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-6">
                         <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
                             <div>
                                 <h2 class="text-3xl font-semibold tracking-tight text-slate-900">采购执行看板</h2>
@@ -841,6 +531,7 @@
                 </section>
 
                 <section v-else-if="currentView === 'audit'" class="view-pane h-full min-h-0 flex flex-col gap-4">
+                    <audit-log-panel></audit-log-panel>
                     <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-6">
                         <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
                             <div>
@@ -864,7 +555,7 @@
                         </div>
                     </div>
 
-                    <div class="flex-1 min-h-0 bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl overflow-hidden flex flex-col">
+                    <div v-if="false" class="flex-1 min-h-0 bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl overflow-hidden flex flex-col">
                         <div class="flex-1 overflow-y-auto overflow-x-auto">
                             <table class="w-full min-w-max whitespace-nowrap text-sm border-b border-slate-200">
                                 <thead class="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
@@ -935,337 +626,53 @@
                             <p class="mt-1 text-sm text-slate-500">统一管理 AI 解析引擎、数据容灾与系统维护入口。</p>
                         </div>
 
-                        <div class="space-y-4">
-                            <div>
-                                <h3 class="text-xl font-semibold tracking-tight text-slate-900">🧠 AI 视觉解析引擎</h3>
-                                <p class="mt-1 text-sm text-slate-500">按场景选择本地离线 OCR 或云端多模态大模型，并可配置协议和中转地址。</p>
-                            </div>
-                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                <label class="cursor-pointer rounded-xl border p-4 transition-all duration-200 ease-in-out bg-white"
-                                       :class="ocrEngine === 'local' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500/20 shadow-sm' : 'border-slate-200 hover:border-blue-300 hover:shadow-md'">
-                                    <div class="flex items-start gap-3">
-                                        <input v-model="ocrEngine" type="radio" value="local" class="mt-1 text-blue-600 focus:ring-blue-500/40">
-                                        <div>
-                                            <div class="text-sm font-semibold text-slate-900">local</div>
-                                            <div class="mt-1 text-xs text-slate-500">本地基础 OCR (离线运行，保障绝密数据安全)</div>
-                                        </div>
-                                    </div>
-                                </label>
-                                <label class="cursor-pointer rounded-xl border p-4 transition-all duration-200 ease-in-out bg-white"
-                                       :class="ocrEngine === 'cloud' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500/20 shadow-sm' : 'border-slate-200 hover:border-blue-300 hover:shadow-md'">
-                                    <div class="flex items-start gap-3">
-                                        <input v-model="ocrEngine" type="radio" value="cloud" class="mt-1 text-blue-600 focus:ring-blue-500/40">
-                                        <div>
-                                            <div class="text-sm font-semibold text-slate-900">cloud</div>
-                                            <div class="mt-1 text-xs text-slate-500">云端视觉大模型 (高精度，支持多协议与中转站)</div>
-                                        </div>
-                                    </div>
-                                </label>
-                            </div>
-                            <div v-if="ocrEngine === 'cloud'" class="bg-slate-50 p-4 rounded-md flex flex-col gap-4 border border-slate-200">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2">接口协议 (Protocol)</label>
-                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                        <label class="cursor-pointer rounded-lg border bg-white p-3 h-full flex items-start transition-all duration-200 ease-in-out"
-                                               :class="llmProtocol === 'openai' ? 'border-blue-500 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-blue-300'">
-                                            <div class="flex items-start gap-2">
-                                                <input v-model="llmProtocol" type="radio" value="openai" class="mt-0.5 text-blue-600 focus:ring-blue-500/40">
-                                                <div>
-                                                    <div class="text-sm font-semibold text-slate-900">OpenAI 兼容</div>
-                                                    <div class="mt-1 text-xs text-slate-500">适配 GPT / Qwen 及各中转站</div>
-                                                </div>
-                                            </div>
-                                        </label>
-                                        <label class="cursor-pointer rounded-lg border bg-white p-3 h-full flex items-start transition-all duration-200 ease-in-out"
-                                               :class="llmProtocol === 'anthropic' ? 'border-blue-500 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-blue-300'">
-                                            <div class="flex items-start gap-2">
-                                                <input v-model="llmProtocol" type="radio" value="anthropic" class="mt-0.5 text-blue-600 focus:ring-blue-500/40">
-                                                <div>
-                                                    <div class="text-sm font-semibold text-slate-900">Anthropic</div>
-                                                    <div class="mt-1 text-xs text-slate-500">适配 Claude 等系列</div>
-                                                </div>
-                                            </div>
-                                        </label>
-                                        <label class="cursor-pointer rounded-lg border bg-white p-3 h-full flex items-start transition-all duration-200 ease-in-out"
-                                               :class="llmProtocol === 'google' ? 'border-blue-500 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-blue-300'">
-                                            <div class="flex items-start gap-2">
-                                                <input v-model="llmProtocol" type="radio" value="google" class="mt-0.5 text-blue-600 focus:ring-blue-500/40">
-                                                <div>
-                                                    <div class="text-sm font-semibold text-slate-900">Google 直连</div>
-                                                    <div class="mt-1 text-xs text-slate-500">适配 Gemini 等系列</div>
-                                                </div>
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
+                        <settings-ai-panel
+                            :ocr-engine="ocrEngine"
+                            :llm-protocol="llmProtocol"
+                            :llm-api-key="llmApiKey"
+                            :llm-model-name="llmModelName"
+                            :llm-base-url="llmBaseUrl"
+                            @update:ocr-engine="ocrEngine = $event"
+                            @update:llm-protocol="llmProtocol = $event"
+                            @update:llm-api-key="llmApiKey = $event"
+                            @update:llm-model-name="llmModelName = $event"
+                            @update:llm-base-url="llmBaseUrl = $event"
+                        ></settings-ai-panel>
 
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">API Key（必填）</label>
-                                    <input
-                                        v-model="llmApiKey"
-                                        type="password"
-                                        class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out"
-                                        placeholder="请输入对应协议的 API Key。"
-                                    >
-                                </div>
+                        <settings-backup-panel></settings-backup-panel>
 
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">模型名称 (Model Name)</label>
-                                    <input
-                                        v-model="llmModelName"
-                                        type="text"
-                                        class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out"
-                                        placeholder="留空则默认使用该协议下的最新视觉模型，支持自定义。"
-                                    >
-                                </div>
-
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">中转接口地址 (Base URL)</label>
-                                    <input
-                                        v-model="llmBaseUrl"
-                                        type="text"
-                                        class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out"
-                                        :placeholder="llmProtocol === 'google' ? '无代理请留空' : '例如: https://api.openai-hk.com/v1'"
-                                    >
-                                </div>
-                                <p class="text-[11px] text-slate-500">每个协议的 API Key / 模型 / Base URL 会独立保存在当前浏览器 localStorage，上传时按当前协议随请求发送到后端。</p>
-                            </div>
-                        </div>
-
-                        <div class="space-y-4">
-                            <div>
-                                <h3 class="text-xl font-semibold tracking-tight text-slate-900">💾 数据容灾与同步</h3>
-                                <p class="mt-1 text-sm text-slate-500">管理本地备份、恢复和云端同步，保障关键台账数据可回溯。</p>
-                            </div>
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <button @click="backupData" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
-                                    <div class="text-sm font-semibold text-slate-900">数据备份</div>
-                                    <div class="mt-1 text-xs text-slate-500">导出数据库与附件压缩包</div>
-                                </button>
-                                <button @click="$refs.restoreInput && $refs.restoreInput.click()" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
-                                    <div class="text-sm font-semibold text-slate-900">数据恢复</div>
-                                    <div class="mt-1 text-xs text-slate-500">从本地备份快速恢复系统</div>
-                                </button>
-                                <button @click="openWebdavModal" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
-                                    <div class="text-sm font-semibold text-slate-900">WebDAV 云同步</div>
-                                    <div class="mt-1 text-xs text-slate-500">配置远程备份与灾备策略</div>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="space-y-4">
-                            <div>
-                                <h3 class="text-xl font-semibold tracking-tight text-slate-900">🛠️ 系统维护</h3>
-                                <p class="mt-1 text-sm text-slate-500">处理回收站、数据质量巡检与审计日志，维持长期稳定运行。</p>
-                            </div>
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <button @click="openRecycleBinModal" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
-                                    <div class="text-sm font-semibold text-slate-900">回收站</div>
-                                    <div class="mt-1 text-xs text-slate-500">恢复误删记录或彻底删除</div>
-                                </button>
-                                <button @click="openDataQualityModal" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
-                                    <div class="text-sm font-semibold text-slate-900">数据巡检</div>
-                                    <div class="mt-1 text-xs text-slate-500">扫描异常字段与重复键风险</div>
-                                </button>
-                                <button @click="loadHistory(); switchView('audit')" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
-                                    <div class="text-sm font-semibold text-slate-900">审计日志</div>
-                                    <div class="mt-1 text-xs text-slate-500">查看并回滚历史变更轨迹</div>
-                                </button>
-                            </div>
-                        </div>
+                        <settings-maintenance-panel></settings-maintenance-panel>
                     </div>
                 </section>
             </main>
 
         </div>
 
-        <div v-if="showLedgerDetailModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
-            <div class="modal-panel w-full max-w-5xl max-h-[90vh] flex flex-col">
-                <div class="modal-header flex justify-between items-center">
-                    <h3 class="modal-title">台账详情 · 操作历史 / 审计轨迹</h3>
-                    <button @click="closeLedgerDetailModal" class="text-slate-400 hover:text-blue-700 font-bold transition-all duration-200 ease-in-out">&times;</button>
-                </div>
-                <div class="p-5 overflow-y-auto space-y-4">
-                    <div v-if="ledgerDetailLoading" class="py-16 text-center text-sm text-slate-500">详情加载中...</div>
-                    <template v-else-if="ledgerDetailItem">
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                <div class="text-[10px] text-slate-500 uppercase font-semibold">流水号</div>
-                                <div class="mt-1 text-sm font-mono text-slate-800">{{ ledgerDetailItem.serial_number || '-' }}</div>
-                            </div>
-                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                <div class="text-[10px] text-slate-500 uppercase font-semibold">部门 / 经办人</div>
-                                <div class="mt-1 text-sm text-slate-800">{{ ledgerDetailItem.department || '-' }} / {{ ledgerDetailItem.handler || '-' }}</div>
-                            </div>
-                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                <div class="text-[10px] text-slate-500 uppercase font-semibold">物品</div>
-                                <div class="mt-1 text-sm text-slate-800 truncate" :title="ledgerDetailItem.item_name || ''">{{ ledgerDetailItem.item_name || '-' }}</div>
-                            </div>
-                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                <div class="text-[10px] text-slate-500 uppercase font-semibold">当前状态</div>
-                                <div class="mt-1 text-sm text-slate-800">{{ ledgerDetailItem.status || '-' }}</div>
-                            </div>
-                        </div>
+        <ledger-detail-modal
+            :visible="showLedgerDetailModal"
+            :loading="ledgerDetailLoading"
+            :item="ledgerDetailItem"
+            :audit-loading="ledgerDetailAuditLoading"
+            :audit-logs="ledgerDetailAuditLogs"
+            :audit-total="ledgerDetailAuditTotal"
+            :audit-page="ledgerDetailAuditPage"
+            :audit-total-pages="ledgerDetailAuditTotalPages"
+        ></ledger-detail-modal>
 
-                        <div class="border border-slate-200 rounded-xl overflow-hidden">
-                            <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                                <div class="text-sm font-semibold text-slate-800">字段级审计时间轴</div>
-                                <div class="text-xs text-slate-500">共 {{ ledgerDetailAuditTotal }} 条</div>
-                            </div>
-                            <div class="p-4 space-y-3 max-h-[52vh] overflow-y-auto">
-                                <div
-                                    v-for="log in ledgerDetailAuditLogs"
-                                    :key="`detail-audit-${log.log_id}`"
-                                    class="rounded-lg border border-slate-200 bg-white p-3"
-                                >
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-semibold" :class="auditActionBadgeClass(log.action)">{{ auditActionText(log.action) }}</span>
-                                        <span class="text-xs font-mono text-slate-500">{{ log.created_at || '-' }}</span>
-                                        <span class="text-xs text-slate-400 ml-auto">IP: {{ log.operator_ip || 'unknown' }}</span>
-                                    </div>
-                                    <div class="mt-2 text-xs text-slate-600 whitespace-normal">{{ auditTimelineSummary(log) }}</div>
-                                    <div v-if="Object.keys(log.changed_fields || {}).length" class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        <div
-                                            v-for="entry in Object.entries(log.changed_fields || {})"
-                                            :key="`detail-audit-field-${log.log_id}-${entry[0]}`"
-                                            class="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5"
-                                        >
-                                            <div class="text-[11px] font-semibold text-slate-700">{{ entry[0] }}</div>
-                                            <div class="mt-1 text-[11px] text-slate-500">
-                                                <span class="font-mono">{{ formatAuditTimelineValue(entry[1]?.old) }}</span>
-                                                <span class="mx-1">→</span>
-                                                <span class="font-mono text-slate-700">{{ formatAuditTimelineValue(entry[1]?.new) }}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div v-if="!ledgerDetailAuditLogs.length && !ledgerDetailAuditLoading" class="py-10 text-center text-xs text-slate-500">暂无审计轨迹</div>
-                            </div>
-                            <div class="px-4 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-                                <div class="text-xs text-slate-500">
-                                    第 {{ ledgerDetailAuditPage }} / {{ ledgerDetailAuditTotalPages }} 页
-                                </div>
-                                <button
-                                    @click="loadMoreLedgerDetailAudit"
-                                    :disabled="ledgerDetailAuditLoading || ledgerDetailAuditPage >= ledgerDetailAuditTotalPages"
-                                    class="h-8 px-3 rounded-md bg-white border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors duration-200"
-                                >
-                                    {{ ledgerDetailAuditLoading ? '加载中...' : '加载更多' }}
-                                </button>
-                            </div>
-                        </div>
-                    </template>
-                    <div v-else class="py-16 text-center text-sm text-slate-500">未找到该台账记录</div>
-                </div>
-            </div>
-        </div>
+        <ledger-add-modal
+            :visible="showAddModal"
+            :item="newItem"
+        ></ledger-add-modal>
 
-        <div v-if="showAddModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
-            <div class="modal-panel w-full max-w-lg">
-                <div class="modal-header">
-                    <h3 class="modal-title">采购申请录入</h3>
-                </div>
-                <form @submit.prevent="manualAdd" class="p-6 space-y-4">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="col-span-1">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">流水号（可空，自动生成）</label>
-                            <input v-model="newItem.serial_number" placeholder="如: REQ-2026001（留空自动生成）" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out font-mono">
-                        </div>
-                        <div class="col-span-1">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">申请日期</label>
-                            <input v-model="newItem.request_date" type="date" required class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                        </div>
-                        <div class="col-span-1">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">申领部门</label>
-                            <input v-model="newItem.department" list="department-options" required class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                        </div>
-                        <div class="col-span-1">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">经办人</label>
-                            <input v-model="newItem.handler" list="handler-options" required class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                        </div>
-                        <div class="col-span-2">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">物品/服务名称</label>
-                            <input v-model="newItem.item_name" required class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">数量</label>
-                            <input v-model.number="newItem.quantity" type="number" required step="0.1" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">单价 (¥)</label>
-                            <input v-model.number="newItem.unit_price" type="number" step="0.01" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                        </div>
-                        <div class="col-span-2">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">采购链接 (URL)</label>
-                            <input v-model="newItem.purchase_link" type="url" placeholder="https://..." class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                        </div>
-                    </div>
-                    <div class="flex gap-3 pt-4">
-                        <button type="button" @click="closeAddModal" class="btn-base !bg-white !border !border-slate-300 !text-slate-700 hover:!bg-slate-50 hover:!border-slate-400 flex-1 font-bold transition-all duration-200 ease-in-out">取消</button>
-                        <button type="submit" class="btn-base !bg-blue-600 !border !border-blue-600 !text-white hover:!bg-blue-700 hover:!border-blue-700 flex-1 font-bold transition-all duration-200 ease-in-out">提交入库</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+        <webdav-modal
+            :visible="showWebdavModal"
+            :loading="webdavLoading"
+            :config="webdavConfig"
+            :backups="webdavBackups"
+        ></webdav-modal>
 
-        <div v-if="showWebdavModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
-            <div class="modal-panel w-full max-w-2xl">
-                <div class="modal-header flex justify-between items-center">
-                    <h3 class="modal-title">WebDAV 云端同步管理</h3>
-                    <button @click="closeWebdavModal" class="text-slate-400 hover:text-blue-700 font-bold transition-all duration-200 ease-in-out">&times;</button>
-                </div>
-                <div class="p-6 space-y-6">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="col-span-2">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">服务器地址</label>
-                            <input v-model="webdavConfig.baseUrl" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="坚果云示例：https://dav.jianguoyun.com/dav/">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">用户名</label>
-                            <input v-model="webdavConfig.username" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">授权密码</label>
-                            <input v-model="webdavConfig.password" type="password" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" :placeholder="webdavConfig.hasPassword ? '********' : 'Password'">
-                        </div>
-                        <div class="col-span-2">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">远端目录（可空）</label>
-                            <input v-model="webdavConfig.remoteDir" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="office-supplies/backups">
-                        </div>
-                        <div class="col-span-2 text-[11px] text-slate-500 leading-relaxed">
-                            坚果云请使用 <span class="font-mono text-slate-700">https://dav.jianguoyun.com/dav/</span>，用户名填写坚果云账号，密码填写“应用密码”而不是登录密码。
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">保留最新备份数</label>
-                            <input v-model.number="webdavConfig.keepBackups" type="number" min="0" max="365" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
-                        </div>
-                        <div class="text-[11px] text-slate-500 leading-relaxed flex items-end">
-                            设置为 0 表示不自动清理；大于 0 时每次上传后自动删除更早备份。
-                        </div>
-                    </div>
-                    <div class="flex gap-2">
-                        <button @click="saveWebdavConfig" class="btn-base !bg-white !border !border-slate-300 !text-slate-700 hover:!bg-slate-50 hover:!border-slate-400 text-[11px] font-bold transition-all duration-200 ease-in-out">保存配置</button>
-                        <button @click="testWebdavConnection" class="btn-base !bg-white !border !border-slate-300 !text-slate-700 hover:!bg-slate-50 hover:!border-slate-400 text-[11px] font-bold transition-all duration-200 ease-in-out">测试连接</button>
-                        <button @click="uploadBackupToWebdav" class="btn-base !bg-blue-600 !border !border-blue-600 !text-white hover:!bg-blue-700 hover:!border-blue-700 text-[11px] font-bold ml-auto transition-all duration-200 ease-in-out">立即上传备份</button>
-                    </div>
-                    <div class="border border-slate-200 rounded-lg overflow-hidden">
-                        <div class="bg-slate-50 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase border-b border-slate-200">远端备份文件列表</div>
-                        <div class="max-h-48 overflow-y-auto p-2 space-y-1">
-                            <div v-for="file in webdavBackups" :key="file.name" class="flex items-center justify-between p-2 hover:bg-slate-50 rounded transition-colors">
-                                <div class="min-w-0 pr-3">
-                                    <div class="text-xs font-mono font-medium text-slate-600 truncate">{{ file.name }}</div>
-                                    <div class="text-[10px] text-slate-400">{{ file.modified || '-' }} · {{ formatFileSize(file.size) }}</div>
-                                </div>
-                                <button @click="restoreFromWebdav(file.name)" class="text-blue-600 hover:text-blue-800 text-[10px] font-bold transition-all duration-200 ease-in-out">恢复此备份</button>
-                            </div>
-                            <div v-if="!webdavBackups.length" class="text-center py-8 text-slate-300 font-mono text-xs uppercase">没有找到云端备份</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div v-if="showRecycleBinModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+        <recycle-bin-modal></recycle-bin-modal>
+        <div v-if="false && showRecycleBinModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
             <div class="modal-panel w-full max-w-5xl max-h-[90vh] flex flex-col">
                 <div class="modal-header flex justify-between items-center">
                     <h3 class="modal-title">回收站</h3>
@@ -1345,7 +752,8 @@
             </div>
         </div>
 
-        <div v-if="showDataQualityModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+        <data-quality-modal></data-quality-modal>
+        <div v-if="false && showDataQualityModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
             <div class="modal-panel w-full max-w-5xl max-h-[90vh] flex flex-col">
                 <div class="modal-header flex justify-between items-center">
                     <h3 class="modal-title">数据质量巡检</h3>
@@ -1440,7 +848,8 @@
             </div>
         </div>
 
-        <div v-if="showImportPreviewModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+        <import-preview-modal></import-preview-modal>
+        <div v-if="false && showImportPreviewModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
             <div class="modal-panel w-full max-w-5xl max-h-[90vh] flex flex-col">
                 <div class="modal-header">
                     <h3 class="modal-title">单据智能扫描结果</h3>
@@ -1489,7 +898,8 @@
             </div>
         </div>
 
-        <div v-if="showDuplicateModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+        <duplicate-modal></duplicate-modal>
+        <div v-if="false && showDuplicateModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
             <div class="modal-panel w-full max-w-lg">
                 <div class="modal-header bg-orange-50 border-orange-100">
                     <h3 class="modal-title text-orange-700">检测到重复记录</h3>
@@ -1727,12 +1137,881 @@
             <button @click="$emit('batch-delete')" class="ledger-batch-toolbar-spacer h-8 px-4 rounded-md bg-white border border-rose-200 text-rose-600 text-[11px] font-semibold hover:bg-rose-50 transition-all duration-200 ease-in-out">批量删除</button>
         </div>
     </template>
+
+    <template id="ledger-detail-modal-template">
+        <div v-if="visible" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+            <div class="modal-panel w-full max-w-5xl max-h-[90vh] flex flex-col">
+                <div class="modal-header flex justify-between items-center">
+                    <h3 class="modal-title">台账详情 · 操作历史 / 审计轨迹</h3>
+                    <button @click="$root.closeLedgerDetailModal()" class="text-slate-400 hover:text-blue-700 font-bold transition-all duration-200 ease-in-out">&times;</button>
+                </div>
+                <div class="p-5 overflow-y-auto space-y-4">
+                    <div v-if="loading" class="py-16 text-center text-sm text-slate-500">详情加载中...</div>
+                    <template v-else-if="item">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                <div class="text-[10px] text-slate-500 uppercase font-semibold">流水号</div>
+                                <div class="mt-1 text-sm font-mono text-slate-800">{{ item.serial_number || '-' }}</div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                <div class="text-[10px] text-slate-500 uppercase font-semibold">部门 / 经办人</div>
+                                <div class="mt-1 text-sm text-slate-800">{{ item.department || '-' }} / {{ item.handler || '-' }}</div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                <div class="text-[10px] text-slate-500 uppercase font-semibold">物品</div>
+                                <div class="mt-1 text-sm text-slate-800 truncate" :title="item.item_name || ''">{{ item.item_name || '-' }}</div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                <div class="text-[10px] text-slate-500 uppercase font-semibold">当前状态</div>
+                                <div class="mt-1 text-sm text-slate-800">{{ item.status || '-' }}</div>
+                            </div>
+                        </div>
+
+                        <div class="border border-slate-200 rounded-xl overflow-hidden">
+                            <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                                <div class="text-sm font-semibold text-slate-800">字段级审计时间轴</div>
+                                <div class="text-xs text-slate-500">共 {{ auditTotal }} 条</div>
+                            </div>
+                            <div class="p-4 space-y-3 max-h-[52vh] overflow-y-auto">
+                                <div
+                                    v-for="log in auditLogs"
+                                    :key="`detail-audit-${log.log_id}`"
+                                    class="rounded-lg border border-slate-200 bg-white p-3"
+                                >
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-semibold" :class="$root.auditActionBadgeClass(log.action)">{{ $root.auditActionText(log.action) }}</span>
+                                        <span class="text-xs font-mono text-slate-500">{{ log.created_at || '-' }}</span>
+                                        <span class="text-xs text-slate-400 ml-auto">IP: {{ log.operator_ip || 'unknown' }}</span>
+                                    </div>
+                                    <div class="mt-2 text-xs text-slate-600 whitespace-normal">{{ $root.auditTimelineSummary(log) }}</div>
+                                    <div v-if="Object.keys(log.changed_fields || {}).length" class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        <div
+                                            v-for="entry in Object.entries(log.changed_fields || {})"
+                                            :key="`detail-audit-field-${log.log_id}-${entry[0]}`"
+                                            class="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5"
+                                        >
+                                            <div class="text-[11px] font-semibold text-slate-700">{{ entry[0] }}</div>
+                                            <div class="mt-1 text-[11px] text-slate-500">
+                                                <span class="font-mono">{{ $root.formatAuditTimelineValue(entry[1]?.old) }}</span>
+                                                <span class="mx-1">→</span>
+                                                <span class="font-mono text-slate-700">{{ $root.formatAuditTimelineValue(entry[1]?.new) }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="!auditLogs.length && !auditLoading" class="py-10 text-center text-xs text-slate-500">暂无审计轨迹</div>
+                            </div>
+                            <div class="px-4 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+                                <div class="text-xs text-slate-500">
+                                    第 {{ auditPage }} / {{ auditTotalPages }} 页
+                                </div>
+                                <button
+                                    @click="$root.loadMoreLedgerDetailAudit()"
+                                    :disabled="auditLoading || auditPage >= auditTotalPages"
+                                    class="h-8 px-3 rounded-md bg-white border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors duration-200"
+                                >
+                                    {{ auditLoading ? '加载中...' : '加载更多' }}
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                    <div v-else class="py-16 text-center text-sm text-slate-500">未找到该台账记录</div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="ledger-add-modal-template">
+        <div v-if="visible" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+            <div class="modal-panel w-full max-w-lg">
+                <div class="modal-header">
+                    <h3 class="modal-title">采购申请录入</h3>
+                </div>
+                <form @submit.prevent="$root.manualAdd()" class="p-6 space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="col-span-1">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">流水号（可空，自动生成）</label>
+                            <input v-model="item.serial_number" placeholder="如: REQ-2026001（留空自动生成）" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out font-mono">
+                        </div>
+                        <div class="col-span-1">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">申请日期</label>
+                            <input v-model="item.request_date" type="date" required class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        </div>
+                        <div class="col-span-1">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">申领部门</label>
+                            <input v-model="item.department" list="department-options" required class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        </div>
+                        <div class="col-span-1">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">经办人</label>
+                            <input v-model="item.handler" list="handler-options" required class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">物品/服务名称</label>
+                            <input v-model="item.item_name" required class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">数量</label>
+                            <input v-model.number="item.quantity" type="number" required step="0.1" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">单价 (¥)</label>
+                            <input v-model.number="item.unit_price" type="number" step="0.01" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">采购链接 (URL)</label>
+                            <input v-model="item.purchase_link" type="url" placeholder="https://..." class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        </div>
+                    </div>
+                    <div class="flex gap-3 pt-4">
+                        <button type="button" @click="$root.closeAddModal()" class="btn-base !bg-white !border !border-slate-300 !text-slate-700 hover:!bg-slate-50 hover:!border-slate-400 flex-1 font-bold transition-all duration-200 ease-in-out">取消</button>
+                        <button type="submit" class="btn-base !bg-blue-600 !border !border-blue-600 !text-white hover:!bg-blue-700 hover:!border-blue-700 flex-1 font-bold transition-all duration-200 ease-in-out">提交入库</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </template>
+
+    <template id="settings-ai-panel-template">
+        <div class="space-y-4">
+            <div>
+                <h3 class="text-xl font-semibold tracking-tight text-slate-900">🧠 AI 视觉解析引擎</h3>
+                <p class="mt-1 text-sm text-slate-500">按场景选择本地离线 OCR 或云端多模态大模型，并可配置协议和中转地址。</p>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <label class="cursor-pointer rounded-xl border p-4 transition-all duration-200 ease-in-out bg-white"
+                       :class="ocrEngine === 'local' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500/20 shadow-sm' : 'border-slate-200 hover:border-blue-300 hover:shadow-md'">
+                    <div class="flex items-start gap-3">
+                        <input :checked="ocrEngine === 'local'" @change="$emit('update:ocrEngine', 'local')" type="radio" value="local" class="mt-1 text-blue-600 focus:ring-blue-500/40">
+                        <div>
+                            <div class="text-sm font-semibold text-slate-900">local</div>
+                            <div class="mt-1 text-xs text-slate-500">本地基础 OCR (离线运行，保障绝密数据安全)</div>
+                        </div>
+                    </div>
+                </label>
+                <label class="cursor-pointer rounded-xl border p-4 transition-all duration-200 ease-in-out bg-white"
+                       :class="ocrEngine === 'cloud' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500/20 shadow-sm' : 'border-slate-200 hover:border-blue-300 hover:shadow-md'">
+                    <div class="flex items-start gap-3">
+                        <input :checked="ocrEngine === 'cloud'" @change="$emit('update:ocrEngine', 'cloud')" type="radio" value="cloud" class="mt-1 text-blue-600 focus:ring-blue-500/40">
+                        <div>
+                            <div class="text-sm font-semibold text-slate-900">cloud</div>
+                            <div class="mt-1 text-xs text-slate-500">云端视觉大模型 (高精度，支持多协议与中转站)</div>
+                        </div>
+                    </div>
+                </label>
+            </div>
+            <div v-if="ocrEngine === 'cloud'" class="bg-slate-50 p-4 rounded-md flex flex-col gap-4 border border-slate-200">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-2">接口协议 (Protocol)</label>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <label class="cursor-pointer rounded-lg border bg-white p-3 h-full flex items-start transition-all duration-200 ease-in-out"
+                               :class="llmProtocol === 'openai' ? 'border-blue-500 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-blue-300'">
+                            <div class="flex items-start gap-2">
+                                <input :checked="llmProtocol === 'openai'" @change="$emit('update:llmProtocol', 'openai')" type="radio" value="openai" class="mt-0.5 text-blue-600 focus:ring-blue-500/40">
+                                <div>
+                                    <div class="text-sm font-semibold text-slate-900">OpenAI 兼容</div>
+                                    <div class="mt-1 text-xs text-slate-500">适配 GPT / Qwen 及各中转站</div>
+                                </div>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer rounded-lg border bg-white p-3 h-full flex items-start transition-all duration-200 ease-in-out"
+                               :class="llmProtocol === 'anthropic' ? 'border-blue-500 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-blue-300'">
+                            <div class="flex items-start gap-2">
+                                <input :checked="llmProtocol === 'anthropic'" @change="$emit('update:llmProtocol', 'anthropic')" type="radio" value="anthropic" class="mt-0.5 text-blue-600 focus:ring-blue-500/40">
+                                <div>
+                                    <div class="text-sm font-semibold text-slate-900">Anthropic</div>
+                                    <div class="mt-1 text-xs text-slate-500">适配 Claude 等系列</div>
+                                </div>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer rounded-lg border bg-white p-3 h-full flex items-start transition-all duration-200 ease-in-out"
+                               :class="llmProtocol === 'google' ? 'border-blue-500 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-blue-300'">
+                            <div class="flex items-start gap-2">
+                                <input :checked="llmProtocol === 'google'" @change="$emit('update:llmProtocol', 'google')" type="radio" value="google" class="mt-0.5 text-blue-600 focus:ring-blue-500/40">
+                                <div>
+                                    <div class="text-sm font-semibold text-slate-900">Google 直连</div>
+                                    <div class="mt-1 text-xs text-slate-500">适配 Gemini 等系列</div>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">API Key（必填）</label>
+                    <input
+                        :value="llmApiKey"
+                        @input="$emit('update:llmApiKey', $event.target.value)"
+                        type="password"
+                        class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out"
+                        placeholder="请输入对应协议的 API Key。"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">模型名称 (Model Name)</label>
+                    <input
+                        :value="llmModelName"
+                        @input="$emit('update:llmModelName', $event.target.value)"
+                        type="text"
+                        class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out"
+                        placeholder="留空则默认使用该协议下的最新视觉模型，支持自定义。"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">中转接口地址 (Base URL)</label>
+                    <input
+                        :value="llmBaseUrl"
+                        @input="$emit('update:llmBaseUrl', $event.target.value)"
+                        type="text"
+                        class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out"
+                        :placeholder="llmProtocol === 'google' ? '无代理请留空' : '例如: https://api.openai-hk.com/v1'"
+                    >
+                </div>
+                <p class="text-[11px] text-slate-500">每个协议的 API Key / 模型 / Base URL 会独立保存在当前浏览器 localStorage，上传时按当前协议随请求发送到后端。</p>
+            </div>
+        </div>
+    </template>
+
+    <template id="settings-backup-panel-template">
+        <div class="space-y-4">
+            <div>
+                <h3 class="text-xl font-semibold tracking-tight text-slate-900">💾 ��据容灾与同步</h3>
+                <p class="mt-1 text-sm text-slate-500">管理本地备份、恢复和云端同步，保障关键台账数据可回溯。</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button @click="$root.backupData()" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
+                    <div class="text-sm font-semibold text-slate-900">数据备份</div>
+                    <div class="mt-1 text-xs text-slate-500">导出数据库与附件压缩包</div>
+                </button>
+                <button @click="$root.$refs.restoreInput && $root.$refs.restoreInput.click()" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
+                    <div class="text-sm font-semibold text-slate-900">数据恢复</div>
+                    <div class="mt-1 text-xs text-slate-500">从本地备份快速恢复系统</div>
+                </button>
+                <button @click="$root.openWebdavModal()" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
+                    <div class="text-sm font-semibold text-slate-900">WebDAV 云同步</div>
+                    <div class="mt-1 text-xs text-slate-500">配置远程备份与灾备策略</div>
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <template id="settings-maintenance-panel-template">
+        <div class="space-y-4">
+            <div>
+                <h3 class="text-xl font-semibold tracking-tight text-slate-900">🛠️ 系统维护</h3>
+                <p class="mt-1 text-sm text-slate-500">处理回收站、数据质量巡检与审计日志，维持长期稳定运行。</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button @click="$root.openRecycleBinModal()" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
+                    <div class="text-sm font-semibold text-slate-900">回收站</div>
+                    <div class="mt-1 text-xs text-slate-500">恢复误删记录或彻底删除</div>
+                </button>
+                <button @click="$root.openDataQualityModal()" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
+                    <div class="text-sm font-semibold text-slate-900">数据巡检</div>
+                    <div class="mt-1 text-xs text-slate-500">扫描异常字段与重复键风险</div>
+                </button>
+                <button @click="$root.loadHistory(); $root.switchView('audit')" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
+                    <div class="text-sm font-semibold text-slate-900">审计日志</div>
+                    <div class="mt-1 text-xs text-slate-500">查看并回滚历史变更轨迹</div>
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <template id="webdav-modal-template">
+        <div v-if="visible" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+            <div class="modal-panel w-full max-w-2xl">
+                <div class="modal-header flex justify-between items-center">
+                    <h3 class="modal-title">WebDAV 云端同步管理</h3>
+                    <button @click="$root.closeWebdavModal()" class="text-slate-400 hover:text-blue-700 font-bold transition-all duration-200 ease-in-out">&times;</button>
+                </div>
+                <div class="p-6 space-y-6">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">服务器地址</label>
+                            <input v-model="config.baseUrl" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="坚果云示例：https://dav.jianguoyun.com/dav/">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">用户名</label>
+                            <input v-model="config.username" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">授权密码</label>
+                            <input v-model="config.password" type="password" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" :placeholder="config.hasPassword ? '********' : 'Password'">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">远端目录（可空）</label>
+                            <input v-model="config.remoteDir" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="office-supplies/backups">
+                        </div>
+                        <div class="col-span-2 text-[11px] text-slate-500 leading-relaxed">
+                            坚果云请使用 <span class="font-mono text-slate-700">https://dav.jianguoyun.com/dav/</span>，用户名填写坚果云账号，密码填写“应用密码”而不是登录密码。
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">保留最新备份数</label>
+                            <input v-model.number="config.keepBackups" type="number" min="0" max="365" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        </div>
+                        <div class="text-[11px] text-slate-500 leading-relaxed flex items-end">
+                            设置为 0 表示不自动清理；大于 0 时每次上传后自动删除更早备份。
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="$root.saveWebdavConfig()" :disabled="loading" class="btn-base !bg-white !border !border-slate-300 !text-slate-700 hover:!bg-slate-50 hover:!border-slate-400 text-[11px] font-bold transition-all duration-200 ease-in-out disabled:opacity-60">保存配置</button>
+                        <button @click="$root.testWebdavConnection()" :disabled="loading" class="btn-base !bg-white !border !border-slate-300 !text-slate-700 hover:!bg-slate-50 hover:!border-slate-400 text-[11px] font-bold transition-all duration-200 ease-in-out disabled:opacity-60">测试连接</button>
+                        <button @click="$root.uploadBackupToWebdav()" :disabled="loading" class="btn-base !bg-blue-600 !border !border-blue-600 !text-white hover:!bg-blue-700 hover:!border-blue-700 text-[11px] font-bold ml-auto transition-all duration-200 ease-in-out disabled:opacity-60">立即上传备份</button>
+                    </div>
+                    <div class="border border-slate-200 rounded-lg overflow-hidden">
+                        <div class="bg-slate-50 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase border-b border-slate-200">远端备份文件列表</div>
+                        <div class="max-h-48 overflow-y-auto p-2 space-y-1">
+                            <div v-for="file in backups" :key="file.name" class="flex items-center justify-between p-2 hover:bg-slate-50 rounded transition-colors">
+                                <div class="min-w-0 pr-3">
+                                    <div class="text-xs font-mono font-medium text-slate-600 truncate">{{ file.name }}</div>
+                                    <div class="text-[10px] text-slate-400">{{ file.modified || '-' }} · {{ $root.formatFileSize(file.size) }}</div>
+                                </div>
+                                <button @click="$root.restoreFromWebdav(file.name)" :disabled="loading" class="text-blue-600 hover:text-blue-800 text-[10px] font-bold transition-all duration-200 ease-in-out disabled:opacity-60">恢复此备份</button>
+                            </div>
+                            <div v-if="!backups.length" class="text-center py-8 text-slate-300 font-mono text-xs uppercase">没有找到云端备份</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="audit-log-panel-template">
+        <div class="contents">
+            <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-6">
+                <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+                    <div>
+                        <h2 class="text-3xl font-semibold tracking-tight text-slate-900">审计日志</h2>
+                        <p class="mt-1 text-sm text-slate-500">系统操作与字段变更的可追踪记录</p>
+                    </div>
+                    <button @click="$root.loadHistory()" :disabled="$root.historyLoading" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out">{{ $root.historyLoading ? '加载中...' : '刷新日志' }}</button>
+                </div>
+                <div class="mt-5 flex flex-wrap items-center gap-3">
+                    <input v-model="$root.historyKeyword" @keyup.enter="$root.applyHistoryFilter()" class="toolbar-control flex-1 min-w-[240px] h-11 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="搜索审计项目 / 关键字...">
+                    <select v-model="$root.historyAction" @change="$root.applyHistoryFilter()" class="h-11 px-3 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        <option value="">所有审计动作</option>
+                        <option value="create">创建记录</option>
+                        <option value="update">字段变更</option>
+                        <option value="delete">数据删除</option>
+                    </select>
+                    <input type="month" v-model="$root.historyMonth" @change="$root.applyHistoryFilter()" class="h-11 px-3 bg-white border border-slate-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                    <button @click="$root.applyHistoryFilter()" :disabled="$root.historyLoading" class="h-11 px-5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out">查询</button>
+                    <button @click="$root.clearHistoryFilters()" :disabled="$root.historyLoading" class="h-11 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out">清空</button>
+                </div>
+            </div>
+            <div class="flex-1 min-h-0 bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl overflow-hidden flex flex-col">
+                <div class="flex-1 overflow-y-auto overflow-x-auto">
+                    <table class="w-full min-w-max whitespace-nowrap text-sm border-b border-slate-200">
+                        <thead class="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+                            <tr class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                <th class="px-4 py-3 text-left w-44">时间戳</th>
+                                <th class="px-4 py-3 text-left w-28">操作类型</th>
+                                <th class="px-4 py-3 text-left w-56">关联项目</th>
+                                <th class="px-4 py-3 text-left">变更详情</th>
+                                <th class="px-4 py-3 text-center w-24">回滚</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200">
+                            <tr v-if="$root.historyLoading">
+                                <td colspan="5" class="py-16 text-center text-sm text-slate-500">日志加载中...</td>
+                            </tr>
+                            <template v-else>
+                                <tr v-for="row in $root.historyItems" :key="row.id" class="hover:bg-slate-50">
+                                    <td class="px-4 py-3.5 text-xs text-slate-700 font-medium font-mono">{{ row.created_at }}</td>
+                                    <td class="px-4 py-3.5">
+                                        <span :class="{ 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20': row.action==='create', 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-700/10': row.action==='update', 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20': row.action==='delete' }" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold">
+                                            {{ row.action === 'create' ? '新增' : (row.action === 'update' ? '变更' : '删除') }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3.5 text-sm font-medium text-slate-800">{{ row.item_name || '系统默认' }}</td>
+                                    <td class="px-4 py-3.5 text-sm text-slate-600 whitespace-normal max-w-[560px]">{{ $root.historyDetailText(row) }}</td>
+                                    <td class="px-4 py-3.5 text-center">
+                                        <button v-if="$root.canRollbackHistory(row)" @click="$root.rollbackHistoryRow(row)" class="h-7 px-2 rounded-md border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition-all duration-200 ease-in-out">回滚</button>
+                                        <span v-else class="text-[11px] text-slate-300">-</span>
+                                    </td>
+                                </tr>
+                                <tr v-if="!$root.historyItems.length">
+                                    <td colspan="5" class="py-16 text-center text-sm text-slate-500">暂无审计日志</td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                    <div class="text-xs text-slate-600">
+                        第 <span class="font-semibold text-slate-900">{{ $root.historyPage }}</span> / <span class="font-semibold text-slate-900">{{ $root.historyTotalPages }}</span> 页
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="$root.goHistoryPage($root.historyPage - 1)" :disabled="$root.historyLoading || $root.historyPage <= 1" class="h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50 transition-colors duration-200">上一页</button>
+                        <button @click="$root.goHistoryPage($root.historyPage + 1)" :disabled="$root.historyLoading || $root.historyPage >= $root.historyTotalPages" class="h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50 transition-colors duration-200">下一页</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="recycle-bin-modal-template">
+        <div v-if="$root.showRecycleBinModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+            <div class="modal-panel w-full max-w-5xl max-h-[90vh] flex flex-col">
+                <div class="modal-header flex justify-between items-center">
+                    <h3 class="modal-title">回收站</h3>
+                    <button @click="$root.closeRecycleBinModal()" class="text-slate-400 hover:text-blue-700 font-bold transition-all duration-200 ease-in-out">&times;</button>
+                </div>
+                <div class="p-5 space-y-4 overflow-y-auto">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <input v-model="$root.recycleBinKeyword" @keyup.enter="$root.loadRecycleBin()" class="toolbar-control flex-1 min-w-[220px] h-10 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="搜索流水号 / 部门 / 物品名称...">
+                        <button @click="$root.loadRecycleBin()" :disabled="$root.recycleBinLoading" class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out">查询</button>
+                        <button @click="$root.recycleBinKeyword=''; $root.recycleBinPage=1; $root.loadRecycleBin()" :disabled="$root.recycleBinLoading" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out">清空</button>
+                    </div>
+                    <div class="text-xs text-slate-500">共 {{ $root.recycleBinTotal }} 条已删除记录</div>
+                    <div class="border border-slate-200 rounded-lg overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-max whitespace-nowrap text-sm">
+                                <thead class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left">物品名称</th>
+                                        <th class="px-3 py-2 text-left">流水号</th>
+                                        <th class="px-3 py-2 text-left">部门 / 经办人</th>
+                                        <th class="px-3 py-2 text-left">删除时间</th>
+                                        <th class="px-3 py-2 text-right">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr v-if="$root.recycleBinLoading">
+                                        <td colspan="5" class="py-12 text-center text-slate-500 text-sm">加载中...</td>
+                                    </tr>
+                                    <template v-else>
+                                        <tr v-for="item in $root.recycleBinItems" :key="item.id" class="hover:bg-slate-50">
+                                            <td class="px-3 py-2.5 text-slate-800 font-medium">{{ item.item_name || '-' }}</td>
+                                            <td class="px-3 py-2.5 text-slate-600 font-mono text-xs">{{ item.serial_number || '-' }}</td>
+                                            <td class="px-3 py-2.5 text-slate-600">{{ item.department || '-' }} / {{ item.handler || '-' }}</td>
+                                            <td class="px-3 py-2.5 text-slate-600 text-xs font-mono">{{ item.deleted_at || '-' }}</td>
+                                            <td class="px-3 py-2.5">
+                                                <div class="flex items-center justify-end gap-2">
+                                                    <button @click="$root.restoreFromRecycleBin(item)" class="h-7 px-2 rounded-md border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition-all duration-200 ease-in-out">恢复</button>
+                                                    <button @click="$root.purgeFromRecycleBin(item)" class="h-7 px-2 rounded-md border border-rose-200 bg-white text-[11px] font-semibold text-rose-600 hover:bg-rose-50 transition-all duration-200 ease-in-out">彻底删除</button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="!$root.recycleBinItems.length">
+                                            <td colspan="5" class="py-12 text-center text-slate-500 text-sm">回收站为空</td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-slate-500">
+                        <div>第 {{ $root.recycleBinPage }} / {{ Math.max(1, Math.ceil($root.recycleBinTotal / $root.recycleBinPageSize)) }} 页</div>
+                        <div class="flex items-center gap-2">
+                            <button @click="$root.recycleBinPage > 1 && ($root.recycleBinPage -= 1, $root.loadRecycleBin())" :disabled="$root.recycleBinLoading || $root.recycleBinPage <= 1" class="h-8 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors duration-200">上一页</button>
+                            <button @click="$root.recycleBinPage < Math.max(1, Math.ceil($root.recycleBinTotal / $root.recycleBinPageSize)) && ($root.recycleBinPage += 1, $root.loadRecycleBin())" :disabled="$root.recycleBinLoading || $root.recycleBinPage >= Math.max(1, Math.ceil($root.recycleBinTotal / $root.recycleBinPageSize))" class="h-8 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors duration-200">下一页</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="data-quality-modal-template">
+        <div v-if="$root.showDataQualityModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+            <div class="modal-panel w-full max-w-5xl max-h-[90vh] flex flex-col">
+                <div class="modal-header flex justify-between items-center">
+                    <h3 class="modal-title">数据质量巡检</h3>
+                    <button @click="$root.closeDataQualityModal()" class="text-slate-400 hover:text-blue-700 font-bold transition-all duration-200 ease-in-out">&times;</button>
+                </div>
+                <div class="p-5 overflow-y-auto space-y-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <label class="text-xs text-slate-500">扫描条数</label>
+                        <input v-model.number="$root.dataQualityLimit" type="number" min="1" max="1000" class="h-10 w-28 px-3 bg-white border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        <button @click="$root.loadDataQualityReport()" :disabled="$root.dataQualityLoading" class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out">{{ $root.dataQualityLoading ? '巡检中...' : '刷新巡检' }}</button>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3"><div class="text-[10px] text-slate-500 uppercase font-semibold">扫描记录</div><div class="mt-1 text-xl font-semibold text-slate-900 font-mono">{{ $root.dataQualityReport.scannedRows || 0 }}</div></div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3"><div class="text-[10px] text-slate-500 uppercase font-semibold">问题记录</div><div class="mt-1 text-xl font-semibold text-amber-600 font-mono">{{ ($root.dataQualityReport.issues || []).length }}</div></div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3"><div class="text-[10px] text-slate-500 uppercase font-semibold">重复键组</div><div class="mt-1 text-xl font-semibold text-rose-600 font-mono">{{ ($root.dataQualityReport.duplicates || []).length }}</div></div>
+                    </div>
+                    <div class="border border-slate-200 rounded-lg p-3">
+                        <div class="text-xs font-semibold text-slate-600 mb-2">问题汇总</div>
+                        <div v-if="Object.keys($root.dataQualityReport.summary || {}).length" class="flex flex-wrap gap-2">
+                            <span v-for="(count, code) in $root.dataQualityReport.summary" :key="`quality-summary-${code}`" class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-700">
+                                <span>{{ $root.qualityIssueLabel(code) }}</span>
+                                <span class="font-semibold font-mono">{{ count }}</span>
+                            </span>
+                        </div>
+                        <div v-else class="text-xs text-slate-400">暂无问题</div>
+                    </div>
+                    <div class="border border-slate-200 rounded-lg overflow-hidden">
+                        <div class="bg-slate-50 px-3 py-2 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase">问题明细</div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-max whitespace-nowrap text-sm">
+                                <thead class="bg-white border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                    <tr><th class="px-3 py-2 text-left w-20">ID</th><th class="px-3 py-2 text-left">流水号 / 物品</th><th class="px-3 py-2 text-left">问题</th><th class="px-3 py-2 text-center w-24">操作</th></tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr v-for="row in $root.dataQualityReport.issues" :key="`quality-issue-${row.id}`">
+                                        <td class="px-3 py-2 text-xs font-mono text-slate-600">{{ row.id }}</td>
+                                        <td class="px-3 py-2 text-slate-700"><div class="text-xs font-mono text-slate-500">{{ row.serial_number || '-' }}</div><div class="text-sm font-medium text-slate-800">{{ row.item_name || '-' }}</div></td>
+                                        <td class="px-3 py-2"><div class="flex flex-wrap gap-1"><span v-for="code in row.issues || []" :key="`quality-issue-code-${row.id}-${code}`" class="inline-flex px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 text-[11px] font-semibold ring-1 ring-amber-600/20">{{ $root.qualityIssueLabel(code) }}</span></div></td>
+                                        <td class="px-3 py-2 text-center"><button @click="$root.jumpToQualityIssue(row)" class="h-7 px-2.5 rounded-md bg-white border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-200">定位</button></td>
+                                    </tr>
+                                    <tr v-if="!($root.dataQualityReport.issues || []).length"><td colspan="4" class="py-12 text-center text-slate-500 text-sm">未发现问题记录</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="import-preview-modal-template">
+        <div v-if="$root.showImportPreviewModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+            <div class="modal-panel w-full max-w-5xl max-h-[90vh] flex flex-col">
+                <div class="modal-header"><h3 class="modal-title">单据智能扫描结果</h3></div>
+                <div class="p-6 overflow-y-auto space-y-6">
+                    <div class="grid grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <div v-for="field in ['serial_number', 'department', 'handler', 'request_date']" :key="field">
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">{{ field.replace('_', ' ') }}</label>
+                            <input v-model="$root.importPreview[field]" class="h-9 px-3 w-full border border-slate-200 rounded-lg text-xs font-bold bg-white">
+                        </div>
+                    </div>
+                    <div class="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-max whitespace-nowrap text-xs">
+                                <thead class="bg-slate-50 text-slate-600 font-bold uppercase border-b border-slate-200">
+                                    <tr><th class="p-3 text-left">物品名称</th><th class="p-3 text-center w-24">数量</th><th class="p-3 text-center w-28">单价</th><th class="p-3 text-left">关联链接</th><th class="p-3 text-center w-16">操作</th></tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr v-for="(row, idx) in $root.importPreview.items" :key="idx" class="hover:bg-slate-50/50">
+                                        <td class="p-2"><input v-model="row.item_name" class="w-full border-none focus:ring-1 focus:ring-blue-400 rounded px-2 py-1 font-bold"></td>
+                                        <td class="p-2"><input v-model.number="row.quantity" type="number" class="w-full text-center border-none font-mono font-bold"></td>
+                                        <td class="p-2"><input v-model.number="row.unit_price" type="number" step="0.01" min="0" class="w-full text-center border-none font-mono font-bold" placeholder="-"></td>
+                                        <td class="p-2"><input v-model="row.purchase_link" class="w-full text-[10px] text-slate-400 border-none px-2 py-1 font-mono"></td>
+                                        <td class="p-2 text-center"><button @click="$root.removePreviewItem(idx)" class="text-slate-300 hover:text-red-500 font-bold text-lg transition-all duration-200 ease-in-out">&times;</button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <button @click="$root.addPreviewItem()" class="w-full py-3 border border-dashed border-slate-300 text-slate-400 hover:text-blue-900 hover:border-blue-400 transition-all text-[11px] font-bold uppercase tracking-widest">+ 补充新行</button>
+                </div>
+                <div class="p-4 border-t border-slate-200 flex justify-end gap-3 bg-slate-50">
+                    <button @click="$root.closeImportPreview()" class="btn-base !bg-white !border !border-slate-300 !text-slate-700 hover:!bg-slate-50 hover:!border-slate-400 font-bold transition-all duration-200 ease-in-out">取消</button>
+                    <button @click="$root.submitImport()" :disabled="$root.importSubmitting" class="btn-base !bg-blue-600 !border !border-blue-600 !text-white hover:!bg-blue-700 hover:!border-blue-700 px-10 font-bold transition-all duration-200 ease-in-out">{{ $root.importSubmitting ? '正在入库...' : '核对完成，确认入库' }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="duplicate-modal-template">
+        <div v-if="$root.showDuplicateModal" class="fixed inset-0 modal-overlay flex items-center justify-center p-4">
+            <div class="modal-panel w-full max-w-lg">
+                <div class="modal-header bg-orange-50 border-orange-100">
+                    <h3 class="modal-title text-orange-700">检测到重复记录</h3>
+                </div>
+                <div class="p-6">
+                    <p class="text-xs text-slate-500 mb-4 leading-relaxed font-medium">以下物品在系统中已存在近期记录，请选择处理方式：</p>
+                    <div class="max-h-48 overflow-y-auto space-y-2 mb-6 border border-slate-100 p-3 rounded-lg bg-slate-50">
+                        <div v-for="dup in $root.pendingDuplicates" :key="`pending-dup-${dup.item_name}-${dup.existing_quantity}-${dup.new_quantity}`" class="flex justify-between items-center text-[11px] p-2 border-b border-slate-200 last:border-0">
+                            <span class="font-bold text-slate-700 uppercase">{{ dup.item_name }}</span>
+                            <span class="text-orange-600 font-bold font-mono">{{ dup.existing_quantity }} &rarr; {{ dup.new_quantity }}</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button @click="$root.handleDuplicates('skip')" class="btn-base !bg-white !border !border-slate-300 !text-slate-700 hover:!bg-slate-50 hover:!border-slate-400 font-bold text-xs py-3 transition-all duration-200 ease-in-out">跳过重复项</button>
+                        <button @click="$root.handleDuplicates('merge')" class="btn-base !bg-white !border !border-slate-300 !text-slate-700 hover:!bg-slate-50 hover:!border-slate-400 font-bold text-xs py-3 transition-all duration-200 ease-in-out">合并数量</button>
+                        <button @click="$root.handleDuplicates('add')" class="btn-base !bg-blue-600 !border !border-blue-600 !text-white hover:!bg-blue-700 hover:!border-blue-700 col-span-2 font-bold text-xs py-3 transition-all duration-200 ease-in-out">新增非重复项（跳过重复）</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="ledger-table-panel-template">
+        <div class="flex-1 min-h-0 flex flex-col">
+            <div class="flex-1 min-h-0 overflow-x-auto border-b border-slate-200">
+                <table v-if="items.length > 0" class="w-full min-w-max whitespace-nowrap text-left border-separate border-spacing-0">
+                    <thead class="sticky top-0 z-20 bg-slate-50 shadow-[0_1px_0_0_#e2e8f0]">
+                        <tr class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            <th class="px-4 py-3 text-center w-12 sticky left-0 z-20 bg-white shadow-[1px_0_0_0_#e2e8f0]"><input type="checkbox" v-model="selectAllModel" @change="$root.toggleSelectAll()" class="rounded text-blue-600 focus:ring-blue-500/40"></th>
+                            <th class="px-4 py-3 min-w-[96px]">流水号</th>
+                            <th class="px-4 py-3 min-w-[120px]">部门</th>
+                            <th class="px-4 py-3 min-w-[72px]">经办人</th>
+                            <th class="px-4 py-3 min-w-[280px]">物品规格与名称</th>
+                            <th class="px-4 py-3 min-w-[220px]">采购链接</th>
+                            <th class="px-4 py-3 text-center w-20">数量</th>
+                            <th class="px-4 py-3 text-center w-24">单价(¥)</th>
+                            <th class="px-4 py-3 text-center w-32">状态</th>
+                            <th class="px-4 py-3 text-center min-w-[140px]">到货日期</th>
+                            <th class="px-4 py-3 text-center min-w-[140px]">分发日期</th>
+                            <th class="px-4 py-3 min-w-[180px]">签收备注</th>
+                            <th class="px-4 py-3 text-center w-24">发票</th>
+                            <th class="px-4 py-3 text-center w-32">付款进度</th>
+                            <th class="px-4 py-3 text-center w-24 sticky right-0 z-20 bg-white shadow-[-1px_0_0_0_#e2e8f0]">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200">
+                        <tr
+                            v-for="item in items"
+                            :key="item.id"
+                            :data-ledger-item-id="item.id"
+                            :class="{
+                                'bg-slate-100/70': selectedItemsModel.includes(item.id),
+                                'bg-amber-50/70': Number(item.id) === Number(focusedLedgerItemId),
+                            }"
+                            class="hover:bg-slate-50 transition-colors duration-200 ease-in-out"
+                        >
+                            <td class="px-4 py-3 text-center align-middle sticky left-0 z-20 bg-white shadow-[1px_0_0_0_#e2e8f0]">
+                                <input type="checkbox" :value="item.id" v-model="selectedItemsModel" class="rounded text-blue-600 focus:ring-blue-500/40">
+                            </td>
+                            <td class="px-4 py-3 align-middle">
+                                <input type="text" v-model="item.serial_number" @blur="$root.updateItem(item.id, { serial_number: item.serial_number })" :placeholder="item.id ? `REC-${item.id}` : '自动生成'" class="w-full px-2 py-1 text-xs font-mono text-slate-500 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                            </td>
+                            <td class="px-4 py-3 align-middle">
+                                <input type="text" v-model="item.department" @blur="$root.updateItem(item.id, { department: item.department })" class="w-full px-2 py-1 text-sm font-medium text-slate-500 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                            </td>
+                            <td class="px-4 py-3 align-middle">
+                                <input type="text" v-model="item.handler" @blur="$root.updateItem(item.id, { handler: item.handler })" class="w-full px-2 py-1 text-sm text-slate-500 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                            </td>
+                            <td class="px-4 py-3 align-middle">
+                                <div class="max-w-[280px] overflow-hidden text-ellipsis whitespace-nowrap" :title="item.item_name || ''">
+                                    <input type="text" v-model="item.item_name" @blur="$root.updateItem(item.id, { item_name: item.item_name })" class="w-full px-2 py-1 text-sm font-medium text-slate-700 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all truncate" placeholder="物品名称">
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 align-middle">
+                                <div class="flex items-center gap-2">
+                                    <div v-if="$root.isInlineEditing(item.id, 'purchase_link')" class="flex-1 min-w-0">
+                                        <input
+                                            :ref="(el) => $root.setInlineEditRef(item.id, 'purchase_link', el)"
+                                            type="url"
+                                            v-model="item.purchase_link"
+                                            @keydown.enter.prevent="$root.commitInlineEdit(item, 'purchase_link')"
+                                            @keydown.esc.prevent="$root.cancelInlineEdit()"
+                                            @blur="$root.commitInlineEdit(item, 'purchase_link')"
+                                            placeholder="https://..."
+                                            class="h-7 w-full min-w-[180px] px-2 text-xs font-mono text-slate-700 bg-white border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                        >
+                                    </div>
+                                    <button
+                                        v-else
+                                        @click="item.purchase_link ? $root.copyPurchaseLink(item.purchase_link) : $root.startInlineEdit(item.id, 'purchase_link')"
+                                        type="button"
+                                        class="group flex-1 min-w-0 inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-slate-100 transition-colors duration-150"
+                                        :title="item.purchase_link ? '点击复制链接' : '点击录入链接'"
+                                    >
+                                        <span
+                                            class="truncate text-xs font-mono text-slate-700"
+                                            :title="item.purchase_link || ''"
+                                        >
+                                            {{ $root.compactPurchaseLink(item.purchase_link) }}
+                                        </span>
+                                        <svg class="w-3.5 h-3.5 text-gray-300 opacity-0 group-hover:opacity-100 group-hover:text-blue-500 transition-all duration-150" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 013.536 3.536L12.536 16.536a4 4 0 01-1.789 1.05L8 18l.414-2.747A4 4 0 019.464 13.464z"/>
+                                        </svg>
+                                    </button>
+                                    <button
+                                        @click="$root.startInlineEdit(item.id, 'purchase_link')"
+                                        type="button"
+                                        class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-50 transition-colors duration-200 shrink-0"
+                                        title="编辑链接"
+                                    >
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 013.536 3.536L12.536 16.536a4 4 0 01-1.789 1.05L8 18l.414-2.747A4 4 0 019.464 13.464z"/></svg>
+                                    </button>
+                                    <a
+                                        v-if="item.purchase_link"
+                                        :href="item.purchase_link"
+                                        target="_blank"
+                                        class="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-50 transition-colors duration-200 shrink-0"
+                                        title="打开链接"
+                                    >
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                    </a>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-center align-middle">
+                                <div class="flex items-center justify-center">
+                                    <div v-if="$root.isInlineEditing(item.id, 'quantity')" class="inline-flex">
+                                        <input
+                                            :ref="(el) => $root.setInlineEditRef(item.id, 'quantity', el)"
+                                            type="number"
+                                            v-model.number="item.quantity"
+                                            @keydown.enter.prevent="$root.commitInlineEdit(item, 'quantity')"
+                                            @keydown.esc.prevent="$root.cancelInlineEdit()"
+                                            @blur="$root.commitInlineEdit(item, 'quantity')"
+                                            class="h-7 w-20 px-2 text-right text-xs font-mono text-slate-700 bg-white border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                        >
+                                    </div>
+                                    <button v-else @click="$root.startInlineEdit(item.id, 'quantity')" type="button" class="group inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-slate-100 transition-colors duration-150">
+                                        <span class="font-mono text-slate-700">{{ item.quantity }}</span>
+                                        <svg class="w-3.5 h-3.5 text-gray-300 opacity-0 group-hover:opacity-100 group-hover:text-blue-500 transition-all duration-150" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 013.536 3.536L12.536 16.536a4 4 0 01-1.789 1.05L8 18l.414-2.747A4 4 0 019.464 13.464z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-center align-middle">
+                                <div class="flex items-center justify-center">
+                                    <div v-if="$root.isInlineEditing(item.id, 'unit_price')" class="inline-flex">
+                                        <input
+                                            :ref="(el) => $root.setInlineEditRef(item.id, 'unit_price', el)"
+                                            type="number"
+                                            step="0.01"
+                                            v-model.number="item.unit_price"
+                                            @keydown.enter.prevent="$root.commitInlineEdit(item, 'unit_price')"
+                                            @keydown.esc.prevent="$root.cancelInlineEdit()"
+                                            @blur="$root.commitInlineEdit(item, 'unit_price')"
+                                            class="h-7 w-24 px-2 text-right text-xs font-mono text-slate-700 bg-white border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                        >
+                                    </div>
+                                    <button v-else @click="$root.startInlineEdit(item.id, 'unit_price')" type="button" class="group inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-slate-100 transition-colors duration-150">
+                                        <span class="font-mono text-slate-700">{{ item.unit_price === null || item.unit_price === undefined ? '-' : $root.formatCurrency(item.unit_price) }}</span>
+                                        <svg class="w-3.5 h-3.5 text-gray-300 opacity-0 group-hover:opacity-100 group-hover:text-blue-500 transition-all duration-150" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 013.536 3.536L12.536 16.536a4 4 0 01-1.789 1.05L8 18l.414-2.747A4 4 0 019.464 13.464z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-center align-middle">
+                                <div class="flex items-center justify-center">
+                                    <div class="relative inline-flex items-center group">
+                                        <span v-if="$root.isStatusBreathing(item.status)" class="absolute left-1.5 flex h-1.5 w-1.5 pointer-events-none">
+                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" :class="$root.statusPingClass(item.status)"></span>
+                                            <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="$root.statusDotClass(item.status)"></span>
+                                        </span>
+                                        <select :value="$root.normalizeProcurementStatus(item.status)" @change="$root.handleLedgerStatusChange(item, $event.target.value)"
+                                                :class="$root.statusSelectClass(item.status)"
+                                                class="inline-flex items-center min-w-[84px] py-0.5 text-xs font-medium rounded-md border appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200">
+                                            <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-center align-middle">
+                                <input
+                                    type="date"
+                                    v-model="item.arrival_date"
+                                    @change="$root.updateItem(item.id, { arrival_date: item.arrival_date })"
+                                    :class="!item.arrival_date ? 'text-transparent focus:text-slate-500' : 'text-slate-500'"
+                                    class="w-full bg-transparent border-none focus:ring-0 p-0 text-xs text-center align-middle [&::-webkit-calendar-picker-indicator]:opacity-0 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 transition-colors"
+                                >
+                            </td>
+                            <td class="px-4 py-3 text-center align-middle">
+                                <input
+                                    type="date"
+                                    v-model="item.distribution_date"
+                                    @change="$root.updateItem(item.id, { distribution_date: item.distribution_date })"
+                                    :class="!item.distribution_date ? 'text-transparent focus:text-slate-500' : 'text-slate-500'"
+                                    class="w-full bg-transparent border-none focus:ring-0 p-0 text-xs text-center align-middle [&::-webkit-calendar-picker-indicator]:opacity-0 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 transition-colors"
+                                >
+                            </td>
+                            <td class="px-4 py-3 align-middle">
+                                <div class="max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" :title="item.signoff_note || ''">
+                                    <input
+                                        type="text"
+                                        v-model="item.signoff_note"
+                                        @blur="$root.updateItem(item.id, { signoff_note: item.signoff_note })"
+                                        class="w-full px-2 py-1 text-sm text-slate-500 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all truncate"
+                                        placeholder="签收备注"
+                                    >
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-center align-middle">
+                                <div class="flex items-center justify-center">
+                                    <button @click="$root.toggleInvoice(item)"
+                                            :class="item.invoice_issued ? 'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20' : 'bg-yellow-50 text-yellow-800 ring-1 ring-inset ring-yellow-600/20'"
+                                            class="inline-flex items-center justify-center whitespace-nowrap min-w-[64px] px-2 py-0.5 text-xs font-medium rounded-md transition-colors duration-200">
+                                        <span v-if="!item.invoice_issued" class="relative flex h-1.5 w-1.5 mr-1">
+                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                                            <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-yellow-500"></span>
+                                        </span>
+                                        {{ item.invoice_issued ? '已入账' : '待报' }}
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-center align-middle">
+                                <div class="flex items-center justify-center">
+                                    <div class="relative inline-flex items-center">
+                                        <span v-if="item.payment_status === '未付款'" class="absolute left-1.5 flex h-1.5 w-1.5 pointer-events-none">
+                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                            <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
+                                        </span>
+                                        <select v-model="item.payment_status" @change="$root.updateItem(item.id, { payment_status: item.payment_status })"
+                                                :class="{
+                                                    'bg-yellow-50 text-yellow-800 ring-1 ring-inset ring-yellow-600/20 pl-4': item.payment_status === '未付款',
+                                                    'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-700/10 px-2': item.payment_status === '已付款',
+                                                    'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20 px-2': item.payment_status === '已报销',
+                                                    'bg-slate-50 text-slate-700 ring-1 ring-inset ring-slate-600/20 px-2': item.payment_status !== '未付款' && item.payment_status !== '已付款' && item.payment_status !== '已报销'
+                                                }"
+                                                class="inline-flex items-center min-w-[84px] py-0.5 text-xs font-medium rounded-md border-0 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200">
+                                            <option v-for="p in paymentStatuses" :key="p" :value="p">{{ p }}</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-center align-middle sticky right-0 z-20 bg-white shadow-[-1px_0_0_0_#e2e8f0]">
+                                <div class="flex items-center justify-center gap-1">
+                                    <button @click="$root.openLedgerDetail(item)" class="text-slate-400 hover:text-blue-600 p-1 transition-colors duration-200" title="详情 / 审计轨迹"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
+                                    <button @click="$root.deleteItem(item.id)" class="text-slate-400 hover:text-red-600 p-1 transition-colors duration-200" title="删除"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div v-if="items.length === 0" class="flex flex-col items-center justify-center py-24 px-6 text-center">
+                    <div class="inline-flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                        <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 7.5A2.5 2.5 0 015.5 5h13A2.5 2.5 0 0121 7.5v9A2.5 2.5 0 0118.5 19h-13A2.5 2.5 0 013 16.5v-9zM8 9h8M8 12h8M8 15h5"/>
+                        </svg>
+                    </div>
+                    <p class="mt-4 text-base font-semibold text-slate-700">暂无采购数据</p>
+                    <p class="mt-1 text-sm text-slate-500">请点击上方“手动新增”或“导入单据”开始录入</p>
+                </div>
+            </div>
+
+            <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-col lg:flex-row items-start lg:items-center gap-3 lg:gap-4 justify-between">
+                <div class="text-xs text-slate-600">
+                    显示 <span class="font-semibold text-slate-900">{{ pageRangeStart }}</span>-<span class="font-semibold text-slate-900">{{ pageRangeEnd }}</span> / <span class="font-semibold text-slate-900">{{ totalItems }}</span> 条
+                </div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <label class="text-xs text-slate-500">每页</label>
+                    <select v-model.number="pageSizeModel" @change="$root.changePageSize()" class="h-9 px-2 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                        <option v-for="size in pageSizeOptions" :key="`size-${size}`" :value="size">{{ size }}</option>
+                    </select>
+                    <div class="w-px h-5 bg-slate-300 mx-1"></div>
+                    <button @click="$root.goToPage(currentPage - 1)" :disabled="currentPage <= 1" class="h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50 transition-colors duration-200">上一页</button>
+                    <template v-for="(token, idx) in pageTokens" :key="`pt-${idx}-${token}`">
+                        <span v-if="token === 'ellipsis'" class="h-9 px-2 inline-flex items-center text-slate-400">…</span>
+                        <button v-else @click="$root.goToPage(token)" :class="token === currentPage ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'" class="h-9 min-w-[36px] px-2 border rounded-lg text-xs font-medium transition-colors duration-200">{{ token }}</button>
+                    </template>
+                    <button @click="$root.goToPage(currentPage + 1)" :disabled="currentPage >= totalPages" class="h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 disabled:opacity-50 hover:bg-slate-50 transition-colors duration-200">下一页</button>
+                    <div class="w-px h-5 bg-slate-300 mx-1"></div>
+                    <input v-model.number="jumpPageModel" @keyup.enter="$root.jumpToPage()" type="number" min="1" :max="totalPages" class="h-9 w-20 px-2 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="页码">
+                    <button @click="$root.jumpToPage()" class="h-9 px-3 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors duration-200">跳转</button>
+                </div>
+            </div>
+        </div>
+    </template>
     
     <script src="/static/view-config.js?v=1.2.14"></script>
     <script src="/static/state.js?v=1.2.14"></script>
     <script src="/static/api.js?v=1.2.14"></script>
     <script src="/static/ledger-filter-panel.js?v=1.2.14"></script>
     <script src="/static/ledger-batch-toolbar.js?v=1.2.14"></script>
+    <script src="/static/ledger-table-panel.js?v=1.2.14"></script>
+    <script src="/static/ledger-detail-modal.js?v=1.2.14"></script>
+    <script src="/static/ledger-add-modal.js?v=1.2.14"></script>
+    <script src="/static/settings-ai-panel.js?v=1.2.14"></script>
+    <script src="/static/settings-backup-panel.js?v=1.2.14"></script>
+    <script src="/static/settings-maintenance-panel.js?v=1.2.14"></script>
+    <script src="/static/webdav-modal.js?v=1.2.14"></script>
+    <script src="/static/audit-log-panel.js?v=1.2.14"></script>
+    <script src="/static/recycle-bin-modal.js?v=1.2.14"></script>
+    <script src="/static/data-quality-modal.js?v=1.2.14"></script>
+    <script src="/static/import-preview-modal.js?v=1.2.14"></script>
+    <script src="/static/duplicate-modal.js?v=1.2.14"></script>
     <script src="/static/ui.js?v=1.2.14"></script>
     <script>
         window.addEventListener('load', () => {

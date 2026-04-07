@@ -12,6 +12,42 @@
     if (global.LedgerBatchToolbar) {
         app.component('ledger-batch-toolbar', global.LedgerBatchToolbar);
     }
+    if (global.LedgerTablePanel) {
+        app.component('ledger-table-panel', global.LedgerTablePanel);
+    }
+    if (global.LedgerDetailModal) {
+        app.component('ledger-detail-modal', global.LedgerDetailModal);
+    }
+    if (global.LedgerAddModal) {
+        app.component('ledger-add-modal', global.LedgerAddModal);
+    }
+    if (global.SettingsAiPanel) {
+        app.component('settings-ai-panel', global.SettingsAiPanel);
+    }
+    if (global.SettingsBackupPanel) {
+        app.component('settings-backup-panel', global.SettingsBackupPanel);
+    }
+    if (global.SettingsMaintenancePanel) {
+        app.component('settings-maintenance-panel', global.SettingsMaintenancePanel);
+    }
+    if (global.WebdavModal) {
+        app.component('webdav-modal', global.WebdavModal);
+    }
+    if (global.AuditLogPanel) {
+        app.component('audit-log-panel', global.AuditLogPanel);
+    }
+    if (global.RecycleBinModal) {
+        app.component('recycle-bin-modal', global.RecycleBinModal);
+    }
+    if (global.DataQualityModal) {
+        app.component('data-quality-modal', global.DataQualityModal);
+    }
+    if (global.ImportPreviewModal) {
+        app.component('import-preview-modal', global.ImportPreviewModal);
+    }
+    if (global.DuplicateModal) {
+        app.component('duplicate-modal', global.DuplicateModal);
+    }
 
     app.mount('#app');
 
