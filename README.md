@@ -1,413 +1,107 @@
 # 办公用品采购系统
 
-用于内部办公用品采购管理的单用户工具。支持上传领用单（PDF/图片）自动识别，在线维护采购流程，并可按条件筛选与导出 Excel。
+用于内部办公用品采购、台账维护、执行跟踪、报表统计和备份恢复的单用户工具。
 
 当前版本：`1.2.13`
 
-## 更新日志 (Changelog)
+详细页面操作、字段说明和常见问题见 [`USAGE.md`](./USAGE.md)。
 
-### v1.2.6 (2026-03-05)
+## 核心能力
 
-- 引入单管理员本地安全模型：首次初始化管理员密码，禁用注册入口。
-- 密码与恢复码统一采用 `Argon2id` 哈希存储，新增一次性恢复码重置流程。
-- 鉴权会话改为 `HttpOnly + SameSite=Strict` 签名 Cookie，不再依赖 localStorage Token。
-- 增加防爆破策略：连续 5 次失败锁定 15 分钟。
-- 增加闲置熔断：前端 30 分钟无操作自动登出，后端会话 `Max-Age=1800` 并进行滑动续期。
-- 新增物理兜底脚本 `reset_admin_password.py`，可将系统重置回未初始化状态。
+- 上传 PDF 或图片后自动提取流水号、部门、经办人、日期和物品明细
+- 支持 `local` 与 `cloud` 两类 OCR/视觉解析模式
+- 台账支持筛选、分页、在线编辑、批量修改和批量删除
+- 执行看板支持状态流转
+- 支持报表、审计日志、回收站、数据质检
+- 支持本地备份和 WebDAV 云备份/恢复
+- 支持 Windows 桌面版、便携版和安装包发布
 
-### v1.2.5 (2026-03-05)
+## 快速开始
 
-- 统一提升系统版本号到 `1.2.5`，同步后端 API、前端显示、安装包与发布元数据版本标识。
-
-### v1.2.4 (2026-03-05)
-
-- 优化 Windows 客户端图标体系：新增应用图标资源 `assets/app_icon.ico`，提升桌面与开始菜单视觉一致性。
-- 打包流水线接入统一图标：绿色版与文件夹版可执行文件在 PyInstaller 阶段统一注入自定义图标。
-- 安装包图标体验优化：安装程序图标、桌面快捷方式与开始菜单快捷方式统一使用新图标。
-
-### v1.2.3 (2026-03-05)
-
-- 修复 Windows 安装版在 `Program Files` 下运行时的权限问题：新增数据目录可写性探测，写入失败时自动回退到 `%APPDATA%/OfficeSuppliesTracker/data`。
-- 统一运行时写路径到可写状态目录：SQLite、上传目录、运行日志、WebDAV/Gemini 配置与恢复临时文件不再依赖安装目录写权限。
-- 修复 Windows 安装包“安装后打不开”问题：CI 打包入口切换为 `desktop.py`，并补齐 `alembic` / `alembic.ini` 及关键隐藏依赖。
-- 修复 Release 资产发布稳定性：预清理同名资产并规范上传文件名，避免 `already_exists` 与异常 `-.exe` 命名。
-
-## 🚀 一键私有化部署
-
-企业用户无需本地构建镜像，只需下载项目根目录的 `docker-compose.yml` 到任意服务器目录，在同级目录执行：
-
-```bash
-docker-compose up -d
-```
-
-系统会自动从 `ghcr.io/percivalee/office-supplies-tracker:latest` 拉取网络镜像并启动服务。
-
-访问地址：`http://服务器IP:8000`
-
-数据持久化目录：
-- 宿主机：`./data`
-- 容器内：`/app/data`
-
-## 核心功能
-
-- 单据导入解析：上传 PDF/图片后自动提取流水号、部门、经办人、日期与物品明细
-- AI 视觉解析网关：系统设置中可切换 `local/cloud` 引擎，`cloud` 支持 `OpenAI 兼容 / Anthropic / Google` 三协议与中转地址
-- 异步解析任务：上传后立即返回 `task_id`，前端轮询任务状态，避免大文件阻塞超时
-- 导入预览校正：入库前可逐项编辑，避免脏数据直接落库
-- OCR 兜底链路：可复制 PDF 优先结构化提取，扫描 PDF/图片自动走 OCR
-- 重复处理策略：按 `(流水号 + 物品名称 + 经办人)` 检测重复，支持跳过/合并数量/仅新增非重复项
-- 单管理员本地安全模型：首次初始化密码、Argon2id 哈希、HttpOnly + SameSite=Strict 会话 Cookie
-- 账号防护：连续 5 次密码错误锁定 15 分钟，30 分钟无操作自动退出登录
-- 台账在线编辑：关键字段可直接修改，支持批量修改与批量删除
-- 执行看板闭环：`待采购 → 待到货 → 待分发 → 已分发`，支持拖拽和一键流转
-- 报表筛选联动：台账筛选条件变更后，进入报表页会自动按最新筛选重算
-- 统计报表：
-  - 金额统计（总额、已计价、缺失单价、部门/状态/月度趋势）
-  - 执行分析（执行漏斗、采购周期分布、月度金额结构）
-- 审计日志：记录新增/修改/删除，支持按动作、关键词、月份筛选，并支持按历史版本回滚
-- 数据治理：
-  - 回收站（软删除恢复、彻底删除）
-  - 数据质量巡检（问题码聚合、重复键组识别）
-- 备份与恢复：
-  - 本地备份包下载与恢复（恢复前自动健康检查）
-  - WebDAV 云端备份、远端恢复、保留策略清理
-- 导出与筛选：按筛选条件导出 Excel，支持关键词/状态/部门/月份/分页
-- Windows 桌面版：支持 `start_windows.bat` 直接运行、`PyInstaller` 打包与 `Inno Setup` 安装包
-- 轻动画体验：视图切换、图表级联、弹窗过渡，并支持 `prefers-reduced-motion` 自动降级
-
-## 技术栈
-
-- 后端：FastAPI + SQLite + aiosqlite + Alembic
-- 文档解析：pdfplumber + PaddleOCR
-- 前端：Vue 3 + TailwindCSS + Axios
-- 桌面端容器：pywebview（本地启动 FastAPI 并内嵌 Web 界面）
-- 导出：openpyxl
-
-## AI 视觉解析引擎
-
-系统支持 `local` 与 `cloud` 双引擎：
-
-- `local`：本地 OCR/规则解析，不依赖外部大模型服务
-- `cloud`：多协议大模型视觉解析，支持以下三种协议
-  - `openai`：OpenAI 兼容接口（支持自定义 `base_url` 中转）
-  - `anthropic`：Anthropic Claude 视觉接口
-  - `google`：Google Gemini 直连接口
-
-`cloud` 模式统一通过 `engine/protocol/api_key/model_name/base_url` 参数配置，上传后返回 `task_id`，前端轮询异步任务结果。
-
-## 安装与启动
-
-### 1. 安装依赖
+### 源码运行
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-```
-
-### 2. 启动服务
-
-```bash
 ./start.sh
 ```
 
-或手动启动：
+访问：`http://localhost:8000`
 
-```bash
-source venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
+### Windows 桌面运行
 
-### 3. 访问系统
+- 直接双击 `start_windows.bat`
+- 或运行 `python desktop.py`
 
-打开：`http://localhost:8000`
+### 获取安装包
 
-## 管理员密码找回与物理重置
+- 直接从 GitHub Releases 下载最新 `office-supplies-portable.exe`
+- 或下载 `office-supplies-setup.exe`
 
-- 首次初始化后系统会展示一次性恢复码，请务必离线保存。
-- 若忘记密码可在登录页使用恢复码重置密码（重置后会生成新的恢复码）。
-- 若忘记密码且丢失恢复码，请在服务器或本地程序目录下执行 `python reset_admin_password.py` 重置系统。
+## 最近更新
 
-## 数据库迁移（Alembic）
+### v1.2.12
 
-- 应用启动时会自动执行 `alembic upgrade head`，用于平滑升级数据库结构
-- 初次接入采用基线版本 `initial baseline`
-
-手动执行迁移命令（可选）：
-
-```bash
-source venv/bin/activate
-alembic upgrade head
-alembic revision --autogenerate -m "your migration message"
-```
-
-## 桌面版运行（无需打包）
-
-```bash
-source venv/bin/activate
-python desktop.py
-```
-
-## Windows 打开即用
-
-### 先执行哪个命令（建议顺序）
-
-在项目根目录打开 PowerShell 后，按目标选择以下命令：
-
-```powershell
-# 1) 只想运行系统（不打包）
-.\start_windows.bat
-
-# 2) 只安装打包环境（不产出 exe）
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_windows_env.ps1
-
-# 3) 产出 exe
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
-
-# 4) 产出安装包 Setup.exe（需先安装 Inno Setup 6）
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1
-```
-
-注意：
-- 命令前不要带行号后缀（例如 `scripts/build_windows.bat:1` 是错误写法）
-- 必须在项目根目录执行，否则会出现“系统找不到指定路径”
-
-### 方式 A：源码双击启动（推荐）
-
-1. 在 Windows 上安装 Python 3.10+（安装时勾选 `Add Python to PATH`）
-2. 双击项目根目录的 `start_windows.bat`
-
-说明：
-- 首次启动会自动创建 `venv` 并安装依赖，时间较长属于正常现象
-- 后续双击会直接启动桌面窗口
-- 如需强制重装依赖，可用命令行运行：`start_windows.bat --reinstall`
-
-### 方式 B：打包为 exe 分发
-
-在 Windows 机器上执行：
-
-```bat
-scripts\build_windows.bat
-```
-
-或在 PowerShell 中执行（推荐，兼容性更好）：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
-```
-
-仅一次性安装打包环境（不打包）：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup_windows_env.ps1
-```
-
-产物：
-- `dist\OfficeSuppliesTracker\OfficeSuppliesTracker.exe`
-
-分发时请复制整个 `dist\OfficeSuppliesTracker` 目录到目标机器，再双击 `OfficeSuppliesTracker.exe`。
-
-### 方式 C：生成安装包（Setup.exe）
-
-先安装 Inno Setup 6（可选命令）：
-
-```powershell
-winget install JRSoftware.InnoSetup
-```
-
-然后在项目根目录执行：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1
-```
-
-常用参数：
-
-```powershell
-# 指定 Inno Setup 编译器路径（当系统 PATH 检测不到 iscc.exe 时）
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1 -IsccPath "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-
-# 跳过 exe 重编译，直接基于现有 dist 目录生成安装包
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows_installer.ps1 -SkipExeBuild
-```
-
-或：
-
-```bat
-scripts\build_windows_installer.bat
-```
-
-安装包产物：
-- `dist-installer\OfficeSuppliesTracker-Setup-YYYY.MM.DD.exe`
-
-若报 `ISCC.exe not found`：
-- 先确认 Inno Setup 已安装
-- 然后使用 `-IsccPath` 明确指定 `ISCC.exe` 路径
-- 或设置环境变量 `ISCC_PATH` 后重新打开 PowerShell 再执行
-
-常见错误排查：
-- `No module named pyinstaller`：先执行 `setup_windows_env.ps1`，或删除旧 `venv` 后使用 `build_windows.ps1 -ReinstallVenv`
-- `pyinstaller: error: argument --add-data: expected one argument`：不要手工拆行执行 PyInstaller 参数，直接运行 `build_windows.ps1`
-- 出现 `>>>` 进入 Python 交互：这是脚本被中断或误进入解释器，输入 `exit()` 退出后，重新执行上面的完整命令
-- `Get-Command iscc.exe` 找不到但已安装 Inno Setup：重新打开 PowerShell，再执行 `build_windows_installer.ps1 -IsccPath "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"`
-
-备注：
-- 首次执行 OCR 时可能会初始化模型缓存，启动会比平时慢
-- 运行数据优先写入程序目录，若目录不可写会自动回退到 `%APPDATA%/OfficeSuppliesTracker/data`
-- 前端运行依赖已内置到 `static/vendor/`，`Vue/Tailwind/Axios` 不再依赖公网 CDN，Windows 安装包与便携版可离线启动界面
-
-## 版本与运行元数据
-
-- 项目版本以根目录 `VERSION` 文件为唯一来源
-- 后端启动时通过 `app_metadata.py` 读取版本，不再在 `main.py` 和前端状态中重复写死
-- 前端启动后会请求 `/api/app/metadata`，用于显示当前版本，并读取 Gemini 默认模型等运行元数据
-
-## Gemini 默认配置
-
+- 前端第三方依赖已内置到 `static/vendor/`，不再依赖公网 CDN
+- Windows 安装包和便携版可以离线打开前端界面
+- 版本号统一从根目录 `VERSION` 读取
+- 新增 `/api/app/metadata`，前端启动时读取版本和 Gemini 运行元数据
 - Gemini 默认模型统一由 `gemini_config.py` 中的 `DEFAULT_GEMINI_MODEL_NAME` 定义
-- `/api/gemini/config` 与 `/api/app/metadata` 返回的模型名会去掉 `models/` 前缀，便于前端显示和编辑
-- 当前默认模型为 `gemini-3.0-flash`
+- README 精简，详细说明迁移到 `USAGE.md`
 
-## 解析回归测试
+### v1.2.11
 
-用于持续验证“可复制 PDF / 扫描 PDF / 图片”三类样本解析效果：
+- 修复 Windows 构建链路中的回归校验输出问题
+- 自动发布链路恢复正常
 
-```bash
-python3 scripts/run_regression_suite.py
-```
+### v1.2.6
 
-- 用例配置：`samples/regression/cases.json`
-- 样本说明：`samples/regression/README.md`
-- 结果报告：`samples/regression/last_report.json`
+- 引入本地管理员密码、恢复码、Cookie 会话和锁定策略
 
-## API 一览
+## 技术栈
+
+- 后端：FastAPI + SQLite + SQLAlchemy + Alembic
+- 文档解析：pdfplumber + PaddleOCR
+- 前端：Vue 3 + TailwindCSS + Axios
+- 桌面容器：pywebview
+- 导出：openpyxl
+
+## 运行与配置说明
+
+### 版本来源
+
+- 根目录 `VERSION` 是唯一版本来源
+- 后端通过 `app_metadata.py` 读取版本
+- 前端通过 `/api/app/metadata` 显示版本号
+
+### Gemini 默认配置
+
+- 默认模型常量在 `gemini_config.py`
+- Google 协议下未手动填写模型名时，会使用后端统一默认值
+
+### 离线运行
+
+- `Vue`、`Tailwind`、`Axios` 已内置到 `static/vendor/`
+- 不再依赖 `jsdelivr`、`cdn.tailwindcss.com`、Google Fonts
+
+## 常用接口
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/` | 前端页面 |
-| GET | `/api/auth/status` | 鉴权状态检查（是否初始化、是否已登录、锁定剩余秒数） |
-| POST | `/api/auth/setup` | 首次初始化管理员密码并返回一次性恢复码 |
-| POST | `/api/auth/login` | 管理员登录（5 次失败锁定 15 分钟） |
-| POST | `/api/auth/logout` | 退出登录并清除会话 Cookie |
-| POST | `/api/auth/recover` | 使用恢复码重置密码并下发新恢复码 |
-| GET | `/api/items` | 列表查询（支持 `keyword`/`status`/`department`/`month`/`page`/`page_size`） |
-| GET | `/api/execution-board` | 执行看板数据（按执行状态分组） |
-| GET | `/api/items/{id}` | 获取单条记录 |
-| POST | `/api/items` | 手动新增 |
-| POST | `/api/items/batch-update` | 批量更新（状态/部门/经办人/付款/发票等） |
-| PUT | `/api/items/{id}` | 更新记录 |
-| DELETE | `/api/items/{id}` | 删除记录 |
-| GET | `/api/recycle-bin` | 回收站列表（软删除记录） |
-| POST | `/api/items/{id}/restore` | 从回收站恢复单条记录 |
-| DELETE | `/api/recycle-bin/{id}` | 彻底删除回收站记录 |
-| POST | `/api/upload-ocr` | 上传并创建异步解析任务（支持 `engine/protocol/api_key/model_name/base_url`） |
-| POST | `/api/upload` | 兼容旧路径，行为同 `/api/upload-ocr` |
-| GET | `/api/tasks/{task_id}` | 查询解析任务状态与结果 |
-| POST | `/api/import/confirm` | 确认导入（支持人工校正与重复处理） |
-| POST | `/api/upload/handle-duplicates` | 处理重复物品 |
-| GET | `/api/stats` | 获取统计数据 |
-| GET | `/api/reports/amount` | 金额统计报表（支持与列表一致的筛选参数） |
-| GET | `/api/reports/operations` | 执行漏斗/周期分布/月度金额结构报表 |
-| GET | `/api/data-quality` | 数据质量巡检报告 |
-| GET | `/api/history` | 变更历史列表（`action`/`keyword`/`month`/`page`/`page_size`） |
-| POST | `/api/items/{id}/rollback` | 回滚到指定历史版本 |
-| GET | `/api/autocomplete` | 获取部门/经办人/状态候选 |
-| GET | `/api/export` | 导出 Excel（支持与列表一致的筛选参数，含 `keyword`） |
-| GET | `/api/backup` | 下载数据备份（数据库+上传文件） |
-| POST | `/api/backup/health` | 备份健康检查（不写入当前数据） |
-| POST | `/api/restore` | 上传备份包并恢复数据 |
-| GET | `/api/webdav/config` | 获取 WebDAV 配置（不含明文密码） |
-| PUT | `/api/webdav/config` | 保存 WebDAV 配置 |
-| POST | `/api/webdav/test` | 测试 WebDAV 连接 |
-| GET | `/api/webdav/backups` | 列出 WebDAV 远端备份 |
-| POST | `/api/webdav/backup` | 上传当前备份到 WebDAV |
-| POST | `/api/webdav/restore` | 从 WebDAV 下载并恢复指定备份 |
 | GET | `/api/app/metadata` | 获取应用版本与 Gemini 运行元数据 |
-| GET | `/api/gemini/config` | 读取 Gemini 默认配置（脱敏） |
-| PUT | `/api/gemini/config` | 保存 Gemini 默认配置 |
-| POST | `/api/gemini/models` | 按 API Key 拉取可用 Gemini 模型 |
+| GET | `/api/items` | 获取台账列表 |
+| POST | `/api/upload-ocr` | 上传并创建解析任务 |
+| GET | `/api/tasks/{task_id}` | 查询解析任务状态 |
+| POST | `/api/import/confirm` | 确认导入 |
+| GET | `/api/backup` | 下载本地备份 |
+| POST | `/api/restore` | 上传备份并恢复 |
+| GET | `/api/webdav/backups` | 列出 WebDAV 备份 |
+| POST | `/api/webdav/backup` | 上传备份到 WebDAV |
+| POST | `/api/webdav/restore` | 从 WebDAV 恢复 |
 
-## 关键参数说明
+## 相关文档
 
-- `month`：必须是 `YYYY-MM`，例如 `2026-02`
-- `keyword`：模糊搜索关键词（会匹配流水号、物品名、经办人、申领部门）
-- `action`：历史操作类型，仅支持 `create` / `update` / `delete`
-- `page`：页码，从 `1` 开始
-- `page_size`：每页条数，范围 `1-200`
-- `engine`：解析引擎，`local` 或 `cloud`
-- `protocol`：云端协议，`openai` / `anthropic` / `google`
-
-## 数据字段
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| serial_number | TEXT | 流水号 |
-| department | TEXT | 申领部门 |
-| handler | TEXT | 经办人 |
-| request_date | TEXT | 申领日期（`YYYY-MM-DD`） |
-| item_name | TEXT | 物品名称 |
-| quantity | REAL | 数量 |
-| purchase_link | TEXT | 购买链接 |
-| unit_price | REAL | 单价 |
-| status | TEXT | 待采购/待到货/待分发/已分发（启动时自动迁移历史状态） |
-| invoice_issued | BOOLEAN | 发票状态（`0=待报`，`1=已入账`） |
-| payment_status | TEXT | 未付款/已付款/已报销 |
-| arrival_date | TEXT | 到货日期（`YYYY-MM-DD`） |
-| distribution_date | TEXT | 分发日期（`YYYY-MM-DD`） |
-| signoff_note | TEXT | 签收备注 |
-
-`recipient/分发对象` 字段已下线，不再写入数据库。
-
-变更历史保存在 `item_history` 表，记录每次新增/更新/删除的前后快照与变更字段。
-
-## 目录结构
-
-```text
-office-supplies-tracker/
-├── main.py
-├── database.py
-├── import_flow.py
-├── schemas.py
-├── app_runtime.py
-├── api_utils.py
-├── backup_service.py
-├── db/
-│   ├── constants.py
-│   ├── filters.py
-│   ├── history.py
-│   ├── items.py
-│   ├── reports.py
-│   └── schema.py
-├── routers/
-│   ├── imports.py
-│   ├── items.py
-│   └── system.py
-├── parser.py
-├── static/
-│   ├── index.html
-│   ├── app.css
-│   ├── state.js
-│   ├── api.js
-│   └── ui.js
-├── requirements.txt
-├── start.sh
-├── README.md
-└── USAGE.md
-```
-
-## 使用建议
-
-- 优先上传 PDF，识别稳定性最佳
-- 图片上传建议使用高清截图，避免带审批系统按钮区域
-- 解析后请抽样核对关键字段（部门、日期、数量）
-- 数据库文件默认在 `data/office_supplies.db`（目录不存在会自动创建）
-
-## 💼 商业授权与企业版
-
-本项目免费提供给个人开发者学习使用。如果您希望在企业内部署、需要对接企业 OA 系统、或需要专业的审计功能定制与技术支持，请联系作者购买商业授权。企业版提供：无限制使用、专有合规功能更新、数据安全技术支持。
-
-联系邮箱：`i@yep.li`
-
-## 📦 获取 Windows 客户端
-
-用户无需自行编译，请直接前往本仓库的 Releases 页面，下载最新版本的 `.exe` 绿色免安装版，双击即可运行。
+- 使用说明：[`USAGE.md`](./USAGE.md)
+- 回归样例：`samples/regression/`
+- 构建脚本：`scripts/`
