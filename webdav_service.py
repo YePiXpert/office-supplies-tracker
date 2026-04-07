@@ -95,6 +95,12 @@ def _compose_url(base_url: str, path: str = "") -> str:
     return f"{base_url}/{safe_path}" if safe_path else base_url
 
 
+def _compose_collection_url(base_url: str, path: str = "") -> str:
+    """WebDAV collections are more reliably addressed with a trailing slash."""
+    url = _compose_url(base_url, path)
+    return url if url.endswith("/") else f"{url}/"
+
+
 def _request(
     method: str,
     url: str,
@@ -129,7 +135,7 @@ def ensure_remote_dir(base_url: str, remote_dir: str, auth_headers: dict[str, st
     current = ""
     for part in remote_dir.split("/"):
         current = f"{current}/{part}" if current else part
-        url = _compose_url(base_url, current)
+        url = _compose_collection_url(base_url, current)
         try:
             status, _, _ = _request("MKCOL", url, headers=auth_headers)
             if status not in (201, 204, 301, 302, 405):
@@ -146,7 +152,7 @@ def test_connection(config: dict) -> None:
     base_url = _normalize_base_url(config.get("base_url", ""))
     remote_dir = _normalize_remote_dir(config.get("remote_dir"))
     ensure_remote_dir(base_url, remote_dir, auth_headers)
-    target = _compose_url(base_url, remote_dir)
+    target = _compose_collection_url(base_url, remote_dir)
     headers = {
         **auth_headers,
         "Depth": "0",
@@ -277,7 +283,7 @@ def list_backups(config: dict) -> list[dict]:
     remote_dir = _normalize_remote_dir(config.get("remote_dir"))
     auth_headers = _build_auth_header(config.get("username", ""), config.get("password", ""))
     ensure_remote_dir(base_url, remote_dir, auth_headers)
-    target = _compose_url(base_url, remote_dir)
+    target = _compose_collection_url(base_url, remote_dir)
     headers = {
         **auth_headers,
         "Depth": "1",

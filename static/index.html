@@ -1268,7 +1268,7 @@
                     <div class="grid grid-cols-2 gap-4">
                         <div class="col-span-2">
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">服务器地址</label>
-                            <input v-model="webdavConfig.baseUrl" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="https://example.com/dav">
+                            <input v-model="webdavConfig.baseUrl" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="坚果云示例：https://dav.jianguoyun.com/dav/">
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">用户名</label>
@@ -1281,6 +1281,9 @@
                         <div class="col-span-2">
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">远端目录（可空）</label>
                             <input v-model="webdavConfig.remoteDir" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out" placeholder="office-supplies/backups">
+                        </div>
+                        <div class="col-span-2 text-[11px] text-slate-500 leading-relaxed">
+                            坚果云请使用 <span class="font-mono text-slate-700">https://dav.jianguoyun.com/dav/</span>，用户名填写坚果云账号，密码填写“应用密码”而不是登录密码。
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">保留最新备份数</label>
