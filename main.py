@@ -24,7 +24,7 @@ from routers.imports import router as imports_router
 from routers.items import router as items_router
 from routers.system import router as system_router
 
-APP_VERSION = "1.2.6"
+APP_VERSION = "1.2.7"
 
 
 @asynccontextmanager
