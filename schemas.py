@@ -94,6 +94,40 @@ class GeminiModelsRequest(BaseModel):
     api_key: str = Field(default="", max_length=300)
 
 
+class SupplierCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    contact_name: Optional[str] = Field(default=None, max_length=200)
+    contact_phone: Optional[str] = Field(default=None, max_length=80)
+    contact_email: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=500)
+    is_active: bool = True
+
+
+class SupplierPriceRecordRequest(BaseModel):
+    item_name: str = Field(min_length=1, max_length=200)
+    supplier_id: Optional[int] = Field(default=None, gt=0)
+    unit_price: float = Field(ge=0)
+    purchase_link: Optional[str] = Field(default=None, max_length=2000)
+    last_purchase_date: Optional[str] = Field(default=None, max_length=32)
+    last_serial_number: Optional[str] = Field(default=None, max_length=120)
+
+
+class InventoryProfileRequest(BaseModel):
+    item_name: str = Field(min_length=1, max_length=200)
+    current_stock: float = Field(ge=0)
+    low_stock_threshold: float = Field(ge=0)
+    unit: Optional[str] = Field(default=None, max_length=40)
+    preferred_supplier_id: Optional[int] = Field(default=None, gt=0)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class InvoiceRecordUpdateRequest(BaseModel):
+    reimbursement_status: Literal["pending", "submitted", "reimbursed"] = Field(default="pending")
+    reimbursement_date: Optional[str] = Field(default=None, max_length=32)
+    invoice_number: Optional[str] = Field(default=None, max_length=120)
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
 class AuthSetupRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 

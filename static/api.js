@@ -566,6 +566,12 @@
                             this.historyPage = 1;
                             this.loadHistory();
                         }
+                        return;
+                    }
+                    if (normalized === 'settings') {
+                        if (forceReload || !this.operationsCenterInitialized) {
+                            this.loadOperationsCenter();
+                        }
                     }
                 },
                 switchView(view, forceReload = false, syncHash = true) {
@@ -952,6 +958,328 @@
                         }[field] || '更新成功';
                         this.showSuccessToast(successMessage);
                     }
+                },
+                async loadOperationsCenter() {
+                    this.operationsCenterLoading = true;
+                    this.operationsError = '';
+                    try {
+                        const res = await axios.get('/api/ops/center');
+                        const payload = res.data || {};
+                        this.operationsCenter = {
+                            summary: payload.summary || {},
+                            suppliers: Array.isArray(payload.suppliers) ? payload.suppliers : [],
+                            price_records: Array.isArray(payload.price_records) ? payload.price_records : [],
+                            inventory_profiles: Array.isArray(payload.inventory_profiles) ? payload.inventory_profiles : [],
+                            import_tasks: Array.isArray(payload.import_tasks) ? payload.import_tasks : [],
+                            invoice_queue: Array.isArray(payload.invoice_queue) ? payload.invoice_queue : [],
+                            notifications: Array.isArray(payload.notifications) ? payload.notifications : [],
+                        };
+                        this.invoiceDrafts = {};
+                        for (const item of this.operationsCenter.invoice_queue) {
+                            this.invoiceDrafts[item.item_id] = {
+                                reimbursement_status: item.reimbursement_status || 'pending',
+                                reimbursement_date: item.reimbursement_date || '',
+                                invoice_number: item.invoice_number || '',
+                                note: item.note || '',
+                            };
+                        }
+                        this.operationsCenterLastLoadedAt = new Date().toISOString();
+                        this.operationsCenterInitialized = true;
+                    } catch (e) {
+                        this.operationsCenterInitialized = false;
+                        this.operationsError = e?.response?.data?.detail || e?.message || '加载运营中心失败';
+                        this.showApiError('加载运营中心失败', e);
+                    } finally {
+                        this.operationsCenterLoading = false;
+                    }
+                },
+                resetNewSupplierForm() {
+                    this.newSupplier = {
+                        name: '',
+                        contact_name: '',
+                        contact_phone: '',
+                        contact_email: '',
+                        notes: '',
+                        is_active: true,
+                    };
+                },
+                resetNewPriceRecordForm() {
+                    this.newPriceRecord = {
+                        item_name: '',
+                        supplier_id: '',
+                        unit_price: '',
+                        purchase_link: '',
+                        last_purchase_date: '',
+                        last_serial_number: '',
+                    };
+                },
+                resetNewInventoryProfileForm() {
+                    this.newInventoryProfile = {
+                        item_name: '',
+                        current_stock: 0,
+                        low_stock_threshold: 0,
+                        unit: '',
+                        preferred_supplier_id: '',
+                        notes: '',
+                    };
+                    this.inventoryEditingItemName = '';
+                },
+                prefillInventoryProfileForm(source = {}) {
+                    this.newInventoryProfile = {
+                        item_name: (source.item_name || '').toString(),
+                        current_stock: Number(source.current_stock || 0),
+                        low_stock_threshold: Number(source.low_stock_threshold || 0),
+                        unit: (source.unit || '').toString(),
+                        preferred_supplier_id: source.preferred_supplier_id ? String(source.preferred_supplier_id) : '',
+                        notes: (source.notes || '').toString(),
+                    };
+                    this.inventoryEditingItemName = (source.item_name || '').toString().trim();
+                },
+                async createSupplierRecord() {
+                    const supplierName = (this.newSupplier.name || '').toString().trim();
+                    if (!supplierName) {
+                        this.showToast('请先填写供应商名称', 'error');
+                        return;
+                    }
+                    this.supplierSaving = true;
+                    try {
+                        const payload = {
+                            ...this.newSupplier,
+                            name: supplierName,
+                            contact_name: (this.newSupplier.contact_name || '').toString().trim() || null,
+                            contact_phone: (this.newSupplier.contact_phone || '').toString().trim() || null,
+                            contact_email: (this.newSupplier.contact_email || '').toString().trim() || null,
+                            notes: (this.newSupplier.notes || '').toString().trim() || null,
+                        };
+                        await axios.post('/api/ops/suppliers', payload);
+                        this.resetNewSupplierForm();
+                        this.showToast('供应商已创建', 'success');
+                        await this.loadOperationsCenter();
+                    } catch (e) {
+                        this.showApiError('创建供应商失败', e);
+                    } finally {
+                        this.supplierSaving = false;
+                    }
+                },
+                async createSupplierPriceRecord() {
+                    const itemName = (this.newPriceRecord.item_name || '').toString().trim();
+                    const rawUnitPrice = (this.newPriceRecord.unit_price ?? '').toString().trim();
+                    const unitPrice = Number(rawUnitPrice);
+                    if (!itemName) {
+                        this.showToast('请先填写物品名称', 'error');
+                        return;
+                    }
+                    if (!rawUnitPrice) {
+                        this.showToast('请先填写单价', 'error');
+                        return;
+                    }
+                    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+                        this.showToast('请填写有效的非负单价', 'error');
+                        return;
+                    }
+                    this.priceSaving = true;
+                    try {
+                        const payload = {
+                            item_name: itemName,
+                            supplier_id: this.newPriceRecord.supplier_id ? Number(this.newPriceRecord.supplier_id) : null,
+                            unit_price: unitPrice,
+                            purchase_link: (this.newPriceRecord.purchase_link || '').toString().trim() || null,
+                            last_purchase_date: (this.newPriceRecord.last_purchase_date || '').toString().trim() || null,
+                            last_serial_number: (this.newPriceRecord.last_serial_number || '').toString().trim() || null,
+                        };
+                        await axios.post('/api/ops/prices', payload);
+                        this.resetNewPriceRecordForm();
+                        this.showToast('价格记录已创建', 'success');
+                        await this.loadOperationsCenter();
+                    } catch (e) {
+                        this.showApiError('创建价格记录失败', e);
+                    } finally {
+                        this.priceSaving = false;
+                    }
+                },
+                async saveInventoryProfile() {
+                    const itemName = (this.newInventoryProfile.item_name || '').toString().trim();
+                    const currentStock = Number(this.newInventoryProfile.current_stock || 0);
+                    const threshold = Number(this.newInventoryProfile.low_stock_threshold || 0);
+                    if (!itemName) {
+                        this.showToast('请先填写物品名称', 'error');
+                        return;
+                    }
+                    if (!Number.isFinite(currentStock) || currentStock < 0) {
+                        this.showToast('当前库存必须是大于等于 0 的数字', 'error');
+                        return;
+                    }
+                    if (!Number.isFinite(threshold) || threshold < 0) {
+                        this.showToast('低库存阈值必须是大于等于 0 的数字', 'error');
+                        return;
+                    }
+                    this.inventorySaving = true;
+                    try {
+                        const payload = {
+                            item_name: itemName,
+                            current_stock: currentStock,
+                            low_stock_threshold: threshold,
+                            unit: (this.newInventoryProfile.unit || '').toString().trim() || null,
+                            preferred_supplier_id: this.newInventoryProfile.preferred_supplier_id
+                                ? Number(this.newInventoryProfile.preferred_supplier_id)
+                                : null,
+                            notes: (this.newInventoryProfile.notes || '').toString().trim() || null,
+                        };
+                        await axios.put('/api/ops/inventory', payload);
+                        this.resetNewInventoryProfileForm();
+                        this.showToast('库存档案已保存', 'success');
+                        await this.loadOperationsCenter();
+                    } catch (e) {
+                        this.showApiError('保存库存档案失败', e);
+                    } finally {
+                        this.inventorySaving = false;
+                    }
+                },
+                getInvoiceDraft(item) {
+                    const itemId = Number(item?.item_id || 0);
+                    if (!itemId) {
+                        return {
+                            reimbursement_status: 'pending',
+                            reimbursement_date: '',
+                            invoice_number: '',
+                            note: '',
+                        };
+                    }
+                    if (!this.invoiceDrafts[itemId]) {
+                        this.invoiceDrafts[itemId] = {
+                            reimbursement_status: item?.reimbursement_status || 'pending',
+                            reimbursement_date: item?.reimbursement_date || '',
+                            invoice_number: item?.invoice_number || '',
+                            note: item?.note || '',
+                        };
+                    }
+                    return this.invoiceDrafts[itemId];
+                },
+                async saveInvoiceRecord(item) {
+                    const itemId = Number(item?.item_id || 0);
+                    if (!itemId) return;
+                    this.invoiceSavingItemId = itemId;
+                    try {
+                        const draft = this.getInvoiceDraft(item);
+                        const normalizedStatus = ['pending', 'submitted', 'reimbursed'].includes(draft.reimbursement_status)
+                            ? draft.reimbursement_status
+                            : 'pending';
+                        if (normalizedStatus !== 'pending' && !(draft.reimbursement_date || '').toString().trim()) {
+                            draft.reimbursement_date = global.AppTime ? global.AppTime.todayDateText() : new Date().toISOString().slice(0, 10);
+                        }
+                        await axios.put(`/api/ops/invoices/${itemId}`, {
+                            reimbursement_status: normalizedStatus,
+                            reimbursement_date: (draft.reimbursement_date || '').toString().trim() || null,
+                            invoice_number: (draft.invoice_number || '').toString().trim() || null,
+                            note: (draft.note || '').toString().trim() || null,
+                        });
+                        this.showToast('报销记录已保存', 'success');
+                        await this.loadOperationsCenter();
+                    } catch (e) {
+                        this.showApiError('保存报销记录失败', e);
+                    } finally {
+                        this.invoiceSavingItemId = null;
+                    }
+                },
+                openInvoiceAttachmentPicker(itemId) {
+                    this.invoiceAttachmentTargetItemId = Number(itemId || 0) || null;
+                    if (!this.invoiceAttachmentTargetItemId) {
+                        this.showToast('未找到可上传附件的条目', 'error');
+                        return;
+                    }
+                    const input = document.getElementById('invoice-attachment-input');
+                    if (input) {
+                        input.value = '';
+                        input.click();
+                    }
+                },
+                async handleInvoiceAttachmentSelect(e) {
+                    const files = e?.target?.files || [];
+                    const file = files[0];
+                    const itemId = Number(this.invoiceAttachmentTargetItemId || 0);
+                    e.target.value = '';
+                    if (!file || !itemId) return;
+                    this.invoiceAttachmentUploading = true;
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        await axios.post(`/api/ops/invoices/${itemId}/attachments`, formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+                        this.showToast('发票附件已上传', 'success');
+                        await this.loadOperationsCenter();
+                    } catch (err) {
+                        this.showApiError('上传发票附件失败', err);
+                    } finally {
+                        this.invoiceAttachmentUploading = false;
+                        this.invoiceAttachmentTargetItemId = null;
+                    }
+                },
+                async deleteInvoiceAttachmentRecord(attachmentId) {
+                    const ok = await this.openConfirmDialog({
+                        title: '删除发票附件',
+                        message: '确认删除这份发票附件吗？删除后无法恢复。',
+                        confirmText: '删除附件',
+                        cancelText: '取消',
+                        danger: true,
+                    });
+                    if (!ok) return;
+                    try {
+                        await axios.delete(`/api/ops/invoice-attachments/${attachmentId}`);
+                        this.showToast('发票附件已删除', 'success');
+                        await this.loadOperationsCenter();
+                    } catch (e) {
+                        this.showApiError('删除发票附件失败', e);
+                    }
+                },
+                async jumpToLedgerItem(itemId, row = null, options = {}) {
+                    const id = Number(itemId);
+                    if (!Number.isFinite(id) || id <= 0) {
+                        this.showToast('条目 ID 无效，无法定位', 'error');
+                        return false;
+                    }
+
+                    let item = null;
+                    try {
+                        const detailRes = await axios.get(`/api/items/${id}`);
+                        item = detailRes.data || null;
+                    } catch (e) {
+                        this.showApiError('读取条目详情失败', e);
+                        return false;
+                    }
+
+                    const keyword = this.normalizeText(
+                        item?.serial_number ||
+                        row?.serial_number ||
+                        item?.item_name ||
+                        row?.item_name ||
+                        ''
+                    );
+
+                    this.filterStatus = '';
+                    this.filterDepartment = '';
+                    this.filterMonth = '';
+                    this.filterKeyword = keyword;
+
+                    const targetPage = await this.findLedgerPageByItemId(id, keyword);
+                    if (!targetPage) {
+                        this.showToast('未在台账中定位到该条目，请确认是否已删除', 'error');
+                        return false;
+                    }
+
+                    if (options.closeDataQualityModal !== false) {
+                        this.showDataQualityModal = false;
+                    }
+                    this.switchView('ledger');
+                    this.currentPage = targetPage;
+                    await this.loadItems();
+                    if (!this.items.some((entry) => Number(entry?.id) === id)) {
+                        this.showToast('定位失败：条目不在当前页，请重试', 'error');
+                        return false;
+                    }
+                    this.focusLedgerItem(id);
+                    this.showToast(options.successMessage || `已定位到条目 #${id}`, 'success');
+                    return true;
                 },
                 async openWebdavModal() {
                     this.showWebdavModal = true;
@@ -1563,49 +1891,10 @@
                 },
                 async jumpToQualityIssue(row) {
                     const itemId = Number(row?.id);
-                    if (!Number.isFinite(itemId) || itemId <= 0) {
-                        this.showToast('条目 ID 无效，无法定位', 'error');
-                        return;
-                    }
-
-                    let item = null;
-                    try {
-                        const detailRes = await axios.get(`/api/items/${itemId}`);
-                        item = detailRes.data || null;
-                    } catch (e) {
-                        this.showApiError('读取条目详情失败', e);
-                        return;
-                    }
-
-                    const keyword = this.normalizeText(
-                        item?.serial_number ||
-                        row?.serial_number ||
-                        item?.item_name ||
-                        row?.item_name ||
-                        ''
-                    );
-
-                    this.filterStatus = '';
-                    this.filterDepartment = '';
-                    this.filterMonth = '';
-                    this.filterKeyword = keyword;
-
-                    const targetPage = await this.findLedgerPageByItemId(itemId, keyword);
-                    if (!targetPage) {
-                        this.showToast('未在台账中定位到该条目，请确认是否已删除', 'error');
-                        return;
-                    }
-
-                    this.showDataQualityModal = false;
-                    this.switchView('ledger');
-                    this.currentPage = targetPage;
-                    await this.loadItems();
-                    if (!this.items.some((entry) => Number(entry?.id) === itemId)) {
-                        this.showToast('定位失败：条目不在当前页，请重试', 'error');
-                        return;
-                    }
-                    this.focusLedgerItem(itemId);
-                    this.showToast(`已定位到问题条目 #${itemId}`, 'success');
+                    await this.jumpToLedgerItem(itemId, row, {
+                        closeDataQualityModal: true,
+                        successMessage: `已定位到问题条目 #${itemId}`,
+                    });
                 },
                 normalizeDateText(value) {
                     const raw = (value || '').toString().trim();

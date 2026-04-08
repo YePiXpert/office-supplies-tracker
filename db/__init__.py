@@ -42,6 +42,17 @@ from .items import (
     normalize_update_payload,
     update_item,
 )
+from .operations import (
+    create_import_task_run_sync,
+    update_import_task_run_sync,
+    get_operations_center_snapshot,
+    create_supplier,
+    create_price_record,
+    upsert_inventory_profile,
+    upsert_invoice_record,
+    create_invoice_attachment,
+    delete_invoice_attachment,
+)
 from .reports import get_amount_report, get_operations_report, get_stats_summary
 from .schema import init_db
 
@@ -90,4 +101,13 @@ __all__ = [
     "get_serial_numbers",
     "get_departments",
     "get_handlers",
+    "create_import_task_run_sync",
+    "update_import_task_run_sync",
+    "get_operations_center_snapshot",
+    "create_supplier",
+    "create_price_record",
+    "upsert_inventory_profile",
+    "upsert_invoice_record",
+    "create_invoice_attachment",
+    "delete_invoice_attachment",
 ]

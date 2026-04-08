@@ -119,6 +119,97 @@ async def _ensure_system_security_table(db: aiosqlite.Connection) -> None:
     )
 
 
+async def _ensure_operations_tables(db: aiosqlite.Connection) -> None:
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS suppliers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            contact_name TEXT,
+            contact_phone TEXT,
+            contact_email TEXT,
+            notes TEXT,
+            is_active BOOLEAN NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS supplier_price_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_name TEXT NOT NULL,
+            supplier_id INTEGER,
+            unit_price REAL NOT NULL,
+            purchase_link TEXT,
+            last_purchase_date TEXT,
+            last_serial_number TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_name TEXT NOT NULL UNIQUE,
+            current_stock REAL NOT NULL DEFAULT 0,
+            low_stock_threshold REAL NOT NULL DEFAULT 0,
+            unit TEXT,
+            preferred_supplier_id INTEGER,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS import_task_runs (
+            task_id TEXT PRIMARY KEY,
+            file_name TEXT,
+            engine TEXT,
+            protocol TEXT,
+            status TEXT NOT NULL,
+            item_count INTEGER NOT NULL DEFAULT 0,
+            error_detail TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS invoice_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL UNIQUE,
+            reimbursement_status TEXT NOT NULL DEFAULT 'pending',
+            reimbursement_date TEXT,
+            invoice_number TEXT,
+            note TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS invoice_attachments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_record_id INTEGER NOT NULL,
+            file_name TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            mime_type TEXT,
+            file_size INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+
 async def init_db():
     """初始化数据库表。"""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -169,6 +260,7 @@ async def init_db():
         )
         await _ensure_audit_log_table(db)
         await _ensure_system_security_table(db)
+        await _ensure_operations_tables(db)
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at DESC)"
         )
@@ -204,5 +296,29 @@ async def init_db():
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers(name)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_supplier_price_records_item_name ON supplier_price_records(item_name)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_supplier_price_records_supplier_id ON supplier_price_records(supplier_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inventory_profiles_item_name ON inventory_profiles(item_name)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_import_task_runs_created_at ON import_task_runs(created_at DESC)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_import_task_runs_status ON import_task_runs(status)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_invoice_records_item_id ON invoice_records(item_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_invoice_attachments_invoice_record_id ON invoice_attachments(invoice_record_id)"
         )
         await db.commit()

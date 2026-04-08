@@ -1,8 +1,8 @@
+from pathlib import Path
+from uuid import uuid4
+
 import aiosqlite
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
-from pathlib import Path
-from threading import Lock
-from uuid import uuid4
 from sqlalchemy.exc import IntegrityError as SAIntegrityError
 
 from api_utils import (
@@ -12,22 +12,24 @@ from api_utils import (
     save_upload_file_with_limit,
 )
 from app_locks import DATA_MUTATION_LOCK
+from db.operations import create_import_task_run_sync, update_import_task_run_sync
 from gemini_ocr import GeminiParseError, parse_document_with_gemini
 from import_flow import build_preview_data, confirm_import_payload, normalize_import_payload
 from parser import parse_document
 from schemas import DuplicateHandleRequest, ImportConfirmRequest
+from task_registry import TaskRegistry
 
 router = APIRouter(prefix="/api")
-tasks: dict[str, dict] = {}
-_tasks_lock = Lock()
-_TERMINAL_TASK_STATUSES = {"completed", "failed"}
-_MAX_TRACKED_TASKS = 200
 _DEFAULT_UPLOAD_ENGINE = "local"
 _DEFAULT_LLM_PROTOCOL = "openai"
+TASK_REGISTRY = TaskRegistry(
+    max_tasks=200,
+    active_ttl_seconds=6 * 60 * 60,
+    terminal_ttl_seconds=30 * 60,
+)
 
 
 def _friendly_task_error_detail(error: Exception) -> str:
-    """统一任务失败文案，避免把底层异常原样暴露给前端。"""
     if isinstance(error, TimeoutError):
         return "解析超时，请稍后重试，或切换为手动录入。"
     raw = str(error or "").strip()
@@ -87,36 +89,17 @@ async def _confirm_import_with_lock(
             return await confirm_import_payload(normalized_payload, duplicate_action)
     except HTTPException:
         raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (aiosqlite.IntegrityError, SAIntegrityError) as e:
-        if "UNIQUE constraint failed" in str(e):
-            raise HTTPException(status_code=409, detail="导入触发唯一约束冲突（流水号+物品名称+经办人）")
-        raise HTTPException(status_code=400, detail="导入失败：字段值不合法")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"{failure_prefix}: {str(e)}")
-
-
-def _set_task(task_id: str, *, status: str | None = None, result=None) -> None:
-    with _tasks_lock:
-        task = tasks.get(task_id)
-        if task is None:
-            return
-        if status is not None:
-            task["status"] = status
-        task["result"] = result
-
-
-def _prune_tasks() -> None:
-    with _tasks_lock:
-        if len(tasks) <= _MAX_TRACKED_TASKS:
-            return
-        for key in list(tasks.keys()):
-            if len(tasks) <= _MAX_TRACKED_TASKS:
-                break
-            status = str(tasks.get(key, {}).get("status", ""))
-            if status in _TERMINAL_TASK_STATUSES:
-                tasks.pop(key, None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except (aiosqlite.IntegrityError, SAIntegrityError) as exc:
+        if "UNIQUE constraint failed" in str(exc):
+            raise HTTPException(
+                status_code=409,
+                detail="导入触发唯一约束冲突（流水号+物品名称+经办人）。",
+            )
+        raise HTTPException(status_code=400, detail="导入失败：字段值不合法。")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"{failure_prefix}: {exc}")
 
 
 def _normalize_engine(raw_engine: str | None) -> str:
@@ -144,7 +127,6 @@ def _parse_by_engine(
     model_name: str | None = None,
     base_url: str | None = None,
 ) -> dict:
-    # 双引擎路由：local 走本地 OCR/规则解析，cloud 走多协议大模型解析。
     normalized_engine = _normalize_engine(engine)
     if normalized_engine == "cloud":
         return parse_document_with_gemini(
@@ -166,7 +148,14 @@ def _run_parse_task(
     model_name: str,
     base_url: str,
 ) -> None:
-    _set_task(task_id, status="processing", result=None)
+    TASK_REGISTRY.update(task_id, status="processing", result=None)
+    create_import_task_run_sync(
+        task_id=task_id,
+        file_name=file_path.name,
+        engine=engine,
+        protocol=protocol,
+        status="processing",
+    )
     try:
         parsed = _parse_by_engine(
             file_path,
@@ -178,7 +167,7 @@ def _run_parse_task(
         )
         normalized_payload = _normalize_payload_from_parse_result(parsed)
         preview_data = build_preview_data(normalized_payload, normalized_payload["items"])
-        _set_task(
+        TASK_REGISTRY.update(
             task_id,
             status="completed",
             result={
@@ -188,17 +177,33 @@ def _run_parse_task(
                 "requires_confirmation": True,
             },
         )
-    except GeminiParseError as e:
-        _set_task(
-            task_id,
-            status="failed",
-            result={"detail": str(e)},
+        update_import_task_run_sync(
+            task_id=task_id,
+            status="completed",
+            item_count=len(preview_data["items"]),
         )
-    except Exception as e:
-        _set_task(
+    except GeminiParseError as exc:
+        TASK_REGISTRY.update(
             task_id,
             status="failed",
-            result={"detail": _friendly_task_error_detail(e)},
+            result={"detail": str(exc)},
+        )
+        update_import_task_run_sync(
+            task_id=task_id,
+            status="failed",
+            error_detail=str(exc),
+        )
+    except Exception as exc:
+        detail = _friendly_task_error_detail(exc)
+        TASK_REGISTRY.update(
+            task_id,
+            status="failed",
+            result={"detail": detail},
+        )
+        update_import_task_run_sync(
+            task_id=task_id,
+            status="failed",
+            error_detail=detail,
         )
     finally:
         safe_unlink(file_path)
@@ -215,7 +220,6 @@ async def upload_and_parse(
     model_name: str = Form(default=""),
     base_url: str = Form(default=""),
 ):
-    """上传文件并创建异步解析任务。"""
     file_path = build_upload_path(file.filename or "")
     normalized_engine = _normalize_engine(engine)
     normalized_protocol = _normalize_protocol(protocol)
@@ -231,9 +235,14 @@ async def upload_and_parse(
             file_label="上传文件",
         )
         task_id = uuid4().hex
-        with _tasks_lock:
-            tasks[task_id] = {"status": "pending", "result": None}
-        _prune_tasks()
+        TASK_REGISTRY.create(task_id)
+        create_import_task_run_sync(
+            task_id=task_id,
+            file_name=file.filename or file_path.name,
+            engine=normalized_engine,
+            protocol=normalized_protocol,
+            status="pending",
+        )
         background_tasks.add_task(
             _run_parse_task,
             task_id,
@@ -245,15 +254,14 @@ async def upload_and_parse(
             normalized_base_url,
         )
         return {"task_id": task_id}
-
     except HTTPException:
         safe_unlink(file_path)
         raise
-    except Exception as e:
+    except Exception as exc:
         safe_unlink(file_path)
         raise HTTPException(
             status_code=500,
-            detail=f"解析任务创建失败，请稍后重试。{_friendly_task_error_detail(e)}",
+            detail=f"解析任务创建失败，请稍后重试。{_friendly_task_error_detail(exc)}",
         )
     finally:
         await file.close()
@@ -261,20 +269,20 @@ async def upload_and_parse(
 
 @router.get("/tasks/{task_id}")
 async def get_task_status(task_id: str):
-    with _tasks_lock:
-        task = tasks.get(task_id)
-        if task is None:
-            raise HTTPException(status_code=404, detail="任务不存在或已过期")
-        return {
-            "task_id": task_id,
-            "status": task.get("status", "failed"),
-            "result": task.get("result"),
-        }
+    task = TASK_REGISTRY.get(task_id)
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="任务不存在、已过期，或服务已重启，请重新上传文件",
+        )
+    return {
+        "task_id": task_id,
+        **task,
+    }
 
 
 @router.post("/import/confirm")
 async def confirm_import(request: ImportConfirmRequest):
-    """确认导入（支持人工校正后提交）。"""
     payload = request.model_dump()
     duplicate_action = payload.pop("duplicate_action", None)
     normalized_payload = normalize_import_payload(payload)
@@ -287,7 +295,6 @@ async def confirm_import(request: ImportConfirmRequest):
 
 @router.post("/upload/handle-duplicates")
 async def handle_duplicates(request: DuplicateHandleRequest):
-    """兼容旧前端：处理重复物品。"""
     normalized_payload = _normalize_payload_from_items_data(request.items_data)
     return await _confirm_import_with_lock(
         normalized_payload,

@@ -646,7 +646,7 @@
                     <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-6 md:p-8 space-y-10">
                         <div>
                             <h2 class="text-3xl font-semibold tracking-tight text-slate-900">系统设置</h2>
-                            <p class="mt-1 text-sm text-slate-500">统一管理 AI 解析引擎、数据容灾与系统维护入口。</p>
+                            <p class="mt-1 text-sm text-slate-500">统一管理 AI 解析引擎、运营中心、数据容灾与系统维护入口。</p>
                         </div>
 
                         <settings-ai-panel
@@ -661,6 +661,8 @@
                             @update:llm-model-name="llmModelName = $event"
                             @update:llm-base-url="llmBaseUrl = $event"
                         ></settings-ai-panel>
+
+                        <settings-operations-panel></settings-operations-panel>
 
                         <settings-backup-panel></settings-backup-panel>
 
@@ -1780,6 +1782,7 @@
     <script src="/static/ledger-table-panel.js?v=1.2.18"></script>
     <script src="/static/ledger-detail-modal.js?v=1.2.18"></script>
     <script src="/static/ledger-add-modal.js?v=1.2.18"></script>
+    <script src="/static/settings-operations-panel.js?v=1.2.18"></script>
     <script src="/static/settings-ai-panel.js?v=1.2.18"></script>
     <script src="/static/settings-backup-panel.js?v=1.2.18"></script>
     <script src="/static/settings-maintenance-panel.js?v=1.2.18"></script>

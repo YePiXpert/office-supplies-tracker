@@ -30,6 +30,9 @@
     if (global.SettingsMaintenancePanel) {
         app.component('settings-maintenance-panel', global.SettingsMaintenancePanel);
     }
+    if (global.SettingsOperationsPanel) {
+        app.component('settings-operations-panel', global.SettingsOperationsPanel);
+    }
     if (global.WebdavModal) {
         app.component('webdav-modal', global.WebdavModal);
     }

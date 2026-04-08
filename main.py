@@ -24,6 +24,7 @@ from db.migrations import upgrade_database_to_head
 from routers.auth import router as auth_router
 from routers.imports import router as imports_router
 from routers.items import router as items_router
+from routers.ops import router as ops_router
 from routers.system import router as system_router
 
 @asynccontextmanager
@@ -105,6 +106,7 @@ app.include_router(auth_router)
 app.include_router(system_router)
 app.include_router(items_router)
 app.include_router(imports_router)
+app.include_router(ops_router)
 
 
 _FALLBACK_STREAM = None
