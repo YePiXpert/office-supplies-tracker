@@ -21,6 +21,13 @@
             title: '\u91C7\u8D2D\u6267\u884C\u770B\u677F',
             placement: 'primary',
         }),
+        operations: Object.freeze({
+            id: 'operations',
+            label: '\u8FD0\u8425\u5DE5\u4F5C\u53F0',
+            icon: '\uD83D\uDCE6',
+            title: '\u91C7\u8D2D\u8FD0\u8425\u5DE5\u4F5C\u53F0',
+            placement: 'primary',
+        }),
         reports: Object.freeze({
             id: 'reports',
             label: '\u7EDF\u8BA1\u62A5\u8868',

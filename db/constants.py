@@ -7,13 +7,15 @@ DB_PATH = str((DATA_DIR / "office_supplies.db").resolve())
 ALLOWED_COLUMNS = frozenset({
     "serial_number", "department", "handler", "request_date",
     "item_name", "quantity", "purchase_link", "unit_price",
+    "supplier_id",
     "status", "invoice_issued", "payment_status",
     "arrival_date", "distribution_date", "signoff_note",
 })
 
 ITEM_COLUMNS = (
     "id", "serial_number", "department", "handler", "request_date",
-    "item_name", "quantity", "purchase_link", "unit_price", "status",
+    "item_name", "quantity", "purchase_link", "unit_price",
+    "supplier_id", "supplier_name_snapshot", "status",
     "invoice_issued", "payment_status",
     "arrival_date", "distribution_date", "signoff_note",
     "deleted_at",

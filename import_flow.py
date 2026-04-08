@@ -189,6 +189,16 @@ def normalize_import_payload(payload: dict) -> dict:
         quantity = safe_quantity((raw or {}).get("quantity"))
         purchase_link = normalize_url((raw or {}).get("purchase_link"))
         unit_price = safe_unit_price((raw or {}).get("unit_price"))
+        supplier_id = (raw or {}).get("supplier_id")
+        if supplier_id in ("", None):
+            supplier_id = None
+        else:
+            try:
+                supplier_id = int(supplier_id)
+            except (TypeError, ValueError):
+                supplier_id = None
+            if supplier_id is not None and supplier_id <= 0:
+                supplier_id = None
 
         if key in merged_items:
             merged_items[key]["quantity"] += quantity
@@ -196,6 +206,8 @@ def normalize_import_payload(payload: dict) -> dict:
                 merged_items[key]["purchase_link"] = purchase_link
             if merged_items[key].get("unit_price") is None and unit_price is not None:
                 merged_items[key]["unit_price"] = unit_price
+            if merged_items[key].get("supplier_id") is None and supplier_id is not None:
+                merged_items[key]["supplier_id"] = supplier_id
             continue
 
         merged_items[key] = {
@@ -207,6 +219,7 @@ def normalize_import_payload(payload: dict) -> dict:
             "quantity": quantity,
             "purchase_link": purchase_link,
             "unit_price": unit_price,
+            "supplier_id": supplier_id,
         }
 
     return {
@@ -231,6 +244,7 @@ def build_preview_data(normalized_payload: dict, items: list[dict]) -> dict:
                 "quantity": safe_quantity(item.get("quantity")),
                 "purchase_link": item.get("purchase_link"),
                 "unit_price": safe_unit_price(item.get("unit_price")),
+                "supplier_id": item.get("supplier_id"),
             }
             for item in items
         ],

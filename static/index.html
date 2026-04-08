@@ -361,11 +361,11 @@
                         <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
                             <div>
                                 <h2 class="text-3xl font-semibold tracking-tight text-slate-900">统计报表</h2>
-                                <p class="mt-1 text-sm text-slate-500">采购成本与费用分布的可视化统计页面</p>
+                                <p class="mt-1 text-sm text-slate-500">采购金额、执行效率与供应商采购分析的可视化统计页面</p>
                             </div>
                             <div class="flex items-center gap-2">
                                 <button @click="loadAmountReport" :disabled="amountReportLoading" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out">{{ amountReportLoading ? '加载中...' : '刷新数据' }}</button>
-                                <button @click="exportExcel" class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">导出EXCEL</button>
+                                <button @click="exportExcel" class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">导出台账 EXCEL</button>
                             </div>
                         </div>
                     </div>
@@ -485,6 +485,178 @@
                                             <span class="text-xs font-semibold font-mono text-slate-700">¥ {{ formatCurrency(row._amount) }}</span>
                                         </div>
                                         <div v-if="!reportMonthRows.length" class="sm:col-span-2 xl:col-span-4 py-10 text-center text-xs text-slate-500">暂无月度趋势</div>
+                                    </div>
+                                </div>
+
+                                <div class="border border-slate-200 rounded-xl p-5">
+                                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                        <div>
+                                            <h4 class="text-base font-semibold text-slate-900">供应商采购分析</h4>
+                                            <p class="mt-1 text-sm text-slate-500">看清哪些商品主要从哪些供应商采购，并支持月度 / 年度导出。</p>
+                                        </div>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <input type="month" v-model="filterMonth" @change="loadAmountReport" class="h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                                            <select v-model="supplierReportYear" @change="loadAmountReport" class="h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                                                <option v-for="yearRow in supplierYearOverviewRows" :key="`supplier-year-opt-${yearRow.year}`" :value="yearRow.year">{{ yearRow.year }} 年</option>
+                                                <option v-if="!supplierYearOverviewRows.length" :value="supplierReportYear">{{ supplierReportYear }} 年</option>
+                                            </select>
+                                            <button @click="exportSupplierReport('monthly')" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">导出月报</button>
+                                            <button @click="exportSupplierReport('yearly')" class="h-10 px-4 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-all duration-200 ease-in-out">导出年报</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                                            <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">已归属供应商金额</div>
+                                            <div class="text-2xl font-bold text-slate-900 font-mono">¥ {{ formatCurrency(supplierReport.summary.assignedAmount) }}</div>
+                                        </div>
+                                        <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                                            <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">未归属供应商金额</div>
+                                            <div class="text-2xl font-bold text-amber-600 font-mono">¥ {{ formatCurrency(supplierReport.summary.unassignedAmount) }}</div>
+                                        </div>
+                                        <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                                            <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">供应商数 / 记录数</div>
+                                            <div class="text-2xl font-bold text-slate-900 font-mono">{{ supplierReport.summary.supplierCount }} / {{ supplierReport.summary.totalRecords }}</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                        <div class="border border-slate-200 rounded-xl p-4">
+                                            <div class="flex items-center justify-between">
+                                                <h5 class="text-sm font-semibold text-slate-800">Top 供应商采购额</h5>
+                                                <span class="text-[11px] text-slate-500">按当前筛选金额排序</span>
+                                            </div>
+                                            <div class="mt-4 space-y-3">
+                                                <div
+                                                    v-for="row in supplierTopRows"
+                                                    :key="`supplier-top-${row.supplierId || row.supplierName}`"
+                                                    class="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                                                >
+                                                    <div class="flex items-center justify-between gap-2">
+                                                        <div class="min-w-0 flex items-center gap-2">
+                                                            <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-600">{{ row._rank }}</span>
+                                                            <span class="truncate text-sm font-medium text-slate-700">{{ row.supplierName }}</span>
+                                                        </div>
+                                                        <span class="text-sm font-semibold font-mono text-blue-700">¥ {{ formatCurrency(row._amount) }}</span>
+                                                    </div>
+                                                    <div class="mt-2 h-2 rounded-full bg-slate-200/80 overflow-hidden">
+                                                        <div class="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 report-animate-x" :style="{ width: `${row._ratio.toFixed(2)}%` }"></div>
+                                                    </div>
+                                                    <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                                                        <span>{{ row.itemCount }} 个商品 · {{ row.recordCount }} 条记录</span>
+                                                        <span>占已归属金额 {{ row._share.toFixed(1) }}%</span>
+                                                    </div>
+                                                </div>
+                                                <div v-if="!supplierTopRows.length" class="py-10 text-center text-xs text-slate-500">暂无供应商采购统计</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="border border-slate-200 rounded-xl p-4">
+                                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                                <div>
+                                                    <h5 class="text-sm font-semibold text-slate-800">供应商采购额走势</h5>
+                                                    <p class="mt-1 text-[11px] text-slate-500">按所选供应商展示 {{ supplierReport.selectedYear || supplierReportYear }} 年月度走势</p>
+                                                </div>
+                                                <select v-model="supplierReportFocusKey" class="h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                                                    <option v-for="option in supplierFocusOptions" :key="`supplier-focus-${option.key}`" :value="option.key">{{ option.label }}</option>
+                                                </select>
+                                            </div>
+                                            <div class="mt-6 h-52 flex items-end gap-2">
+                                                <div
+                                                    v-for="(row, idx) in supplierFocusTrendRows"
+                                                    :key="`supplier-trend-${row.month}-${idx}`"
+                                                    class="flex-1 min-w-0 flex flex-col items-center gap-2"
+                                                >
+                                                    <div
+                                                        class="w-full max-w-[52px] rounded-t-md bg-gradient-to-t from-emerald-600 to-teal-400 transition-all duration-500 report-animate-y"
+                                                        :style="{ height: `${row._barHeight}px`, opacity: row._amount > 0 ? 0.95 : 0.25 }"
+                                                    ></div>
+                                                    <div class="text-[10px] font-medium text-slate-500 truncate w-full text-center px-1">{{ row.month || '-' }}</div>
+                                                </div>
+                                            </div>
+                                            <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                                                <div
+                                                    v-for="row in supplierFocusTrendRows"
+                                                    :key="`supplier-trend-amount-${row.month}`"
+                                                    class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                                                >
+                                                    <div class="text-xs text-slate-500">{{ row.month || '-' }}</div>
+                                                    <div class="mt-1 text-xs font-semibold font-mono text-slate-700">¥ {{ formatCurrency(row._amount) }}</div>
+                                                </div>
+                                                <div v-if="!supplierFocusTrendRows.length" class="sm:col-span-2 xl:col-span-3 py-10 text-center text-xs text-slate-500">暂无供应商月度走势</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                        <div class="border border-slate-200 rounded-xl p-4">
+                                            <div class="flex items-center justify-between">
+                                                <h5 class="text-sm font-semibold text-slate-800">年度采购总览</h5>
+                                                <span class="text-[11px] text-slate-500">最近 5 年</span>
+                                            </div>
+                                            <div class="mt-5 h-44 flex items-end gap-3">
+                                                <div
+                                                    v-for="row in supplierYearOverviewRows"
+                                                    :key="`supplier-year-overview-${row.year}`"
+                                                    class="flex-1 min-w-0 flex flex-col items-center gap-2"
+                                                >
+                                                    <div class="w-full h-32 flex items-end justify-center">
+                                                        <div class="w-full max-w-[60px] rounded-t-md bg-gradient-to-t from-slate-900 to-slate-500 report-animate-y" :style="{ height: `${row._barHeight}px` }"></div>
+                                                    </div>
+                                                    <div class="text-[10px] font-medium text-slate-500">{{ row.year }}</div>
+                                                </div>
+                                            </div>
+                                            <div class="mt-4 space-y-2">
+                                                <div v-for="row in supplierYearOverviewRows" :key="`supplier-year-card-${row.year}`" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 flex items-center justify-between gap-2">
+                                                    <span class="text-xs text-slate-500">{{ row.year }}</span>
+                                                    <span class="text-xs text-slate-500">{{ row.supplierCount }} 家供应商</span>
+                                                    <span class="text-xs font-semibold font-mono text-slate-700">¥ {{ formatCurrency(row._amount) }}</span>
+                                                </div>
+                                                <div v-if="!supplierYearOverviewRows.length" class="py-10 text-center text-xs text-slate-500">暂无年度汇总</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="border border-slate-200 rounded-xl p-4">
+                                            <div class="flex items-center justify-between">
+                                                <h5 class="text-sm font-semibold text-slate-800">供应商采购商品明细</h5>
+                                                <span class="text-[11px] text-slate-500">按当前供应商聚焦</span>
+                                            </div>
+                                            <div class="mt-4 space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                                                <div v-for="row in supplierFocusItemRows" :key="`supplier-item-${row.supplierName}-${row.itemName}`" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                                                    <div class="flex items-center justify-between gap-2">
+                                                        <div class="min-w-0">
+                                                            <div class="truncate text-sm font-medium text-slate-700">{{ row.itemName }}</div>
+                                                            <div class="mt-1 text-[11px] text-slate-500">{{ row.supplierName }} · {{ row.recordCount }} 条记录</div>
+                                                        </div>
+                                                        <div class="text-right">
+                                                            <div class="text-xs font-semibold font-mono text-blue-700">¥ {{ formatCurrency(row._amount) }}</div>
+                                                            <div class="mt-1 text-[11px] text-slate-500">数量 {{ row.totalQuantity }}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div v-if="!supplierFocusItemRows.length" class="py-10 text-center text-xs text-slate-500">暂无供应商商品明细</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-6 border border-amber-200 rounded-xl p-4 bg-amber-50/50">
+                                        <div class="flex items-center justify-between">
+                                            <h5 class="text-sm font-semibold text-amber-900">未归属供应商记录</h5>
+                                            <span class="text-[11px] text-amber-700">建议优先补齐，避免报表失真</span>
+                                        </div>
+                                        <div class="mt-4 space-y-2">
+                                            <div v-for="row in supplierUnassignedRows" :key="`supplier-unassigned-${row.id}`" class="rounded-lg border border-amber-200 bg-white px-3 py-3 flex items-center justify-between gap-3">
+                                                <div class="min-w-0">
+                                                    <div class="text-sm font-medium text-slate-700 truncate">{{ row.itemName }}</div>
+                                                    <div class="mt-1 text-[11px] text-slate-500">{{ row.requestDate || '-' }} · {{ row.department || '未分配部门' }} · {{ row.handler || '未填写经办人' }}</div>
+                                                </div>
+                                                <div class="text-right">
+                                                    <div class="text-xs font-semibold font-mono text-slate-700">¥ {{ formatCurrency(row.unitPrice || 0) }}</div>
+                                                    <div class="mt-1 text-[11px] text-slate-500">数量 {{ row.quantity }}</div>
+                                                </div>
+                                            </div>
+                                            <div v-if="!supplierUnassignedRows.length" class="py-6 text-center text-xs text-amber-700">当前筛选范围内没有未归属供应商记录</div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -642,11 +814,22 @@
 
                                     </section>
 
+                <section v-else-if="currentView === 'operations'" class="view-pane h-full overflow-y-auto pr-1">
+                    <div class="space-y-6">
+                        <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-6 md:p-8">
+                            <h2 class="text-3xl font-semibold tracking-tight text-slate-900">采购运营工作台</h2>
+                            <p class="mt-1 text-sm text-slate-500">聚焦供应商协同、价格基线、导入恢复、异常处理和报销闭环。供应商月报、年报和采购额走势统一在统计报表页查看。</p>
+                        </div>
+
+                        <operations-center-panel></operations-center-panel>
+                    </div>
+                </section>
+
                 <section v-else-if="currentView === 'settings'" class="view-pane h-full overflow-y-auto pr-1">
                     <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-6 md:p-8 space-y-10">
                         <div>
                             <h2 class="text-3xl font-semibold tracking-tight text-slate-900">系统设置</h2>
-                            <p class="mt-1 text-sm text-slate-500">统一管理 AI 解析引擎、运营中心、数据容灾与系统维护入口。</p>
+                            <p class="mt-1 text-sm text-slate-500">管理 AI 解析引擎、数据备份恢复、WebDAV 与系统维护。供应商资料、价格记录、导入恢复和发票跟进已移到“采购运营工作台”。</p>
                         </div>
 
                         <settings-ai-panel
@@ -661,8 +844,6 @@
                             @update:llm-model-name="llmModelName = $event"
                             @update:llm-base-url="llmBaseUrl = $event"
                         ></settings-ai-panel>
-
-                        <settings-operations-panel></settings-operations-panel>
 
                         <settings-backup-panel></settings-backup-panel>
 
@@ -893,6 +1074,7 @@
                 <option value="">批量修改字段...</option>
                 <option value="status">采购状态</option>
                 <option value="payment_status">付款状态</option>
+                <option value="supplier_id">供应商</option>
             </select>
             <select
                 v-if="batchEditField === 'status'"
@@ -911,6 +1093,15 @@
             >
                 <option value="">选择付款状态...</option>
                 <option v-for="p in paymentStatuses" :key="`batch-p-${p}`" :value="p">{{ p }}</option>
+            </select>
+            <select
+                v-if="batchEditField === 'supplier_id'"
+                :value="batchEditValue"
+                @change="$emit('update:batchEditValue', $event.target.value)"
+                class="ledger-batch-toolbar-control"
+            >
+                <option value="">未归属供应商</option>
+                <option v-for="supplier in $root.supplierOptions" :key="`batch-supplier-${supplier.id}`" :value="String(supplier.id)">{{ supplier.name }}</option>
             </select>
             <button @click="$emit('apply-update')" v-if="batchEditField" class="h-8 px-4 rounded-md bg-blue-600 text-white text-[11px] font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">应用修改</button>
             <button @click="$emit('batch-delete')" class="ledger-batch-toolbar-spacer h-8 px-4 rounded-md bg-white border border-rose-200 text-rose-600 text-[11px] font-semibold hover:bg-rose-50 transition-all duration-200 ease-in-out">批量删除</button>
@@ -939,6 +1130,10 @@
                             <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                                 <div class="text-[10px] text-slate-500 uppercase font-semibold">物品</div>
                                 <div class="mt-1 text-sm text-slate-800 truncate" :title="item.item_name || ''">{{ item.item_name || '-' }}</div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                <div class="text-[10px] text-slate-500 uppercase font-semibold">供应商</div>
+                                <div class="mt-1 text-sm text-slate-800">{{ item.supplier_name_snapshot || '未归属供应商' }}</div>
                             </div>
                             <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                                 <div class="text-[10px] text-slate-500 uppercase font-semibold">当前状态</div>
@@ -1027,6 +1222,13 @@
                         <div class="col-span-2">
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">物品/服务名称</label>
                             <input v-model="item.item_name" required class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">供应商</label>
+                            <select v-model="item.supplier_id" class="h-10 px-3 w-full border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all duration-200 ease-in-out">
+                                <option value="">未归属供应商</option>
+                                <option v-for="supplier in $root.supplierOptions" :key="`manual-supplier-${supplier.id}`" :value="supplier.id">{{ supplier.name }}</option>
+                            </select>
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">数量</label>
@@ -1460,11 +1662,17 @@
                         <div class="overflow-x-auto">
                             <table class="w-full min-w-max whitespace-nowrap text-xs">
                                 <thead class="bg-slate-50 text-slate-600 font-bold uppercase border-b border-slate-200">
-                                    <tr><th class="p-3 text-left">物品名称</th><th class="p-3 text-center w-24">数量</th><th class="p-3 text-center w-28">单价</th><th class="p-3 text-left">关联链接</th><th class="p-3 text-center w-16">操作</th></tr>
+                                    <tr><th class="p-3 text-left">物品名称</th><th class="p-3 text-left w-40">供应商</th><th class="p-3 text-center w-24">数量</th><th class="p-3 text-center w-28">单价</th><th class="p-3 text-left">关联链接</th><th class="p-3 text-center w-16">操作</th></tr>
                                 </thead>
                                 <tbody class="divide-y divide-slate-100">
                                     <tr v-for="(row, idx) in $root.importPreview.items" :key="idx" class="hover:bg-slate-50/50">
                                         <td class="p-2"><input v-model="row.item_name" class="w-full border-none focus:ring-1 focus:ring-blue-400 rounded px-2 py-1 font-bold"></td>
+                                        <td class="p-2">
+                                            <select v-model="row.supplier_id" class="w-full border-none rounded px-2 py-1 text-xs bg-white focus:ring-1 focus:ring-blue-400">
+                                                <option value="">未归属供应商</option>
+                                                <option v-for="supplier in $root.supplierOptions" :key="`import-supplier-${supplier.id}`" :value="supplier.id">{{ supplier.name }}</option>
+                                            </select>
+                                        </td>
                                         <td class="p-2"><input v-model.number="row.quantity" type="number" class="w-full text-center border-none font-mono font-bold"></td>
                                         <td class="p-2"><input v-model.number="row.unit_price" type="number" step="0.01" min="0" class="w-full text-center border-none font-mono font-bold" placeholder="-"></td>
                                         <td class="p-2"><input v-model="row.purchase_link" class="w-full text-[10px] text-slate-400 border-none px-2 py-1 font-mono"></td>
@@ -1519,6 +1727,7 @@
                             <th class="px-4 py-3 min-w-[120px]">部门</th>
                             <th class="px-4 py-3 min-w-[72px]">经办人</th>
                             <th class="px-4 py-3 min-w-[280px]">物品规格与名称</th>
+                            <th class="px-4 py-3 min-w-[180px]">供应商</th>
                             <th class="px-4 py-3 min-w-[220px]">采购链接</th>
                             <th class="px-4 py-3 text-center w-20">数量</th>
                             <th class="px-4 py-3 text-center w-24">单价(¥)</th>
@@ -1558,6 +1767,17 @@
                                 <div class="max-w-[280px] overflow-hidden text-ellipsis whitespace-nowrap" :title="item.item_name || ''">
                                     <input type="text" v-model="item.item_name" @blur="$root.updateItem(item.id, { item_name: item.item_name })" class="w-full px-2 py-1 text-sm font-medium text-slate-700 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all truncate" placeholder="物品名称">
                                 </div>
+                            </td>
+                            <td class="px-4 py-3 align-middle">
+                                <select
+                                    v-model="item.supplier_id"
+                                    @change="$root.updateItem(item.id, { supplier_id: item.supplier_id })"
+                                    class="w-full min-w-[160px] px-2 py-1 text-sm text-slate-700 align-middle border rounded-sm bg-white border-slate-200 hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                                >
+                                    <option value="">未归属供应商</option>
+                                    <option v-for="supplier in $root.supplierOptions" :key="`ledger-supplier-${supplier.id}`" :value="supplier.id">{{ supplier.name }}</option>
+                                </select>
+                                <div v-if="item.supplier_name_snapshot" class="mt-1 text-[10px] text-slate-400 truncate">{{ item.supplier_name_snapshot }}</div>
                             </td>
                             <td class="px-4 py-3 align-middle">
                                 <div class="flex items-center gap-2">

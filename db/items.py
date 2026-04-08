@@ -4,7 +4,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import aiosqlite
-from sqlalchemy import select, tuple_
+from sqlalchemy import select, text, tuple_
 
 from .constants import (
     ALLOWED_COLUMNS,
@@ -102,6 +102,18 @@ def _normalize_unit_price(value) -> Optional[float]:
     if unit_price < 0:
         raise ValueError("unit_price 不能为负数")
     return unit_price
+
+
+def _normalize_optional_supplier_id(value) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    try:
+        supplier_id = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("supplier_id 必须为正整数")
+    if supplier_id <= 0:
+        raise ValueError("supplier_id 必须为正整数")
+    return supplier_id
 
 
 def _normalize_status(value) -> str:
@@ -218,6 +230,7 @@ def normalize_item_payload(item: dict) -> dict:
     payload["purchase_link"] = _normalize_purchase_link(payload.get("purchase_link"))
     payload["quantity"] = _normalize_quantity(payload.get("quantity"))
     payload["unit_price"] = _normalize_unit_price(payload.get("unit_price"))
+    payload["supplier_id"] = _normalize_optional_supplier_id(payload.get("supplier_id"))
     payload["status"] = _normalize_status(payload.get("status", DEFAULT_STATUS))
     payload["payment_status"] = _normalize_payment_status(
         payload.get("payment_status", DEFAULT_PAYMENT_STATUS)
@@ -253,6 +266,8 @@ def normalize_update_payload(updates: dict) -> dict:
         payload["quantity"] = _normalize_quantity(payload.get("quantity"))
     if "unit_price" in payload:
         payload["unit_price"] = _normalize_unit_price(payload.get("unit_price"))
+    if "supplier_id" in payload:
+        payload["supplier_id"] = _normalize_optional_supplier_id(payload.get("supplier_id"))
     if "status" in payload:
         payload["status"] = _normalize_status(payload.get("status"))
     if "payment_status" in payload:
@@ -299,6 +314,38 @@ def _has_effective_changes(before_data: dict, updates: dict) -> bool:
 
 def _item_snapshot(item: Item) -> dict:
     return {column: getattr(item, column, None) for column in ITEM_COLUMNS}
+
+
+async def _resolve_supplier_snapshot(session, supplier_id: Optional[int]) -> tuple[Optional[int], Optional[str]]:
+    if supplier_id is None:
+        return None, None
+
+    result = await session.execute(
+        text(
+            """
+            SELECT id, name
+            FROM suppliers
+            WHERE id = :supplier_id
+            LIMIT 1
+            """
+        ),
+        {"supplier_id": int(supplier_id)},
+    )
+    row = result.mappings().first()
+    if not row:
+        raise ValueError("supplier_id 对应的供应商不存在")
+    return int(row["id"]), str(row["name"] or "").strip() or None
+
+
+async def _apply_supplier_snapshot(session, payload: dict) -> dict:
+    normalized = dict(payload)
+    if "supplier_id" not in normalized:
+        return normalized
+
+    supplier_id, supplier_name = await _resolve_supplier_snapshot(session, normalized.get("supplier_id"))
+    normalized["supplier_id"] = supplier_id
+    normalized["supplier_name_snapshot"] = supplier_name
+    return normalized
 
 
 def _parse_optional_timestamp(value) -> Optional[datetime]:
@@ -491,6 +538,7 @@ async def create_item(item: dict) -> int:
     """创建新物品记录。"""
     payload = normalize_item_payload(item)
     async with AsyncSessionLocal() as session:
+        payload = await _apply_supplier_snapshot(session, payload)
         existing_stmt = (
             select(Item)
             .where(
@@ -546,6 +594,7 @@ async def update_item(item_id: int, updates: dict) -> bool:
     payload = normalize_update_payload(updates)
     _validate_allowed_columns(payload)
     async with AsyncSessionLocal() as session:
+        payload = await _apply_supplier_snapshot(session, payload)
         item = (
             await session.execute(select(Item).where(Item.id == item_id).limit(1))
         ).scalar_one_or_none()
@@ -608,6 +657,7 @@ async def batch_create_items(items: list[dict]) -> list[int]:
     normalized_items = [normalize_item_payload(raw_item) for raw_item in items]
     created_ids = []
     async with AsyncSessionLocal() as session:
+        normalized_items = [await _apply_supplier_snapshot(session, payload) for payload in normalized_items]
         existing_by_key = await _load_items_by_unique_keys(
             session,
             [_item_unique_key(payload) for payload in normalized_items],
@@ -753,6 +803,7 @@ async def batch_update_items(item_ids: list[int], updates: dict) -> dict:
     unique_ids = _deduplicate_positive_ids(item_ids)
 
     async with AsyncSessionLocal() as session:
+        payload = await _apply_supplier_snapshot(session, payload)
         rows = (
             await session.execute(
                 select(Item).where(
@@ -932,7 +983,7 @@ async def get_data_quality_report(limit: int = 200) -> dict:
         async with db.execute(
             """
             SELECT id, serial_number, department, handler, request_date, item_name,
-                   quantity, purchase_link, unit_price, status
+                   quantity, purchase_link, unit_price, supplier_id, supplier_name_snapshot, status
             FROM items
             WHERE deleted_at IS NULL
             ORDER BY updated_at DESC, id DESC

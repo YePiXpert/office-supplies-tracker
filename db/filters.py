@@ -39,10 +39,11 @@ def build_item_filters(
             "serial_number LIKE ? ESCAPE '\\' OR "
             "item_name LIKE ? ESCAPE '\\' OR "
             "handler LIKE ? ESCAPE '\\' OR "
-            "department LIKE ? ESCAPE '\\'"
+            "department LIKE ? ESCAPE '\\' OR "
+            "supplier_name_snapshot LIKE ? ESCAPE '\\'"
             ")"
         )
-        params.extend([pattern, pattern, pattern, pattern])
+        params.extend([pattern, pattern, pattern, pattern, pattern])
 
     return conditions, params
 

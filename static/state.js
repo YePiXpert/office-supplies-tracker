@@ -8,6 +8,7 @@
                     statuses: ['待采购', '待到货', '待分发', '已分发'],
                     departments: [],
                     handlers: [],
+                    supplierOptions: [],
                     paymentStatuses: ['未付款', '已付款', '已报销'],
                     filterKeyword: '',
                     filterStatus: '',
@@ -153,6 +154,25 @@
                         },
                         monthlyAmountTrend: [],
                     },
+                    supplierReportYear: String(new Date().getFullYear()),
+                    supplierReportFocusKey: '',
+                    supplierReport: {
+                        selectedYear: '',
+                        summary: {
+                            totalRecords: 0,
+                            supplierCount: 0,
+                            assignedRecords: 0,
+                            unassignedRecords: 0,
+                            totalAmount: 0,
+                            assignedAmount: 0,
+                            unassignedAmount: 0,
+                        },
+                        topSuppliers: [],
+                        monthlyTrend: [],
+                        yearlySummary: [],
+                        supplierItems: [],
+                        unassignedItems: [],
+                    },
                     historyLoading: false,
                     historyItems: [],
                     historyTotal: 0,
@@ -230,6 +250,7 @@
                     newItem: {
                         serial_number: '', department: '', handler: '',
                         request_date: global.AppTime ? global.AppTime.todayDateText() : '',
+                        supplier_id: '',
                         item_name: '', quantity: 1, unit_price: null, purchase_link: ''
                     },
                 };
@@ -479,6 +500,144 @@
                             _otherHeight: otherAmount > 0 ? otherHeight : 0,
                         };
                     });
+                },
+                supplierFocusOptions() {
+                    const rows = [
+                        ...(Array.isArray(this.supplierReport?.topSuppliers) ? this.supplierReport.topSuppliers : []),
+                        ...(Array.isArray(this.supplierReport?.monthlyTrend) ? this.supplierReport.monthlyTrend : []),
+                    ];
+                    const seen = new Set();
+                    return rows.reduce((options, row) => {
+                        const supplierId = Number(row?.supplierId);
+                        const supplierName = (row?.supplierName || '未归属供应商').toString();
+                        const key = Number.isFinite(supplierId) && supplierId > 0
+                            ? `id:${supplierId}`
+                            : `name:${supplierName}`;
+                        if (seen.has(key)) {
+                            return options;
+                        }
+                        seen.add(key);
+                        options.push({
+                            key,
+                            label: supplierName,
+                        });
+                        return options;
+                    }, []);
+                },
+                supplierEffectiveFocusKey() {
+                    const explicit = (this.supplierReportFocusKey || '').toString().trim();
+                    if (explicit && this.supplierFocusOptions.some((option) => option.key === explicit)) {
+                        return explicit;
+                    }
+                    return this.supplierFocusOptions[0]?.key || '';
+                },
+                supplierTopRows() {
+                    const rows = Array.isArray(this.supplierReport?.topSuppliers)
+                        ? this.supplierReport.topSuppliers
+                        : [];
+                    const normalized = rows.map((row, idx) => ({
+                        ...row,
+                        _rank: idx + 1,
+                        _amount: Number(row?.totalAmount) || 0,
+                    }));
+                    const maxAmount = normalized.reduce((max, row) => Math.max(max, row._amount), 0);
+                    const totalAmount = Number(this.supplierReport?.summary?.assignedAmount) || 0;
+                    return normalized.map((row) => ({
+                        ...row,
+                        _ratio: maxAmount > 0 ? (row._amount / maxAmount) * 100 : 0,
+                        _share: totalAmount > 0 ? (row._amount / totalAmount) * 100 : 0,
+                    }));
+                },
+                supplierFocusTrendRows() {
+                    const selectedKey = this.supplierEffectiveFocusKey;
+                    const rows = Array.isArray(this.supplierReport?.monthlyTrend)
+                        ? this.supplierReport.monthlyTrend
+                        : [];
+                    const filtered = rows
+                        .filter((row) => {
+                            const supplierId = Number(row?.supplierId);
+                            const supplierName = (row?.supplierName || '未归属供应商').toString();
+                            const rowKey = Number.isFinite(supplierId) && supplierId > 0
+                                ? `id:${supplierId}`
+                                : `name:${supplierName}`;
+                            return !selectedKey || rowKey === selectedKey;
+                        })
+                        .map((row) => ({
+                            ...row,
+                            _amount: Number(row?.totalAmount) || 0,
+                        }))
+                        .sort((a, b) => String(a?.month || '').localeCompare(String(b?.month || '')))
+                        .slice(-12);
+                    const maxAmount = filtered.reduce((max, row) => Math.max(max, row._amount), 0);
+                    return filtered.map((row) => ({
+                        ...row,
+                        _barHeight: maxAmount > 0 ? Math.max(16, (row._amount / maxAmount) * 150) : 16,
+                    }));
+                },
+                supplierYearOverviewRows() {
+                    const sourceRows = Array.isArray(this.supplierReport?.yearlySummary)
+                        ? this.supplierReport.yearlySummary
+                        : [];
+                    const totals = new Map();
+                    for (const row of sourceRows) {
+                        const year = (row?.year || '').toString();
+                        if (!year) continue;
+                        const existing = totals.get(year) || {
+                            year,
+                            totalAmount: 0,
+                            recordCount: 0,
+                            supplierCount: 0,
+                            _supplierKeys: new Set(),
+                        };
+                        existing.totalAmount += Number(row?.totalAmount) || 0;
+                        existing.recordCount += Number(row?.recordCount) || 0;
+                        const supplierId = Number(row?.supplierId);
+                        const supplierKey = Number.isFinite(supplierId) && supplierId > 0
+                            ? `id:${supplierId}`
+                            : `name:${(row?.supplierName || '未归属供应商').toString()}`;
+                        existing._supplierKeys.add(supplierKey);
+                        totals.set(year, existing);
+                    }
+                    const rows = [...totals.values()]
+                        .map((row) => ({
+                            ...row,
+                            supplierCount: row._supplierKeys.size,
+                            _amount: Number(row.totalAmount) || 0,
+                        }))
+                        .sort((a, b) => String(a.year).localeCompare(String(b.year)))
+                        .slice(-5);
+                    const maxAmount = rows.reduce((max, row) => Math.max(max, row._amount), 0);
+                    return rows.map((row) => ({
+                        ...row,
+                        _barHeight: maxAmount > 0 ? Math.max(16, (row._amount / maxAmount) * 120) : 16,
+                    }));
+                },
+                supplierFocusItemRows() {
+                    const selectedKey = this.supplierEffectiveFocusKey;
+                    const rows = Array.isArray(this.supplierReport?.supplierItems)
+                        ? this.supplierReport.supplierItems
+                        : [];
+                    const filtered = rows.filter((row) => {
+                        if (!selectedKey) return true;
+                        const supplierId = Number(row?.supplierId);
+                        const supplierName = (row?.supplierName || '未归属供应商').toString();
+                        const rowKey = Number.isFinite(supplierId) && supplierId > 0
+                            ? `id:${supplierId}`
+                            : `name:${supplierName}`;
+                        return rowKey === selectedKey;
+                    });
+                    return filtered
+                        .map((row) => ({
+                            ...row,
+                            _amount: Number(row?.totalAmount) || 0,
+                        }))
+                        .sort((a, b) => b._amount - a._amount)
+                        .slice(0, 12);
+                },
+                supplierUnassignedRows() {
+                    return Array.isArray(this.supplierReport?.unassignedItems)
+                        ? this.supplierReport.unassignedItems.slice(0, 12)
+                        : [];
                 },
             },
         watch: {

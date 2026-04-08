@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 import aiosqlite
@@ -63,6 +63,23 @@ def _safe_float(value) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _safe_int(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _normalize_year_value(year: Optional[str], month: Optional[str]) -> str:
+    text = str(year or "").strip()
+    if len(text) == 4 and text.isdigit():
+        return text
+    month_text = str(month or "").strip()
+    if len(month_text) >= 4 and month_text[:4].isdigit():
+        return month_text[:4]
+    return str(date.today().year)
 
 
 async def get_stats_summary() -> dict:
@@ -325,5 +342,224 @@ async def get_operations_report(
                 "record_count": int(row["record_count"]),
             }
             for row in trend_rows
+        ],
+    }
+
+
+async def get_supplier_report(
+    status: Optional[str] = None,
+    department: Optional[str] = None,
+    month: Optional[str] = None,
+    keyword: Optional[str] = None,
+    year: Optional[str] = None,
+    supplier_id: Optional[int] = None,
+) -> dict:
+    """供应商采购分析报表。"""
+    selected_year = _normalize_year_value(year, month)
+    summary_conditions, summary_params = build_item_filters(
+        status=status, department=department, month=month, keyword=keyword
+    )
+    if supplier_id:
+        summary_conditions.append("supplier_id = ?")
+        summary_params.append(int(supplier_id))
+    summary_where = f" WHERE {' AND '.join(summary_conditions)}" if summary_conditions else ""
+
+    trend_conditions, trend_params = build_item_filters(
+        status=status, department=department, month=None, keyword=keyword
+    )
+    trend_conditions.append("request_date IS NOT NULL")
+    trend_conditions.append("request_date <> ''")
+    trend_conditions.append("SUBSTR(request_date, 1, 4) = ?")
+    trend_params.append(selected_year)
+    if supplier_id:
+        trend_conditions.append("supplier_id = ?")
+        trend_params.append(int(supplier_id))
+    trend_where = f" WHERE {' AND '.join(trend_conditions)}" if trend_conditions else ""
+
+    yearly_conditions, yearly_params = build_item_filters(
+        status=status, department=department, month=None, keyword=keyword
+    )
+    yearly_conditions.append("request_date IS NOT NULL")
+    yearly_conditions.append("request_date <> ''")
+    if supplier_id:
+        yearly_conditions.append("supplier_id = ?")
+        yearly_params.append(int(supplier_id))
+    yearly_where = f" WHERE {' AND '.join(yearly_conditions)}" if yearly_conditions else ""
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        summary_query = f"""
+            SELECT
+                COUNT(*) AS total_records,
+                COUNT(DISTINCT CASE WHEN supplier_id IS NOT NULL THEN supplier_id END) AS supplier_count,
+                SUM(CASE WHEN supplier_id IS NOT NULL THEN 1 ELSE 0 END) AS assigned_records,
+                SUM(CASE WHEN supplier_id IS NULL THEN 1 ELSE 0 END) AS unassigned_records,
+                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+                COALESCE(SUM(CASE WHEN supplier_id IS NOT NULL THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS assigned_amount,
+                COALESCE(SUM(CASE WHEN supplier_id IS NULL THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS unassigned_amount
+            FROM items
+            {summary_where}
+        """
+        async with db.execute(summary_query, summary_params) as cursor:
+            summary_row = dict(await cursor.fetchone() or {})
+
+        top_suppliers_query = f"""
+            SELECT
+                supplier_id,
+                COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
+                COUNT(*) AS record_count,
+                COUNT(DISTINCT item_name) AS item_count,
+                COALESCE(SUM(quantity), 0) AS total_quantity,
+                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+                MAX(request_date) AS latest_request_date
+            FROM items
+            {summary_where}
+            GROUP BY supplier_id, supplier_name
+            ORDER BY total_amount DESC, record_count DESC, supplier_name COLLATE NOCASE ASC
+            LIMIT 12
+        """
+        async with db.execute(top_suppliers_query, summary_params) as cursor:
+            top_supplier_rows = [dict(row) for row in await cursor.fetchall()]
+
+        monthly_trend_query = f"""
+            SELECT
+                SUBSTR(request_date, 1, 7) AS month,
+                supplier_id,
+                COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
+                COUNT(*) AS record_count,
+                COALESCE(SUM(quantity), 0) AS total_quantity,
+                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount
+            FROM items
+            {trend_where}
+            GROUP BY month, supplier_id, supplier_name
+            HAVING month IS NOT NULL AND month <> ''
+            ORDER BY month ASC, total_amount DESC, supplier_name COLLATE NOCASE ASC
+        """
+        async with db.execute(monthly_trend_query, trend_params) as cursor:
+            monthly_trend_rows = [dict(row) for row in await cursor.fetchall()]
+
+        yearly_summary_query = f"""
+            SELECT
+                SUBSTR(request_date, 1, 4) AS year,
+                supplier_id,
+                COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
+                COUNT(*) AS record_count,
+                COUNT(DISTINCT item_name) AS item_count,
+                COALESCE(SUM(quantity), 0) AS total_quantity,
+                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount
+            FROM items
+            {yearly_where}
+            GROUP BY year, supplier_id, supplier_name
+            HAVING year IS NOT NULL AND year <> ''
+            ORDER BY year DESC, total_amount DESC, supplier_name COLLATE NOCASE ASC
+            LIMIT 80
+        """
+        async with db.execute(yearly_summary_query, yearly_params) as cursor:
+            yearly_summary_rows = [dict(row) for row in await cursor.fetchall()]
+
+        supplier_item_query = f"""
+            SELECT
+                supplier_id,
+                COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
+                item_name,
+                COUNT(*) AS record_count,
+                COALESCE(SUM(quantity), 0) AS total_quantity,
+                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+                MAX(request_date) AS latest_request_date
+            FROM items
+            {summary_where}
+            GROUP BY supplier_id, supplier_name, item_name
+            ORDER BY total_amount DESC, record_count DESC, item_name COLLATE NOCASE ASC
+            LIMIT 80
+        """
+        async with db.execute(supplier_item_query, summary_params) as cursor:
+            supplier_item_rows = [dict(row) for row in await cursor.fetchall()]
+
+        unassigned_query = f"""
+            SELECT
+                id, serial_number, request_date, department, handler, item_name,
+                quantity, unit_price, status
+            FROM items
+            {summary_where}
+            {"AND" if summary_where else "WHERE"} supplier_id IS NULL
+            ORDER BY request_date DESC, id DESC
+            LIMIT 50
+        """
+        async with db.execute(unassigned_query, summary_params) as cursor:
+            unassigned_rows = [dict(row) for row in await cursor.fetchall()]
+
+    return {
+        "selected_year": selected_year,
+        "selected_supplier_id": int(supplier_id) if supplier_id else None,
+        "summary": {
+            "total_records": _safe_int(summary_row.get("total_records")),
+            "supplier_count": _safe_int(summary_row.get("supplier_count")),
+            "assigned_records": _safe_int(summary_row.get("assigned_records")),
+            "unassigned_records": _safe_int(summary_row.get("unassigned_records")),
+            "total_amount": _safe_float(summary_row.get("total_amount")),
+            "assigned_amount": _safe_float(summary_row.get("assigned_amount")),
+            "unassigned_amount": _safe_float(summary_row.get("unassigned_amount")),
+        },
+        "top_suppliers": [
+            {
+                "supplier_id": _safe_int(row.get("supplier_id")) or None,
+                "supplier_name": row.get("supplier_name") or "未归属供应商",
+                "record_count": _safe_int(row.get("record_count")),
+                "item_count": _safe_int(row.get("item_count")),
+                "total_quantity": _safe_float(row.get("total_quantity")),
+                "total_amount": _safe_float(row.get("total_amount")),
+                "latest_request_date": row.get("latest_request_date") or "",
+            }
+            for row in top_supplier_rows
+        ],
+        "monthly_trend": [
+            {
+                "month": row.get("month") or "",
+                "supplier_id": _safe_int(row.get("supplier_id")) or None,
+                "supplier_name": row.get("supplier_name") or "未归属供应商",
+                "record_count": _safe_int(row.get("record_count")),
+                "total_quantity": _safe_float(row.get("total_quantity")),
+                "total_amount": _safe_float(row.get("total_amount")),
+            }
+            for row in monthly_trend_rows
+        ],
+        "yearly_summary": [
+            {
+                "year": row.get("year") or "",
+                "supplier_id": _safe_int(row.get("supplier_id")) or None,
+                "supplier_name": row.get("supplier_name") or "未归属供应商",
+                "record_count": _safe_int(row.get("record_count")),
+                "item_count": _safe_int(row.get("item_count")),
+                "total_quantity": _safe_float(row.get("total_quantity")),
+                "total_amount": _safe_float(row.get("total_amount")),
+            }
+            for row in yearly_summary_rows
+        ],
+        "supplier_items": [
+            {
+                "supplier_id": _safe_int(row.get("supplier_id")) or None,
+                "supplier_name": row.get("supplier_name") or "未归属供应商",
+                "item_name": row.get("item_name") or "",
+                "record_count": _safe_int(row.get("record_count")),
+                "total_quantity": _safe_float(row.get("total_quantity")),
+                "total_amount": _safe_float(row.get("total_amount")),
+                "latest_request_date": row.get("latest_request_date") or "",
+            }
+            for row in supplier_item_rows
+        ],
+        "unassigned_items": [
+            {
+                "id": _safe_int(row.get("id")),
+                "serial_number": row.get("serial_number") or "",
+                "request_date": row.get("request_date") or "",
+                "department": row.get("department") or "",
+                "handler": row.get("handler") or "",
+                "item_name": row.get("item_name") or "",
+                "quantity": _safe_float(row.get("quantity")),
+                "unit_price": _safe_float(row.get("unit_price")),
+                "status": row.get("status") or "",
+            }
+            for row in unassigned_rows
         ],
     }

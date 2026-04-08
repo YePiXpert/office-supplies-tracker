@@ -12,6 +12,8 @@ async def _get_existing_columns(db: aiosqlite.Connection, table: str) -> set[str
 async def _ensure_item_columns(db: aiosqlite.Connection) -> None:
     existing_columns = await _get_existing_columns(db, "items")
     expected_columns = {
+        "supplier_id": "INTEGER",
+        "supplier_name_snapshot": "TEXT",
         "arrival_date": "TEXT",
         "distribution_date": "TEXT",
         "signoff_note": "TEXT",
@@ -43,6 +45,8 @@ async def _drop_recipient_column(db: aiosqlite.Connection) -> None:
                 quantity REAL NOT NULL,
                 purchase_link TEXT,
                 unit_price REAL,
+                supplier_id INTEGER,
+                supplier_name_snapshot TEXT,
                 status TEXT NOT NULL DEFAULT '待采购',
                 invoice_issued BOOLEAN DEFAULT 0,
                 payment_status TEXT NOT NULL DEFAULT '未付款',
@@ -60,7 +64,7 @@ async def _drop_recipient_column(db: aiosqlite.Connection) -> None:
             """
             INSERT INTO items__new (
                 id, serial_number, department, handler, request_date,
-                item_name, quantity, purchase_link, unit_price,
+                item_name, quantity, purchase_link, unit_price, supplier_id, supplier_name_snapshot,
                 status, invoice_issued, payment_status,
                 arrival_date, distribution_date, signoff_note,
                 deleted_at,
@@ -68,7 +72,7 @@ async def _drop_recipient_column(db: aiosqlite.Connection) -> None:
             )
             SELECT
                 id, serial_number, department, handler, request_date,
-                item_name, quantity, purchase_link, unit_price,
+                item_name, quantity, purchase_link, unit_price, NULL AS supplier_id, NULL AS supplier_name_snapshot,
                 status, invoice_issued, payment_status,
                 arrival_date, distribution_date, signoff_note,
                 NULL AS deleted_at,
@@ -210,6 +214,79 @@ async def _ensure_operations_tables(db: aiosqlite.Connection) -> None:
     )
 
 
+async def _backfill_item_supplier_snapshot(db: aiosqlite.Connection) -> None:
+    await db.execute(
+        """
+        UPDATE items
+        SET supplier_name_snapshot = (
+            SELECT s.name
+            FROM suppliers s
+            WHERE s.id = items.supplier_id
+            LIMIT 1
+        )
+        WHERE supplier_id IS NOT NULL AND (supplier_name_snapshot IS NULL OR supplier_name_snapshot = '')
+        """
+    )
+    await db.execute(
+        """
+        UPDATE items
+        SET supplier_id = (
+                SELECT pr.supplier_id
+                FROM supplier_price_records pr
+                WHERE pr.supplier_id IS NOT NULL
+                  AND pr.last_serial_number = items.serial_number
+                ORDER BY COALESCE(pr.last_purchase_date, '') DESC, pr.updated_at DESC, pr.id DESC
+                LIMIT 1
+            ),
+            supplier_name_snapshot = (
+                SELECT s.name
+                FROM supplier_price_records pr
+                JOIN suppliers s ON s.id = pr.supplier_id
+                WHERE pr.supplier_id IS NOT NULL
+                  AND pr.last_serial_number = items.serial_number
+                ORDER BY COALESCE(pr.last_purchase_date, '') DESC, pr.updated_at DESC, pr.id DESC
+                LIMIT 1
+            )
+        WHERE (supplier_id IS NULL OR supplier_name_snapshot IS NULL OR supplier_name_snapshot = '')
+          AND EXISTS (
+              SELECT 1
+              FROM supplier_price_records pr
+              WHERE pr.supplier_id IS NOT NULL
+                AND pr.last_serial_number = items.serial_number
+          )
+        """
+    )
+    await db.execute(
+        """
+        UPDATE items
+        SET supplier_id = (
+                SELECT pr.supplier_id
+                FROM supplier_price_records pr
+                WHERE pr.supplier_id IS NOT NULL
+                  AND pr.item_name = items.item_name
+                ORDER BY COALESCE(pr.last_purchase_date, '') DESC, pr.updated_at DESC, pr.id DESC
+                LIMIT 1
+            ),
+            supplier_name_snapshot = (
+                SELECT s.name
+                FROM supplier_price_records pr
+                JOIN suppliers s ON s.id = pr.supplier_id
+                WHERE pr.supplier_id IS NOT NULL
+                  AND pr.item_name = items.item_name
+                ORDER BY COALESCE(pr.last_purchase_date, '') DESC, pr.updated_at DESC, pr.id DESC
+                LIMIT 1
+            )
+        WHERE supplier_id IS NULL
+          AND EXISTS (
+              SELECT 1
+              FROM supplier_price_records pr
+              WHERE pr.supplier_id IS NOT NULL
+                AND pr.item_name = items.item_name
+          )
+        """
+    )
+
+
 async def init_db():
     """初始化数据库表。"""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -225,6 +302,8 @@ async def init_db():
                 quantity REAL NOT NULL,
                 purchase_link TEXT,
                 unit_price REAL,
+                supplier_id INTEGER,
+                supplier_name_snapshot TEXT,
                 status TEXT NOT NULL DEFAULT '待采购',
                 invoice_issued BOOLEAN DEFAULT 0,
                 payment_status TEXT NOT NULL DEFAULT '未付款',
@@ -261,6 +340,7 @@ async def init_db():
         await _ensure_audit_log_table(db)
         await _ensure_system_security_table(db)
         await _ensure_operations_tables(db)
+        await _backfill_item_supplier_snapshot(db)
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at DESC)"
         )
@@ -272,6 +352,9 @@ async def init_db():
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_request_date ON items(request_date)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_items_supplier_id ON items(supplier_id)"
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_serial_number ON items(serial_number)"

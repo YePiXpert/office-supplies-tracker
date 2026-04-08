@@ -20,6 +20,7 @@ class Item(Base):
         Index("idx_items_status", "status"),
         Index("idx_items_department", "department"),
         Index("idx_items_request_date", "request_date"),
+        Index("idx_items_supplier_id", "supplier_id"),
         Index("idx_items_serial_number", "serial_number"),
         Index("idx_items_handler", "handler"),
         Index("idx_items_deleted_at", "deleted_at"),
@@ -34,6 +35,8 @@ class Item(Base):
     quantity = Column(REAL, nullable=False)
     purchase_link = Column(TEXT)
     unit_price = Column(REAL)
+    supplier_id = Column(INTEGER)
+    supplier_name_snapshot = Column(TEXT)
     status = Column(TEXT, nullable=False, server_default=text("'待采购'"))
     invoice_issued = Column(BOOLEAN, server_default=text("0"))
     payment_status = Column(TEXT, nullable=False, server_default=text("'未付款'"))
@@ -90,6 +93,8 @@ AUDIT_FIELD_LABELS = {
     "quantity": "数量",
     "purchase_link": "采购链接",
     "unit_price": "单价",
+    "supplier_id": "供应商 ID",
+    "supplier_name_snapshot": "供应商",
     "status": "采购状态",
     "invoice_issued": "发票状态",
     "payment_status": "付款状态",

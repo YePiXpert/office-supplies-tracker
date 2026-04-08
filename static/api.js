@@ -524,7 +524,7 @@
                     }
                 },
                 isValidView(view) {
-                    return (global.AppViewConfig?.ids || ['dashboard', 'ledger', 'execution', 'reports', 'audit', 'settings']).includes(view);
+                    return (global.AppViewConfig?.ids || ['dashboard', 'ledger', 'execution', 'operations', 'reports', 'audit', 'settings']).includes(view);
                 },
                 normalizeView(view) {
                     return this.isValidView(view) ? view : 'dashboard';
@@ -568,7 +568,7 @@
                         }
                         return;
                     }
-                    if (normalized === 'settings') {
+                    if (normalized === 'operations') {
                         if (forceReload || !this.operationsCenterInitialized) {
                             this.loadOperationsCenter();
                         }
@@ -1427,9 +1427,11 @@
                         if (this.filterStatus) params.status = this.filterStatus;
                         if (this.filterDepartment) params.department = this.filterDepartment;
                         if (this.filterMonth) params.month = this.filterMonth;
-                        const [amountResult, operationsResult] = await Promise.allSettled([
+                        if (this.supplierReportYear) params.year = this.supplierReportYear;
+                        const [amountResult, operationsResult, supplierResult] = await Promise.allSettled([
                             axios.get('/api/reports/amount', { params }),
                             axios.get('/api/reports/operations', { params }),
+                            axios.get('/api/reports/suppliers', { params }),
                         ]);
                         if (amountResult.status !== 'fulfilled') {
                             throw amountResult.reason;
@@ -1439,9 +1441,15 @@
                         const operations = operationsResult.status === 'fulfilled'
                             ? (operationsResult.value?.data || {})
                             : {};
+                        const suppliers = supplierResult.status === 'fulfilled'
+                            ? (supplierResult.value?.data || {})
+                            : {};
 
                         if (operationsResult.status !== 'fulfilled') {
                             this.showToast('执行分析图加载失败，已展示金额报表', 'error');
+                        }
+                        if (supplierResult.status !== 'fulfilled') {
+                            this.showToast('供应商分析加载失败，已展示基础报表', 'error');
                         }
                         this.amountReport = {
                             summary: {
@@ -1482,6 +1490,82 @@
                                 }))
                                 : [],
                         };
+                        this.supplierReport = {
+                            selectedYear: suppliers.selected_year || this.supplierReportYear || '',
+                            summary: {
+                                totalRecords: Number(suppliers.summary?.total_records) || 0,
+                                supplierCount: Number(suppliers.summary?.supplier_count) || 0,
+                                assignedRecords: Number(suppliers.summary?.assigned_records) || 0,
+                                unassignedRecords: Number(suppliers.summary?.unassigned_records) || 0,
+                                totalAmount: Number(suppliers.summary?.total_amount) || 0,
+                                assignedAmount: Number(suppliers.summary?.assigned_amount) || 0,
+                                unassignedAmount: Number(suppliers.summary?.unassigned_amount) || 0,
+                            },
+                            topSuppliers: Array.isArray(suppliers.top_suppliers)
+                                ? suppliers.top_suppliers.map((row) => ({
+                                    supplierId: row.supplier_id || null,
+                                    supplierName: row.supplier_name || '未归属供应商',
+                                    recordCount: Number(row.record_count) || 0,
+                                    itemCount: Number(row.item_count) || 0,
+                                    totalQuantity: Number(row.total_quantity) || 0,
+                                    totalAmount: Number(row.total_amount) || 0,
+                                    latestRequestDate: row.latest_request_date || '',
+                                }))
+                                : [],
+                            monthlyTrend: Array.isArray(suppliers.monthly_trend)
+                                ? suppliers.monthly_trend.map((row) => ({
+                                    month: row.month || '',
+                                    supplierId: row.supplier_id || null,
+                                    supplierName: row.supplier_name || '未归属供应商',
+                                    recordCount: Number(row.record_count) || 0,
+                                    totalQuantity: Number(row.total_quantity) || 0,
+                                    totalAmount: Number(row.total_amount) || 0,
+                                }))
+                                : [],
+                            yearlySummary: Array.isArray(suppliers.yearly_summary)
+                                ? suppliers.yearly_summary.map((row) => ({
+                                    year: row.year || '',
+                                    supplierId: row.supplier_id || null,
+                                    supplierName: row.supplier_name || '未归属供应商',
+                                    recordCount: Number(row.record_count) || 0,
+                                    itemCount: Number(row.item_count) || 0,
+                                    totalQuantity: Number(row.total_quantity) || 0,
+                                    totalAmount: Number(row.total_amount) || 0,
+                                }))
+                                : [],
+                            supplierItems: Array.isArray(suppliers.supplier_items)
+                                ? suppliers.supplier_items.map((row) => ({
+                                    supplierId: row.supplier_id || null,
+                                    supplierName: row.supplier_name || '未归属供应商',
+                                    itemName: row.item_name || '',
+                                    recordCount: Number(row.record_count) || 0,
+                                    totalQuantity: Number(row.total_quantity) || 0,
+                                    totalAmount: Number(row.total_amount) || 0,
+                                    latestRequestDate: row.latest_request_date || '',
+                                }))
+                                : [],
+                            unassignedItems: Array.isArray(suppliers.unassigned_items)
+                                ? suppliers.unassigned_items.map((row) => ({
+                                    id: Number(row.id) || 0,
+                                    serialNumber: row.serial_number || '',
+                                    requestDate: row.request_date || '',
+                                    department: row.department || '',
+                                    handler: row.handler || '',
+                                    itemName: row.item_name || '',
+                                    quantity: Number(row.quantity) || 0,
+                                    unitPrice: Number(row.unit_price) || 0,
+                                    status: row.status || '',
+                                }))
+                                : [],
+                        };
+                        if (!this.supplierReportFocusKey) {
+                            const firstSupplier = this.supplierReport.topSuppliers[0];
+                            if (firstSupplier) {
+                                this.supplierReportFocusKey = firstSupplier.supplierId
+                                    ? `id:${firstSupplier.supplierId}`
+                                    : `name:${firstSupplier.supplierName || '未归属供应商'}`;
+                            }
+                        }
                     } catch (e) {
                         this.showApiError('加载金额报表失败', e);
                     } finally {
@@ -1997,6 +2081,16 @@
                     if (!Number.isFinite(parsed) || parsed < 0) return null;
                     return parsed;
                 },
+                normalizeSupplierIdValue(value) {
+                    if (value === null || value === undefined || value === '') {
+                        return null;
+                    }
+                    const parsed = Number(value);
+                    if (!Number.isInteger(parsed) || parsed <= 0) {
+                        return null;
+                    }
+                    return parsed;
+                },
                 isPreviewRowNoise(itemName) {
                     const normalized = this.normalizeText(itemName).replace(/\s+/g, '');
                     if (!normalized) return true;
@@ -2028,6 +2122,7 @@
                                     quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
                                     purchase_link: normalizedLink || this.normalizeText(rawLink),
                                     unit_price: unitPrice,
+                                    supplier_id: this.normalizeSupplierIdValue(item?.supplier_id),
                                 };
                             })
                             .filter((item) => !this.isPreviewRowNoise(item.item_name))
@@ -2051,6 +2146,7 @@
                         quantity: 1,
                         purchase_link: '',
                         unit_price: null,
+                        supplier_id: null,
                     });
                 },
                 removePreviewItem(index) {
@@ -2071,6 +2167,7 @@
                                 quantity: Number.isFinite(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1,
                                 purchase_link: this.normalizeUrlText(item.purchase_link) || null,
                                 unit_price: unitPrice,
+                                supplier_id: this.normalizeSupplierIdValue(item.supplier_id),
                             };
                         });
                     return {
@@ -2108,6 +2205,7 @@
                         const res = await axios.get('/api/autocomplete');
                         this.departments = res.data.departments || [];
                         this.handlers = res.data.handlers || [];
+                        this.supplierOptions = Array.isArray(res.data.suppliers) ? res.data.suppliers : [];
                         this.statuses = this.getProcurementStatuses();
                         this.filterStatus = this.normalizeProcurementStatus(this.filterStatus);
                         if (this.filterStatus && !this.statuses.includes(this.filterStatus)) {
@@ -2196,7 +2294,60 @@
                     this.filterMonth = '';
                     this.handleFilter();
                 },
-                exportExcel() {
+                parseDownloadFilename(contentDisposition, fallback = 'office_supplies_export.xlsx') {
+                    const header = (contentDisposition || '').toString();
+                    if (!header) return fallback;
+
+                    const encodedMatch = header.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+                    if (encodedMatch?.[1]) {
+                        try {
+                            return decodeURIComponent(encodedMatch[1].trim().replace(/^["']|["']$/g, ''));
+                        } catch (_) {
+                            // Fall through to the basic filename parser when decoding fails.
+                        }
+                    }
+
+                    const plainMatch = header.match(/filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;]+)/i);
+                    const filename = plainMatch?.[1] || plainMatch?.[2];
+                    return filename ? filename.trim() : fallback;
+                },
+                triggerBlobDownload(blob, filename) {
+                    const objectUrl = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = objectUrl;
+                    link.download = filename || 'download';
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+                },
+                async getBlobErrorDetail(error, fallback = '未知错误') {
+                    const detail = error?.response?.data?.detail;
+                    if (detail) return detail;
+
+                    const blob = error?.response?.data;
+                    if (typeof Blob !== 'undefined' && blob instanceof Blob) {
+                        try {
+                            const text = (await blob.text()).trim();
+                            if (text) {
+                                try {
+                                    const parsed = JSON.parse(text);
+                                    if (parsed?.detail) {
+                                        return parsed.detail;
+                                    }
+                                } catch (_) {
+                                    return text;
+                                }
+                            }
+                        } catch (_) {
+                            // Ignore blob parsing failure and fall back to the generic message.
+                        }
+                    }
+
+                    return error?.message || fallback;
+                },
+                async exportExcel() {
                     const params = new URLSearchParams();
                     if (this.filterKeyword) params.append('keyword', this.filterKeyword);
                     if (this.filterStatus) params.append('status', this.filterStatus);
@@ -2204,8 +2355,55 @@
                     if (this.filterMonth) params.append('month', this.filterMonth);
                     const query = params.toString();
                     const url = query ? `/api/export?${query}` : '/api/export';
-                    const newWindow = window.open(url, '_blank');
-                    if (!newWindow) window.location.href = url;
+                    try {
+                        const response = await axios.get(url, { responseType: 'blob' });
+                        const filename = this.parseDownloadFilename(
+                            response?.headers?.['content-disposition'],
+                            'office_supplies_export.xlsx'
+                        );
+                        this.triggerBlobDownload(response.data, filename);
+                        this.showToast('Excel 已开始下载', 'success');
+                    } catch (error) {
+                        const detail = await this.getBlobErrorDetail(error, '导出失败');
+                        this.showToast(`导出 Excel 失败: ${detail}`, 'error');
+                    }
+                },
+                async exportSupplierReport(mode = 'full') {
+                    const normalizedMode = ['full', 'monthly', 'yearly'].includes(mode) ? mode : 'full';
+                    if (normalizedMode === 'monthly' && !this.filterMonth) {
+                        this.showToast('请先选择要导出的月份', 'error');
+                        return;
+                    }
+                    const params = new URLSearchParams();
+                    if (this.filterKeyword) params.append('keyword', this.filterKeyword);
+                    if (this.filterStatus) params.append('status', this.filterStatus);
+                    if (this.filterDepartment) params.append('department', this.filterDepartment);
+                    if (normalizedMode === 'monthly' && this.filterMonth) {
+                        params.append('month', this.filterMonth);
+                    }
+                    if (this.supplierReportYear) {
+                        params.append('year', this.supplierReportYear);
+                    }
+                    params.append('mode', normalizedMode);
+                    try {
+                        const response = await axios.get(`/api/reports/suppliers/export?${params.toString()}`, {
+                            responseType: 'blob',
+                        });
+                        const fallbackName = normalizedMode === 'monthly'
+                            ? 'supplier_purchase_monthly_report.xlsx'
+                            : normalizedMode === 'yearly'
+                                ? 'supplier_purchase_yearly_report.xlsx'
+                                : 'supplier_purchase_report.xlsx';
+                        const filename = this.parseDownloadFilename(
+                            response?.headers?.['content-disposition'],
+                            fallbackName
+                        );
+                        this.triggerBlobDownload(response.data, filename);
+                        this.showToast('供应商报表已开始下载', 'success');
+                    } catch (error) {
+                        const detail = await this.getBlobErrorDetail(error, '导出失败');
+                        this.showToast(`导出供应商报表失败: ${detail}`, 'error');
+                    }
                 },
                 normalizeItemUpdatePayload(data) {
                     const payload = { ...data };
@@ -2279,6 +2477,9 @@
                             payload.unit_price = unitPrice;
                         }
                     }
+                    if (Object.prototype.hasOwnProperty.call(payload, 'supplier_id')) {
+                        payload.supplier_id = this.normalizeSupplierIdValue(payload.supplier_id);
+                    }
                     return payload;
                 },
                 async updateItem(id, data) {
@@ -2313,10 +2514,19 @@
                     item.invoice_issued = !item.invoice_issued;
                     await this.updateItem(item.id, { invoice_issued: item.invoice_issued });
                 },
-                backupData() {
-                    const url = '/api/backup';
-                    const newWindow = window.open(url, '_blank');
-                    if (!newWindow) window.location.href = url;
+                async backupData() {
+                    try {
+                        const response = await axios.get('/api/backup', { responseType: 'blob' });
+                        const filename = this.parseDownloadFilename(
+                            response?.headers?.['content-disposition'],
+                            'office_supplies_backup.zip'
+                        );
+                        this.triggerBlobDownload(response.data, filename);
+                        this.showToast('备份文件已开始下载', 'success');
+                    } catch (error) {
+                        const detail = await this.getBlobErrorDetail(error, '备份失败');
+                        this.showToast(`下载备份失败: ${detail}`, 'error');
+                    }
                 },
                 handleRestoreSelect(e) {
                     const files = e.target.files;
@@ -2535,6 +2745,9 @@
                         if (!value) throw new Error('批量修改值不能为空');
                         return { [this.batchEditField]: value };
                     }
+                    if (this.batchEditField === 'supplier_id') {
+                        return { supplier_id: this.normalizeSupplierIdValue(this.batchEditValue) };
+                    }
                     throw new Error('不支持的批量修改字段');
                 },
                 async batchUpdate() {
@@ -2694,6 +2907,7 @@
                             item_name: itemName,
                             quantity,
                             purchase_link: normalizedLink || null,
+                            supplier_id: this.normalizeSupplierIdValue(this.newItem.supplier_id),
                         };
                         
                         if (payload.unit_price === '' || payload.unit_price === undefined) {
@@ -2708,6 +2922,7 @@
                             department,
                             handler,
                             request_date: requestDate,
+                            supplier_id: this.normalizeSupplierIdValue(this.newItem.supplier_id),
                             item_name: '',
                             quantity: 1,
                             unit_price: null,

@@ -15,6 +15,7 @@ class ItemCreate(BaseModel):
     quantity: float = Field(gt=0)
     purchase_link: Optional[str] = Field(default=None, max_length=2000)
     unit_price: Optional[float] = Field(default=None, ge=0)
+    supplier_id: Optional[int] = Field(default=None, gt=0)
     status: ItemStatus = Field(default=ItemStatus.PENDING)
     invoice_issued: bool = False
     payment_status: PaymentStatus = Field(default=PaymentStatus.UNPAID)
@@ -32,6 +33,7 @@ class ItemUpdate(BaseModel):
     quantity: Optional[float] = Field(default=None, gt=0)
     purchase_link: Optional[str] = Field(default=None, max_length=2000)
     unit_price: Optional[float] = Field(default=None, ge=0)
+    supplier_id: Optional[int] = Field(default=None, gt=0)
     status: Optional[ItemStatus] = None
     invoice_issued: Optional[bool] = None
     payment_status: Optional[PaymentStatus] = None
@@ -45,6 +47,7 @@ class ImportItem(BaseModel):
     quantity: Optional[float] = None
     purchase_link: Optional[str] = Field(default=None, max_length=2000)
     unit_price: Optional[float] = Field(default=None, ge=0)
+    supplier_id: Optional[int] = Field(default=None, gt=0)
 
 
 class ImportConfirmRequest(BaseModel):

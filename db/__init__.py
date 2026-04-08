@@ -46,6 +46,7 @@ from .operations import (
     create_import_task_run_sync,
     update_import_task_run_sync,
     get_operations_center_snapshot,
+    list_suppliers,
     create_supplier,
     create_price_record,
     upsert_inventory_profile,
@@ -53,7 +54,7 @@ from .operations import (
     create_invoice_attachment,
     delete_invoice_attachment,
 )
-from .reports import get_amount_report, get_operations_report, get_stats_summary
+from .reports import get_amount_report, get_operations_report, get_stats_summary, get_supplier_report
 from .schema import init_db
 
 __all__ = [
@@ -69,6 +70,7 @@ __all__ = [
     "get_stats_summary",
     "get_amount_report",
     "get_operations_report",
+    "get_supplier_report",
     "get_execution_board",
     "get_item",
     "create_item",
@@ -104,6 +106,7 @@ __all__ = [
     "create_import_task_run_sync",
     "update_import_task_run_sync",
     "get_operations_center_snapshot",
+    "list_suppliers",
     "create_supplier",
     "create_price_record",
     "upsert_inventory_profile",

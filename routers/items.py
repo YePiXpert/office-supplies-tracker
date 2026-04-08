@@ -27,7 +27,9 @@ from database import (
     get_item_history,
     get_items,
     get_operations_report,
+    get_supplier_report,
     list_deleted_items,
+    list_suppliers,
     purge_item,
     restore_item,
     rollback_item_to_history,
@@ -39,6 +41,9 @@ from export_utils import (
     ExportDependencyError,
     build_export_content_disposition,
     build_items_excel_stream,
+    build_supplier_report_excel_stream,
+    SUPPLIER_EXPORT_DISPLAY_NAME_PREFIX,
+    SUPPLIER_EXPORT_FALLBACK_FILENAME,
 )
 from schemas import BatchUpdateRequest, ItemCreate, ItemRollbackRequest, ItemUpdate
 
@@ -338,6 +343,7 @@ async def autocomplete():
         "serial_numbers": await get_serial_numbers(),
         "departments": await get_departments(),
         "handlers": await get_handlers(),
+        "suppliers": await list_suppliers(limit=200),
         "statuses": [s.value for s in ItemStatus],
         "payment_statuses": [s.value for s in PaymentStatus],
     }
@@ -378,6 +384,84 @@ async def operations_report(
     )
     return await get_operations_report(
         status=status, department=department, month=month, keyword=keyword
+    )
+
+
+@router.get("/reports/suppliers")
+async def supplier_report(
+    status: Optional[str] = None,
+    department: Optional[str] = None,
+    month: Optional[str] = None,
+    keyword: Optional[str] = None,
+    year: Optional[str] = None,
+    supplier_id: Optional[int] = None,
+):
+    """供应商采购分析报表。"""
+    status, department, month, keyword = _normalize_item_filters(
+        status, department, month, keyword
+    )
+    if supplier_id is not None and supplier_id <= 0:
+        raise HTTPException(status_code=400, detail="supplier_id 必须为正整数")
+    return await get_supplier_report(
+        status=status,
+        department=department,
+        month=month,
+        keyword=keyword,
+        year=year,
+        supplier_id=supplier_id,
+    )
+
+
+@router.get("/reports/suppliers/export")
+async def export_supplier_report(
+    status: Optional[str] = None,
+    department: Optional[str] = None,
+    month: Optional[str] = None,
+    keyword: Optional[str] = None,
+    year: Optional[str] = None,
+    supplier_id: Optional[int] = None,
+    mode: Optional[str] = None,
+):
+    """导出供应商采购分析 Excel。"""
+    status, department, month, keyword = _normalize_item_filters(
+        status, department, month, keyword
+    )
+    if supplier_id is not None and supplier_id <= 0:
+        raise HTTPException(status_code=400, detail="supplier_id 必须为正整数")
+
+    normalized_mode = str(mode or "full").strip().lower()
+    if normalized_mode not in {"full", "monthly", "yearly"}:
+        raise HTTPException(status_code=400, detail="mode 仅支持 full / monthly / yearly")
+
+    report = await get_supplier_report(
+        status=status,
+        department=department,
+        month=month,
+        keyword=keyword,
+        year=year,
+        supplier_id=supplier_id,
+    )
+
+    try:
+        output = build_supplier_report_excel_stream(report, mode=normalized_mode)
+    except ExportDependencyError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    if normalized_mode == "monthly":
+        display_name_prefix = f"{SUPPLIER_EXPORT_DISPLAY_NAME_PREFIX}_月度"
+    elif normalized_mode == "yearly":
+        display_name_prefix = f"{SUPPLIER_EXPORT_DISPLAY_NAME_PREFIX}_年度"
+    else:
+        display_name_prefix = SUPPLIER_EXPORT_DISPLAY_NAME_PREFIX
+
+    content_disposition = build_export_content_disposition(
+        fallback_filename=SUPPLIER_EXPORT_FALLBACK_FILENAME,
+        display_name_prefix=display_name_prefix,
+    )
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": content_disposition},
     )
 
 

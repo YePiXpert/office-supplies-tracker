@@ -32,6 +32,7 @@
     }
     if (global.SettingsOperationsPanel) {
         app.component('settings-operations-panel', global.SettingsOperationsPanel);
+        app.component('operations-center-panel', global.SettingsOperationsPanel);
     }
     if (global.WebdavModal) {
         app.component('webdav-modal', global.WebdavModal);
