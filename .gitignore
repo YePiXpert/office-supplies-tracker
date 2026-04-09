@@ -39,3 +39,5 @@ build_logs/
 .vscode/
 .claude/
 .history/
+.auth_cookie_secret
+logs/

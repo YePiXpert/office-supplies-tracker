@@ -1,4 +1,11 @@
 (function (global) {
+    const formatSidebarBadgeCount = (value) => {
+        const number = Number(value || 0);
+        if (!Number.isFinite(number) || number <= 0) return '';
+        if (number >= 100) return '99+';
+        return String(Math.round(number));
+    };
+
     global.AppState = {
         data() {
                 return {
@@ -35,6 +42,14 @@
                     authLockTimer: null,
                     authActivityHandler: null,
                     currentView: 'dashboard',
+                    currentSubViewByView: {
+                        operations: '',
+                        reports: '',
+                    },
+                    viewSearchQueryByView: {
+                        operations: '',
+                        reports: '',
+                    },
                     executionLoading: false,
                     boardKeyword: '',
                     boardDepartment: '',
@@ -153,6 +168,22 @@
                             },
                         },
                         monthlyAmountTrend: [],
+                        tracker: {
+                            summary: {
+                                toOrderCount: 0,
+                                waitingReceiptCount: 0,
+                                pendingInvoiceCount: 0,
+                                replenishmentCount: 0,
+                                actionQueueCount: 0,
+                                overdueReceiptCount: 0,
+                            },
+                            queues: {
+                                toOrder: [],
+                                waitingReceipt: [],
+                                pendingInvoice: [],
+                            },
+                            supplierLeadTimeTrend: [],
+                        },
                     },
                     supplierReportYear: String(new Date().getFullYear()),
                     supplierReportFocusKey: '',
@@ -205,12 +236,28 @@
                             import_task_count: 0,
                             failed_import_count: 0,
                             pending_reimbursement_count: 0,
+                            open_purchase_count: 0,
+                            pending_receipt_count: 0,
+                            replenishment_recommendation_count: 0,
+                            action_queue_count: 0,
                             notification_count: 0,
                         },
                         suppliers: [],
                         price_records: [],
                         inventory_profiles: [],
                         import_tasks: [],
+                        purchase_queue: [],
+                        receipt_queue: [],
+                        replenishment_recommendations: [],
+                        supplier_lead_time_trend: [],
+                        action_queues: {
+                            inventory: [],
+                            purchase: [],
+                            receipt: [],
+                            import: [],
+                            invoice: [],
+                            all: [],
+                        },
                         invoice_queue: [],
                         notifications: [],
                     },
@@ -229,6 +276,7 @@
                         purchase_link: '',
                         last_purchase_date: '',
                         last_serial_number: '',
+                        lead_time_days: '',
                     },
                     newInventoryProfile: {
                         item_name: '',
@@ -236,12 +284,17 @@
                         low_stock_threshold: 0,
                         unit: '',
                         preferred_supplier_id: '',
+                        reorder_quantity: 0,
                         notes: '',
                     },
                     inventoryEditingItemName: '',
                     invoiceAttachmentTargetItemId: null,
+                    purchaseOrderDrafts: {},
+                    receiptDrafts: {},
                     invoiceDrafts: {},
                     invoiceAttachmentUploading: false,
+                    purchaseOrderSavingItemId: null,
+                    purchaseReceiptSavingOrderId: null,
                     invoiceSavingItemId: null,
                     supplierSaving: false,
                     priceSaving: false,
@@ -282,6 +335,102 @@
                         id: 'dashboard',
                         title: '\u6982\u89c8\u770b\u677f',
                     };
+                },
+                currentViewSubViews() {
+                    return Array.isArray(this.currentViewMeta?.subviews)
+                        ? this.currentViewMeta.subviews
+                        : [];
+                },
+                operationsSubviewBadgeMap() {
+                    const center = this.operationsCenter || {};
+                    const summary = center.summary || {};
+                    const purchaseQueue = Array.isArray(center.purchase_queue) ? center.purchase_queue : [];
+                    const receiptQueue = Array.isArray(center.receipt_queue) ? center.receipt_queue : [];
+                    const replenishment = Array.isArray(center.replenishment_recommendations)
+                        ? center.replenishment_recommendations
+                        : [];
+                    const importTasks = Array.isArray(center.import_tasks) ? center.import_tasks : [];
+                    const notifications = Array.isArray(center.notifications) ? center.notifications : [];
+                    const invoiceQueue = Array.isArray(center.invoice_queue) ? center.invoice_queue : [];
+                    const importRecoveryCount = importTasks.filter((task) => task?.status !== 'completed').length;
+                    const pendingInvoiceCount = invoiceQueue.filter((item) => item?.reimbursement_status !== 'reimbursed').length;
+                    const actionQueueCount = Number(summary.action_queue_count)
+                        || (Array.isArray(center.action_queues?.all) ? center.action_queues.all.length : 0)
+                        || (purchaseQueue.length + receiptQueue.length + importRecoveryCount + pendingInvoiceCount);
+                    return {
+                        overview: actionQueueCount || null,
+                        procurement: (purchaseQueue.length + receiptQueue.length + replenishment.length) || null,
+                        'master-data': null,
+                        exceptions: (importRecoveryCount + pendingInvoiceCount + notifications.length) || null,
+                    };
+                },
+                reportsSubviewBadgeMap() {
+                    const trackerSummary = this.operationsReport?.tracker?.summary || {};
+                    const supplierSummary = this.supplierReport?.summary || {};
+                    return {
+                        overview: null,
+                        tracker: (
+                            (Number(trackerSummary.toOrderCount) || 0)
+                            + (Number(trackerSummary.waitingReceiptCount) || 0)
+                            + (Number(trackerSummary.pendingInvoiceCount) || 0)
+                        ) || null,
+                        suppliers: Number(supplierSummary.unassignedRecords) || null,
+                        efficiency: null,
+                    };
+                },
+                currentViewSidebarSubViews() {
+                    const activeId = typeof this.currentSubViewFor === 'function'
+                        ? this.currentSubViewFor(this.currentView)
+                        : (this.currentSubViewByView?.[this.currentView] || '');
+                    const badgeMap = this.currentView === 'operations'
+                        ? this.operationsSubviewBadgeMap
+                        : (this.currentView === 'reports' ? this.reportsSubviewBadgeMap : {});
+                    return this.currentViewSubViews.map((subview) => {
+                        const badgeCount = badgeMap?.[subview.id] ?? null;
+                        return {
+                            ...subview,
+                            isActive: activeId === subview.id,
+                            badgeCount,
+                            badgeLabel: formatSidebarBadgeCount(badgeCount),
+                        };
+                    });
+                },
+                currentViewHasSubViews() {
+                    return this.currentViewSubViews.length > 0;
+                },
+                currentSubViewMeta() {
+                    if (!this.currentViewHasSubViews) {
+                        return {
+                            id: '',
+                            label: '',
+                            title: this.currentViewMeta?.title || '',
+                            description: '',
+                            searchEnabled: false,
+                            searchPlaceholder: '',
+                        };
+                    }
+                    const currentId = typeof this.currentSubViewFor === 'function'
+                        ? this.currentSubViewFor(this.currentView)
+                        : (this.currentSubViewByView?.[this.currentView] || '');
+                    return this.currentViewSubViews.find((subview) => subview.id === currentId)
+                        || this.currentViewSubViews[0]
+                        || {
+                            id: '',
+                            label: '',
+                            title: this.currentViewMeta?.title || '',
+                            description: '',
+                            searchEnabled: false,
+                            searchPlaceholder: '',
+                        };
+                },
+                currentViewSearchQuery() {
+                    return (this.viewSearchQueryByView?.[this.currentView] || '').toString();
+                },
+                currentViewSearchEnabled() {
+                    return !!this.currentSubViewMeta?.searchEnabled;
+                },
+                currentViewSearchPlaceholder() {
+                    return (this.currentSubViewMeta?.searchPlaceholder || '').toString();
                 },
                 pageTokens() {
                     const total = this.totalPages;
@@ -507,22 +656,42 @@
                         ...(Array.isArray(this.supplierReport?.monthlyTrend) ? this.supplierReport.monthlyTrend : []),
                     ];
                     const seen = new Set();
-                    return rows.reduce((options, row) => {
-                        const supplierId = Number(row?.supplierId);
-                        const supplierName = (row?.supplierName || '未归属供应商').toString();
-                        const key = Number.isFinite(supplierId) && supplierId > 0
-                            ? `id:${supplierId}`
-                            : `name:${supplierName}`;
+                    const options = [];
+
+                    const masterSuppliers = Array.isArray(this.supplierOptions) ? this.supplierOptions : [];
+                    for (const supplier of masterSuppliers) {
+                        const supplierId = Number(supplier?.id);
+                        const supplierName = (supplier?.name || '').toString().trim();
+                        if (!Number.isFinite(supplierId) || supplierId <= 0 || !supplierName) {
+                            continue;
+                        }
+                        const key = `id:${supplierId}`;
                         if (seen.has(key)) {
-                            return options;
+                            continue;
                         }
                         seen.add(key);
                         options.push({
                             key,
                             label: supplierName,
                         });
-                        return options;
-                    }, []);
+                    }
+
+                    return rows.reduce((acc, row) => {
+                        const supplierId = Number(row?.supplierId);
+                        const supplierName = (row?.supplierName || '未归属供应商').toString();
+                        const key = Number.isFinite(supplierId) && supplierId > 0
+                            ? `id:${supplierId}`
+                            : `name:${supplierName}`;
+                        if (seen.has(key)) {
+                            return acc;
+                        }
+                        seen.add(key);
+                        acc.push({
+                            key,
+                            label: supplierName,
+                        });
+                        return acc;
+                    }, options);
                 },
                 supplierEffectiveFocusKey() {
                     const explicit = (this.supplierReportFocusKey || '').toString().trim();
@@ -638,6 +807,77 @@
                     return Array.isArray(this.supplierReport?.unassignedItems)
                         ? this.supplierReport.unassignedItems.slice(0, 12)
                         : [];
+                },
+                reportSearchQuery() {
+                    return (this.viewSearchQueryByView?.reports || '').toString();
+                },
+                reportTrackerToOrderRows() {
+                    const rows = Array.isArray(this.operationsReport?.tracker?.queues?.toOrder)
+                        ? this.operationsReport.tracker.queues.toOrder
+                        : [];
+                    return rows.filter((row) => this.matchesSearchQuery([
+                        row?.itemName,
+                        row?.requestDate,
+                        row?.department,
+                        row?.handler,
+                        row?.recommendedSupplierName,
+                        row?.serialNumber,
+                    ], this.reportSearchQuery));
+                },
+                reportTrackerWaitingReceiptRows() {
+                    const rows = Array.isArray(this.operationsReport?.tracker?.queues?.waitingReceipt)
+                        ? this.operationsReport.tracker.queues.waitingReceipt
+                        : [];
+                    return rows.filter((row) => this.matchesSearchQuery([
+                        row?.itemName,
+                        row?.supplierName,
+                        row?.orderedDate,
+                        row?.expectedArrivalDate,
+                    ], this.reportSearchQuery));
+                },
+                reportTrackerPendingInvoiceRows() {
+                    const rows = Array.isArray(this.operationsReport?.tracker?.queues?.pendingInvoice)
+                        ? this.operationsReport.tracker.queues.pendingInvoice
+                        : [];
+                    return rows.filter((row) => this.matchesSearchQuery([
+                        row?.itemName,
+                        row?.requestDate,
+                        row?.invoiceNumber,
+                        row?.reimbursementStatus,
+                    ], this.reportSearchQuery));
+                },
+                reportTrackerLeadTimeRows() {
+                    const rows = Array.isArray(this.operationsReport?.tracker?.supplierLeadTimeTrend)
+                        ? this.operationsReport.tracker.supplierLeadTimeTrend
+                        : [];
+                    return rows.filter((row) => this.matchesSearchQuery([
+                        row?.supplierName,
+                        row?.itemName,
+                        row?.latestPurchaseDate,
+                    ], this.reportSearchQuery));
+                },
+                visibleSupplierTopRows() {
+                    return this.supplierTopRows.filter((row) => this.matchesSearchQuery([
+                        row?.supplierName,
+                        row?.recordCount,
+                        row?.itemCount,
+                    ], this.reportSearchQuery));
+                },
+                visibleSupplierFocusItemRows() {
+                    return this.supplierFocusItemRows.filter((row) => this.matchesSearchQuery([
+                        row?.supplierName,
+                        row?.itemName,
+                        row?.recordCount,
+                        row?.department,
+                    ], this.reportSearchQuery));
+                },
+                visibleSupplierUnassignedRows() {
+                    return this.supplierUnassignedRows.filter((row) => this.matchesSearchQuery([
+                        row?.itemName,
+                        row?.requestDate,
+                        row?.department,
+                        row?.handler,
+                    ], this.reportSearchQuery));
                 },
             },
         watch: {

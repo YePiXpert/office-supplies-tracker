@@ -51,8 +51,23 @@ def _ensure_writable_dir(path: Path) -> None:
             pass
 
 
+def _resolve_override_dir(env_var_name: str) -> Path | None:
+    raw_value = os.environ.get(env_var_name, "").strip()
+    if not raw_value:
+        return None
+    override_path = Path(raw_value).expanduser()
+    if not override_path.is_absolute():
+        override_path = Path.cwd() / override_path
+    return override_path
+
+
 def resolve_data_dir() -> Path:
     """优先使用程序目录下 data/，不可写时回退到 APPDATA。"""
+    override_dir = _resolve_override_dir("OFFICE_SUPPLIES_DATA_DIR")
+    if override_dir is not None:
+        _ensure_writable_dir(override_dir)
+        return override_dir
+
     runtime_data_dir = resolve_runtime_dir() / "data"
     try:
         _ensure_writable_dir(runtime_data_dir)

@@ -529,16 +529,92 @@
                 normalizeView(view) {
                     return this.isValidView(view) ? view : 'dashboard';
                 },
-                getViewFromHash() {
+                getAvailableSubViews(view) {
+                    const normalizedView = this.normalizeView(view);
+                    const config = global.AppViewConfig?.views?.[normalizedView];
+                    return Array.isArray(config?.subviews) ? config.subviews : [];
+                },
+                isValidSubView(view, subview) {
+                    const normalizedSubview = (subview || '').toString().trim().toLowerCase();
+                    if (!normalizedSubview) return false;
+                    return this.getAvailableSubViews(view).some((entry) => entry.id === normalizedSubview);
+                },
+                getDefaultSubView(view) {
+                    const normalizedView = this.normalizeView(view);
+                    const config = global.AppViewConfig?.views?.[normalizedView] || {};
+                    const available = this.getAvailableSubViews(normalizedView);
+                    if (!available.length) return '';
+                    const configuredDefault = (config.defaultSubview || '').toString().trim().toLowerCase();
+                    if (configuredDefault && available.some((entry) => entry.id === configuredDefault)) {
+                        return configuredDefault;
+                    }
+                    return available[0]?.id || '';
+                },
+                normalizeSubView(view, subview) {
+                    const normalizedView = this.normalizeView(view);
+                    if (!this.getAvailableSubViews(normalizedView).length) return '';
+                    const candidate = (subview || '').toString().trim().toLowerCase();
+                    if (this.isValidSubView(normalizedView, candidate)) {
+                        return candidate;
+                    }
+                    return this.getDefaultSubView(normalizedView);
+                },
+                currentSubViewFor(view = this.currentView) {
+                    const normalizedView = this.normalizeView(view);
+                    return this.normalizeSubView(
+                        normalizedView,
+                        this.currentSubViewByView?.[normalizedView] || ''
+                    );
+                },
+                isCurrentSubview(view, subview) {
+                    return this.currentSubViewFor(view) === this.normalizeSubView(view, subview);
+                },
+                setCurrentViewSearch(value, view = this.currentView) {
+                    const normalizedView = this.normalizeView(view);
+                    const nextValue = (value || '').toString();
+                    this.viewSearchQueryByView = {
+                        ...this.viewSearchQueryByView,
+                        [normalizedView]: nextValue,
+                    };
+                },
+                clearCurrentViewSearch(view = this.currentView) {
+                    this.setCurrentViewSearch('', view);
+                },
+                normalizeSearchText(value) {
+                    return (value || '').toString().trim().toLowerCase();
+                },
+                buildSearchTokens(query) {
+                    return this.normalizeSearchText(query)
+                        .split(/\s+/)
+                        .filter(Boolean);
+                },
+                matchesSearchQuery(targets, query) {
+                    const tokens = Array.isArray(query) ? query : this.buildSearchTokens(query);
+                    if (!tokens.length) return true;
+                    const haystack = (Array.isArray(targets) ? targets : [targets])
+                        .map((value) => this.normalizeSearchText(value))
+                        .join(' ');
+                    return tokens.every((token) => haystack.includes(token));
+                },
+                getRouteFromHash() {
                     const raw = (window.location.hash || '')
                         .replace(/^#\/?/, '')
                         .trim()
                         .toLowerCase();
-                    return this.normalizeView(raw || 'dashboard');
+                    const [rawView = '', rawSubView = ''] = raw.split('/');
+                    const view = this.normalizeView(rawView || 'dashboard');
+                    const subview = this.normalizeSubView(
+                        view,
+                        rawSubView || this.currentSubViewByView?.[view] || ''
+                    );
+                    return { view, subview };
                 },
-                setViewHash(view, replace = false) {
+                setViewHash(view, subview = '', replace = false) {
                     const normalized = this.normalizeView(view);
-                    const hash = `#/${normalized}`;
+                    const normalizedSubView = this.normalizeSubView(normalized, subview);
+                    const hash = normalizedSubView
+                        ? `#/${normalized}/${normalizedSubView}`
+                        : `#/${normalized}`;
                     if (window.location.hash === hash) return;
                     if (replace && window.history?.replaceState) {
                         const base = `${window.location.pathname}${window.location.search}`;
@@ -574,22 +650,50 @@
                         }
                     }
                 },
-                switchView(view, forceReload = false, syncHash = true) {
+                switchView(view, forceReload = false, syncHash = true, subview = null) {
                     const normalized = this.normalizeView(view);
+                    const normalizedSubView = this.normalizeSubView(
+                        normalized,
+                        subview === null
+                            ? (this.currentSubViewByView?.[normalized] || '')
+                            : subview
+                    );
+                    if (normalizedSubView) {
+                        this.currentSubViewByView = {
+                            ...this.currentSubViewByView,
+                            [normalized]: normalizedSubView,
+                        };
+                    }
                     this.currentView = normalized;
                     if (syncHash) {
-                        this.setViewHash(normalized);
+                        this.setViewHash(normalized, normalizedSubView);
                     }
                     this.ensureViewData(normalized, forceReload);
                 },
+                switchSubView(subview, forceReload = false, syncHash = true) {
+                    const view = this.currentView;
+                    const normalizedSubView = this.normalizeSubView(view, subview);
+                    if (!normalizedSubView) return;
+                    this.currentSubViewByView = {
+                        ...this.currentSubViewByView,
+                        [view]: normalizedSubView,
+                    };
+                    if (syncHash) {
+                        this.setViewHash(view, normalizedSubView);
+                    }
+                    this.ensureViewData(view, forceReload);
+                },
+                goToViewSubview(view, subview, forceReload = false) {
+                    this.switchView(view, forceReload, true, subview);
+                },
                 handleHashChange() {
-                    const nextView = this.getViewFromHash();
-                    this.switchView(nextView, false, false);
+                    const route = this.getRouteFromHash();
+                    this.switchView(route.view, false, false, route.subview);
                 },
                 initViewRouting() {
-                    const nextView = this.getViewFromHash();
-                    this.switchView(nextView, false, false);
-                    this.setViewHash(nextView, true);
+                    const route = this.getRouteFromHash();
+                    this.switchView(route.view, false, false, route.subview);
+                    this.setViewHash(route.view, route.subview, true);
                     if (this.hashChangeListener) {
                         window.removeEventListener('hashchange', this.hashChangeListener);
                     }
@@ -963,26 +1067,16 @@
                     this.operationsCenterLoading = true;
                     this.operationsError = '';
                     try {
-                        const res = await axios.get('/api/ops/center');
-                        const payload = res.data || {};
-                        this.operationsCenter = {
-                            summary: payload.summary || {},
-                            suppliers: Array.isArray(payload.suppliers) ? payload.suppliers : [],
-                            price_records: Array.isArray(payload.price_records) ? payload.price_records : [],
-                            inventory_profiles: Array.isArray(payload.inventory_profiles) ? payload.inventory_profiles : [],
-                            import_tasks: Array.isArray(payload.import_tasks) ? payload.import_tasks : [],
-                            invoice_queue: Array.isArray(payload.invoice_queue) ? payload.invoice_queue : [],
-                            notifications: Array.isArray(payload.notifications) ? payload.notifications : [],
-                        };
-                        this.invoiceDrafts = {};
-                        for (const item of this.operationsCenter.invoice_queue) {
-                            this.invoiceDrafts[item.item_id] = {
-                                reimbursement_status: item.reimbursement_status || 'pending',
-                                reimbursement_date: item.reimbursement_date || '',
-                                invoice_number: item.invoice_number || '',
-                                note: item.note || '',
-                            };
-                        }
+                        this.operationsCenter = await global.AppOperationsApi.fetchCenter();
+                        this.purchaseOrderDrafts = global.AppOperationsApi.buildPurchaseOrderDrafts(
+                            this.operationsCenter.purchase_queue
+                        );
+                        this.receiptDrafts = global.AppOperationsApi.buildReceiptDrafts(
+                            this.operationsCenter.receipt_queue
+                        );
+                        this.invoiceDrafts = global.AppOperationsApi.buildInvoiceDrafts(
+                            this.operationsCenter.invoice_queue
+                        );
                         this.operationsCenterLastLoadedAt = new Date().toISOString();
                         this.operationsCenterInitialized = true;
                     } catch (e) {
@@ -1011,6 +1105,7 @@
                         purchase_link: '',
                         last_purchase_date: '',
                         last_serial_number: '',
+                        lead_time_days: '',
                     };
                 },
                 resetNewInventoryProfileForm() {
@@ -1020,6 +1115,7 @@
                         low_stock_threshold: 0,
                         unit: '',
                         preferred_supplier_id: '',
+                        reorder_quantity: 0,
                         notes: '',
                     };
                     this.inventoryEditingItemName = '';
@@ -1031,6 +1127,7 @@
                         low_stock_threshold: Number(source.low_stock_threshold || 0),
                         unit: (source.unit || '').toString(),
                         preferred_supplier_id: source.preferred_supplier_id ? String(source.preferred_supplier_id) : '',
+                        reorder_quantity: Number(source.reorder_quantity || 0),
                         notes: (source.notes || '').toString(),
                     };
                     this.inventoryEditingItemName = (source.item_name || '').toString().trim();
@@ -1051,7 +1148,7 @@
                             contact_email: (this.newSupplier.contact_email || '').toString().trim() || null,
                             notes: (this.newSupplier.notes || '').toString().trim() || null,
                         };
-                        await axios.post('/api/ops/suppliers', payload);
+                        await global.AppOperationsApi.createSupplier(payload);
                         this.resetNewSupplierForm();
                         this.showToast('供应商已创建', 'success');
                         await this.loadOperationsCenter();
@@ -1065,6 +1162,8 @@
                     const itemName = (this.newPriceRecord.item_name || '').toString().trim();
                     const rawUnitPrice = (this.newPriceRecord.unit_price ?? '').toString().trim();
                     const unitPrice = Number(rawUnitPrice);
+                    const rawLeadTime = (this.newPriceRecord.lead_time_days ?? '').toString().trim();
+                    const leadTimeDays = rawLeadTime ? Number(rawLeadTime) : null;
                     if (!itemName) {
                         this.showToast('请先填写物品名称', 'error');
                         return;
@@ -1077,6 +1176,10 @@
                         this.showToast('请填写有效的非负单价', 'error');
                         return;
                     }
+                    if (rawLeadTime && (!Number.isFinite(leadTimeDays) || leadTimeDays < 0)) {
+                        this.showToast('请填写有效的非负交期天数', 'error');
+                        return;
+                    }
                     this.priceSaving = true;
                     try {
                         const payload = {
@@ -1086,8 +1189,9 @@
                             purchase_link: (this.newPriceRecord.purchase_link || '').toString().trim() || null,
                             last_purchase_date: (this.newPriceRecord.last_purchase_date || '').toString().trim() || null,
                             last_serial_number: (this.newPriceRecord.last_serial_number || '').toString().trim() || null,
+                            lead_time_days: leadTimeDays,
                         };
-                        await axios.post('/api/ops/prices', payload);
+                        await global.AppOperationsApi.createPriceRecord(payload);
                         this.resetNewPriceRecordForm();
                         this.showToast('价格记录已创建', 'success');
                         await this.loadOperationsCenter();
@@ -1101,6 +1205,7 @@
                     const itemName = (this.newInventoryProfile.item_name || '').toString().trim();
                     const currentStock = Number(this.newInventoryProfile.current_stock || 0);
                     const threshold = Number(this.newInventoryProfile.low_stock_threshold || 0);
+                    const reorderQuantity = Number(this.newInventoryProfile.reorder_quantity || 0);
                     if (!itemName) {
                         this.showToast('请先填写物品名称', 'error');
                         return;
@@ -1113,6 +1218,10 @@
                         this.showToast('低库存阈值必须是大于等于 0 的数字', 'error');
                         return;
                     }
+                    if (!Number.isFinite(reorderQuantity) || reorderQuantity < 0) {
+                        this.showToast('建议补货数量必须是大于等于 0 的数字', 'error');
+                        return;
+                    }
                     this.inventorySaving = true;
                     try {
                         const payload = {
@@ -1123,9 +1232,10 @@
                             preferred_supplier_id: this.newInventoryProfile.preferred_supplier_id
                                 ? Number(this.newInventoryProfile.preferred_supplier_id)
                                 : null,
+                            reorder_quantity: reorderQuantity,
                             notes: (this.newInventoryProfile.notes || '').toString().trim() || null,
                         };
-                        await axios.put('/api/ops/inventory', payload);
+                        await global.AppOperationsApi.saveInventoryProfile(payload);
                         this.resetNewInventoryProfileForm();
                         this.showToast('库存档案已保存', 'success');
                         await this.loadOperationsCenter();
@@ -1133,6 +1243,90 @@
                         this.showApiError('保存库存档案失败', e);
                     } finally {
                         this.inventorySaving = false;
+                    }
+                },
+                getPurchaseOrderDraft(item) {
+                    const itemId = Number(item?.item_id || 0);
+                    if (!itemId) {
+                        return {
+                            supplier_id: '',
+                            ordered_date: '',
+                            expected_arrival_date: '',
+                            status: 'draft',
+                            note: '',
+                        };
+                    }
+                    if (!this.purchaseOrderDrafts[itemId]) {
+                        this.purchaseOrderDrafts[itemId] = {
+                            supplier_id: item?.supplier_id ? String(item.supplier_id) : '',
+                            ordered_date: item?.ordered_date || '',
+                            expected_arrival_date: item?.expected_arrival_date || '',
+                            status: item?.purchase_status || 'draft',
+                            note: item?.purchase_note || '',
+                        };
+                    }
+                    return this.purchaseOrderDrafts[itemId];
+                },
+                async savePurchaseOrder(item) {
+                    const itemId = Number(item?.item_id || 0);
+                    if (!itemId) return;
+                    this.purchaseOrderSavingItemId = itemId;
+                    try {
+                        const draft = this.getPurchaseOrderDraft(item);
+                        await global.AppOperationsApi.savePurchaseOrder(itemId, {
+                            supplier_id: draft.supplier_id ? Number(draft.supplier_id) : null,
+                            ordered_date: (draft.ordered_date || '').toString().trim() || null,
+                            expected_arrival_date: (draft.expected_arrival_date || '').toString().trim() || null,
+                            status: (draft.status || 'draft').toString().trim() || 'draft',
+                            note: (draft.note || '').toString().trim() || null,
+                        });
+                        this.showToast('采购单已保存', 'success');
+                        await this.loadOperationsCenter();
+                        await this.refreshDataViews({ items: false, stats: true, execution: true });
+                    } catch (e) {
+                        this.showApiError('保存采购单失败', e);
+                    } finally {
+                        this.purchaseOrderSavingItemId = null;
+                    }
+                },
+                getReceiptDraft(item) {
+                    const orderId = Number(item?.purchase_order_id || 0);
+                    if (!orderId) {
+                        return {
+                            received_date: '',
+                            received_quantity: item?.quantity || '',
+                            note: '',
+                        };
+                    }
+                    if (!this.receiptDrafts[orderId]) {
+                        this.receiptDrafts[orderId] = {
+                            received_date: item?.received_date || '',
+                            received_quantity: item?.received_quantity ?? item?.quantity ?? '',
+                            note: item?.receipt_note || '',
+                        };
+                    }
+                    return this.receiptDrafts[orderId];
+                },
+                async savePurchaseReceipt(item) {
+                    const orderId = Number(item?.purchase_order_id || 0);
+                    if (!orderId) return;
+                    this.purchaseReceiptSavingOrderId = orderId;
+                    try {
+                        const draft = this.getReceiptDraft(item);
+                        await global.AppOperationsApi.savePurchaseReceipt(orderId, {
+                            received_date: (draft.received_date || '').toString().trim() || null,
+                            received_quantity: draft.received_quantity === '' || draft.received_quantity == null
+                                ? null
+                                : Number(draft.received_quantity),
+                            note: (draft.note || '').toString().trim() || null,
+                        });
+                        this.showToast('收货记录已保存', 'success');
+                        await this.loadOperationsCenter();
+                        await this.refreshDataViews({ items: false, stats: true, execution: true });
+                    } catch (e) {
+                        this.showApiError('保存收货记录失败', e);
+                    } finally {
+                        this.purchaseReceiptSavingOrderId = null;
                     }
                 },
                 getInvoiceDraft(item) {
@@ -1167,7 +1361,7 @@
                         if (normalizedStatus !== 'pending' && !(draft.reimbursement_date || '').toString().trim()) {
                             draft.reimbursement_date = global.AppTime ? global.AppTime.todayDateText() : new Date().toISOString().slice(0, 10);
                         }
-                        await axios.put(`/api/ops/invoices/${itemId}`, {
+                        await global.AppOperationsApi.saveInvoiceRecord(itemId, {
                             reimbursement_status: normalizedStatus,
                             reimbursement_date: (draft.reimbursement_date || '').toString().trim() || null,
                             invoice_number: (draft.invoice_number || '').toString().trim() || null,
@@ -1203,9 +1397,7 @@
                     try {
                         const formData = new FormData();
                         formData.append('file', file);
-                        await axios.post(`/api/ops/invoices/${itemId}/attachments`, formData, {
-                            headers: { 'Content-Type': 'multipart/form-data' }
-                        });
+                        await global.AppOperationsApi.uploadInvoiceAttachment(itemId, formData);
                         this.showToast('发票附件已上传', 'success');
                         await this.loadOperationsCenter();
                     } catch (err) {
@@ -1225,7 +1417,7 @@
                     });
                     if (!ok) return;
                     try {
-                        await axios.delete(`/api/ops/invoice-attachments/${attachmentId}`);
+                        await global.AppOperationsApi.deleteInvoiceAttachment(attachmentId);
                         this.showToast('发票附件已删除', 'success');
                         await this.loadOperationsCenter();
                     } catch (e) {
@@ -1280,6 +1472,18 @@
                     this.focusLedgerItem(id);
                     this.showToast(options.successMessage || `已定位到条目 #${id}`, 'success');
                     return true;
+                },
+                async openTrackerItem(row) {
+                    const itemId = Number(row?.itemId || row?.item_id || 0);
+                    if (!itemId) return false;
+                    return this.jumpToLedgerItem(
+                        itemId,
+                        { id: itemId, item_name: row?.itemName || row?.item_name || '' },
+                        {
+                            closeDataQualityModal: false,
+                            successMessage: `已定位到条目 #${itemId}`,
+                        }
+                    );
                 },
                 async openWebdavModal() {
                     this.showWebdavModal = true;
@@ -1489,6 +1693,76 @@
                                     recordCount: Number(row.record_count) || 0,
                                 }))
                                 : [],
+                            tracker: {
+                                summary: {
+                                    toOrderCount: Number(operations.tracker?.summary?.to_order_count) || 0,
+                                    waitingReceiptCount: Number(operations.tracker?.summary?.waiting_receipt_count) || 0,
+                                    pendingInvoiceCount: Number(operations.tracker?.summary?.pending_invoice_count) || 0,
+                                    replenishmentCount: Number(operations.tracker?.summary?.replenishment_count) || 0,
+                                    actionQueueCount: Number(operations.tracker?.summary?.action_queue_count) || 0,
+                                    overdueReceiptCount: Number(operations.tracker?.summary?.overdue_receipt_count) || 0,
+                                },
+                                queues: {
+                                    toOrder: Array.isArray(operations.tracker?.purchase_queue)
+                                        ? operations.tracker.purchase_queue.map((row) => ({
+                                            itemId: Number(row.item_id) || 0,
+                                            purchaseOrderId: Number(row.purchase_order_id) || 0,
+                                            serialNumber: row.serial_number || '',
+                                            department: row.department || '',
+                                            handler: row.handler || '',
+                                            requestDate: row.request_date || '',
+                                            itemName: row.item_name || '',
+                                            quantity: Number(row.quantity) || 0,
+                                            purchaseStatus: row.purchase_status || 'draft',
+                                            supplierName: row.supplier_name || row.item_supplier_name || '',
+                                            recommendedSupplierName: row.recommended_supplier_name || '',
+                                            recommendedUnitPrice: Number(row.recommended_unit_price) || 0,
+                                            recommendedLeadTimeDays: row.recommended_lead_time_days == null ? null : Number(row.recommended_lead_time_days),
+                                            recommendedQuantity: Number(row.recommended_quantity) || 0,
+                                            requestAgeDays: Number(row.request_age_days) || 0,
+                                        }))
+                                        : [],
+                                    waitingReceipt: Array.isArray(operations.tracker?.receipt_queue)
+                                        ? operations.tracker.receipt_queue.map((row) => ({
+                                            itemId: Number(row.item_id) || 0,
+                                            purchaseOrderId: Number(row.purchase_order_id) || 0,
+                                            serialNumber: row.serial_number || '',
+                                            requestDate: row.request_date || '',
+                                            itemName: row.item_name || '',
+                                            supplierName: row.supplier_name || '',
+                                            orderedDate: row.ordered_date || '',
+                                            expectedArrivalDate: row.expected_arrival_date || '',
+                                            overdueDays: Number(row.overdue_days) || 0,
+                                            daysSinceOrder: Number(row.days_since_order) || 0,
+                                            quantity: Number(row.quantity) || 0,
+                                        }))
+                                        : [],
+                                    pendingInvoice: Array.isArray(operations.tracker?.invoice_queue)
+                                        ? operations.tracker.invoice_queue.map((row) => ({
+                                            itemId: Number(row.item_id) || 0,
+                                            serialNumber: row.serial_number || '',
+                                            requestDate: row.request_date || '',
+                                            itemName: row.item_name || '',
+                                            reimbursementStatus: row.reimbursement_status || 'pending',
+                                            reimbursementDate: row.reimbursement_date || '',
+                                            invoiceNumber: row.invoice_number || '',
+                                            attachmentCount: Number(row.attachment_count) || 0,
+                                        }))
+                                        : [],
+                                },
+                                supplierLeadTimeTrend: Array.isArray(operations.tracker?.supplier_lead_time_trend)
+                                    ? operations.tracker.supplier_lead_time_trend.map((row) => ({
+                                        supplierId: row.supplier_id || null,
+                                        supplierName: row.supplier_name || '',
+                                        itemName: row.item_name || '',
+                                        averageLeadTimeDays: row.average_lead_time_days == null ? null : Number(row.average_lead_time_days),
+                                        latestLeadTimeDays: row.latest_lead_time_days == null ? null : Number(row.latest_lead_time_days),
+                                        latestUnitPrice: row.latest_unit_price == null ? null : Number(row.latest_unit_price),
+                                        latestPurchaseDate: row.latest_purchase_date || '',
+                                        priceRecordCount: Number(row.price_record_count) || 0,
+                                    }))
+                                    : [],
+                            },
                         };
                         this.supplierReport = {
                             selectedYear: suppliers.selected_year || this.supplierReportYear || '',

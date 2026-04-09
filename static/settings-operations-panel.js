@@ -70,6 +70,49 @@
             importTasks() {
                 return Array.isArray(this.center.import_tasks) ? this.center.import_tasks : [];
             },
+            purchaseQueue() {
+                return Array.isArray(this.center.purchase_queue) ? this.center.purchase_queue : [];
+            },
+            receiptQueue() {
+                return Array.isArray(this.center.receipt_queue) ? this.center.receipt_queue : [];
+            },
+            replenishmentRecommendations() {
+                return Array.isArray(this.center.replenishment_recommendations)
+                    ? this.center.replenishment_recommendations
+                    : [];
+            },
+            actionQueues() {
+                return this.center.action_queues || {};
+            },
+            actionQueueBuckets() {
+                return [
+                    {
+                        key: 'inventory',
+                        label: '补货建议',
+                        rows: Array.isArray(this.actionQueues.inventory) ? this.actionQueues.inventory : [],
+                    },
+                    {
+                        key: 'purchase',
+                        label: '待下单',
+                        rows: Array.isArray(this.actionQueues.purchase) ? this.actionQueues.purchase : [],
+                    },
+                    {
+                        key: 'receipt',
+                        label: '待收货',
+                        rows: Array.isArray(this.actionQueues.receipt) ? this.actionQueues.receipt : [],
+                    },
+                    {
+                        key: 'import',
+                        label: '导入恢复',
+                        rows: Array.isArray(this.actionQueues.import) ? this.actionQueues.import : [],
+                    },
+                    {
+                        key: 'invoice',
+                        label: '报销闭环',
+                        rows: Array.isArray(this.actionQueues.invoice) ? this.actionQueues.invoice : [],
+                    },
+                ];
+            },
             invoiceQueue() {
                 return Array.isArray(this.center.invoice_queue) ? this.center.invoice_queue : [];
             },
@@ -134,10 +177,163 @@
                     });
             },
             actionQueueCount() {
-                return this.overdueNotifications.length + this.failedImportTasks.length + this.pendingInvoices.length;
+                return Number(this.summary.action_queue_count)
+                    || (Array.isArray(this.actionQueues.all) ? this.actionQueues.all.length : 0)
+                    || (
+                        this.purchaseQueue.length
+                        + this.receiptQueue.length
+                        + this.pendingInvoices.length
+                        + this.failedImportTasks.length
+                    );
+            },
+            activeSubview() {
+                return typeof this.$root.currentSubViewFor === 'function'
+                    ? this.$root.currentSubViewFor('operations')
+                    : 'overview';
+            },
+            searchQuery() {
+                return (this.$root.viewSearchQueryByView?.operations || '').toString();
+            },
+            visiblePurchaseQueue() {
+                return this.purchaseQueue.filter((item) => this.matchesQuery([
+                    item?.item_name,
+                    item?.serial_number,
+                    item?.department,
+                    item?.handler,
+                    item?.recommended_supplier_name,
+                    item?.supplier_name,
+                    item?.note,
+                ]));
+            },
+            visibleReceiptQueue() {
+                return this.receiptQueue.filter((item) => this.matchesQuery([
+                    item?.item_name,
+                    item?.supplier_name,
+                    item?.recommended_supplier_name,
+                    item?.ordered_date,
+                    item?.expected_arrival_date,
+                    item?.department,
+                    item?.handler,
+                    item?.note,
+                ]));
+            },
+            visibleReplenishmentRecommendations() {
+                return this.replenishmentRecommendations.filter((item) => this.matchesQuery([
+                    item?.item_name,
+                    item?.recommended_supplier_name,
+                    item?.preferred_supplier_name,
+                    item?.unit,
+                    item?.notes,
+                ]));
+            },
+            visibleActionQueueBuckets() {
+                return this.actionQueueBuckets.map((bucket) => ({
+                    ...bucket,
+                    rows: bucket.rows.filter((row) => this.matchesQuery([
+                        row?.title,
+                        row?.detail,
+                        row?.category,
+                        row?.severity,
+                        row?.item_name,
+                        row?.related_item_id,
+                    ])),
+                }));
+            },
+            visibleRecentPriceRecords() {
+                return this.recentPriceRecords.filter((record) => this.matchesQuery([
+                    record?.item_name,
+                    record?.supplier_name,
+                    record?.purchase_link,
+                    record?.last_serial_number,
+                    record?.last_purchase_date,
+                ]));
+            },
+            visiblePriceRecords() {
+                return this.priceRecords.filter((record) => this.matchesQuery([
+                    record?.item_name,
+                    record?.supplier_name,
+                    record?.purchase_link,
+                    record?.last_serial_number,
+                    record?.last_purchase_date,
+                    record?.lead_time_days,
+                ]));
+            },
+            visiblePriorityNotifications() {
+                return this.priorityNotifications.filter((notification) => this.matchesQuery([
+                    notification?.title,
+                    notification?.detail,
+                    notification?.category,
+                    notification?.severity,
+                    notification?.related_item_id,
+                ]));
+            },
+            visiblePendingInvoices() {
+                return this.pendingInvoices.filter((item) => this.matchesQuery([
+                    item?.item_name,
+                    item?.serial_number,
+                    item?.department,
+                    item?.handler,
+                    item?.invoice_number,
+                    item?.reimbursement_status,
+                ]));
+            },
+            visibleSuppliers() {
+                return this.suppliers.filter((supplier) => this.matchesQuery([
+                    supplier?.name,
+                    supplier?.contact_name,
+                    supplier?.contact_phone,
+                    supplier?.contact_email,
+                    supplier?.notes,
+                ]));
+            },
+            visibleImportRecoveryTasks() {
+                return this.importRecoveryTasks.filter((task) => this.matchesQuery([
+                    task?.file_name,
+                    task?.task_id,
+                    task?.engine,
+                    task?.protocol,
+                    task?.error_detail,
+                ]));
+            },
+            visibleImportTasks() {
+                return this.importTasks.filter((task) => this.matchesQuery([
+                    task?.file_name,
+                    task?.task_id,
+                    task?.engine,
+                    task?.protocol,
+                    task?.status,
+                    task?.error_detail,
+                ]));
+            },
+            visibleInvoiceQueue() {
+                return this.invoiceQueue.filter((item) => this.matchesQuery([
+                    item?.item_name,
+                    item?.serial_number,
+                    item?.department,
+                    item?.handler,
+                    item?.invoice_number,
+                    item?.reimbursement_status,
+                ]));
+            },
+            visibleNotificationsAll() {
+                return this.notifications.filter((notification) => this.matchesQuery([
+                    notification?.title,
+                    notification?.detail,
+                    notification?.category,
+                    notification?.severity,
+                    notification?.related_item_id,
+                ]));
             },
         },
         methods: {
+            matchesQuery(values) {
+                return typeof this.$root.matchesSearchQuery === 'function'
+                    ? this.$root.matchesSearchQuery(values, this.searchQuery)
+                    : true;
+            },
+            isOperationsSubview(id) {
+                return this.activeSubview === id;
+            },
             formatDate(value) {
                 const text = (value || '').toString().trim();
                 return text ? text.slice(0, 10) : '--';
@@ -164,6 +360,11 @@
                 }
                 return this.formatCount(value);
             },
+            formatLeadTime(days) {
+                const value = Number(days);
+                if (!Number.isFinite(value) || value < 0) return '--';
+                return `${this.formatCount(value)} 天`;
+            },
             importStatusLabel(status) {
                 return IMPORT_STATUS_LABELS[status] || (status || '未知');
             },
@@ -183,6 +384,22 @@
                     pending: 'bg-amber-100 text-amber-700 border-amber-200',
                     submitted: 'bg-blue-100 text-blue-700 border-blue-200',
                     reimbursed: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+                }[status] || 'bg-slate-100 text-slate-700 border-slate-200';
+            },
+            purchaseStatusLabel(status) {
+                return {
+                    draft: '待下单',
+                    ordered: '已下单',
+                    received: '已收货',
+                    cancelled: '已取消',
+                }[status] || (status || '未知');
+            },
+            purchaseStatusClass(status) {
+                return {
+                    draft: 'bg-amber-100 text-amber-700 border-amber-200',
+                    ordered: 'bg-blue-100 text-blue-700 border-blue-200',
+                    received: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+                    cancelled: 'bg-slate-100 text-slate-700 border-slate-200',
                 }[status] || 'bg-slate-100 text-slate-700 border-slate-200';
             },
             notificationSeverityLabel(severity) {
@@ -231,6 +448,31 @@
                     draft.reimbursement_date = global.AppTime ? global.AppTime.todayDateText() : new Date().toISOString().slice(0, 10);
                 }
             },
+            ensurePurchaseOrderDraft(item) {
+                return this.$root.getPurchaseOrderDraft(item);
+            },
+            updatePurchaseOrderDraft(item, field, value) {
+                const draft = this.ensurePurchaseOrderDraft(item);
+                draft[field] = value;
+                if (field === 'status' && value === 'ordered' && !draft.ordered_date) {
+                    draft.ordered_date = global.AppTime ? global.AppTime.todayDateText() : new Date().toISOString().slice(0, 10);
+                }
+            },
+            fillOrderDateToday(item) {
+                const draft = this.ensurePurchaseOrderDraft(item);
+                draft.ordered_date = global.AppTime ? global.AppTime.todayDateText() : new Date().toISOString().slice(0, 10);
+            },
+            ensureReceiptDraft(item) {
+                return this.$root.getReceiptDraft(item);
+            },
+            updateReceiptDraft(item, field, value) {
+                const draft = this.ensureReceiptDraft(item);
+                draft[field] = value;
+            },
+            fillReceiptDateToday(item) {
+                const draft = this.ensureReceiptDraft(item);
+                draft.received_date = global.AppTime ? global.AppTime.todayDateText() : new Date().toISOString().slice(0, 10);
+            },
             resetSupplierForm() {
                 this.$root.resetNewSupplierForm();
             },
@@ -243,6 +485,14 @@
                 this.$root.jumpToLedgerItem(itemId, item, {
                     closeDataQualityModal: false,
                     successMessage: `已定位到发票条目 #${itemId}`,
+                });
+            },
+            locateQueueItem(item) {
+                const itemId = Number(item?.item_id || item?.related_item_id || 0);
+                if (!itemId) return;
+                this.$root.jumpToLedgerItem(itemId, item, {
+                    closeDataQualityModal: false,
+                    successMessage: `已定位到条目 #${itemId}`,
                 });
             },
             fillInvoiceDateToday(item) {
@@ -328,7 +578,7 @@
                     {{ $root.operationsError }}
                 </div>
 
-                <div class="grid grid-cols-1 xl:grid-cols-[1.6fr,1fr] gap-4">
+                <div v-if="isOperationsSubview('overview')" class="grid grid-cols-1 xl:grid-cols-[1.6fr,1fr] gap-4">
                     <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                             <div>
@@ -344,16 +594,16 @@
                             </div>
                         </div>
                         <div class="mt-4 flex flex-wrap gap-2">
-                            <button @click="$root.switchView('reports')" class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">
+                            <button @click="$root.goToViewSubview('reports', 'suppliers')" class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">
                                 查看供应商报表
                             </button>
-                            <button @click="openSection('ops-section-exceptions')" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
+                            <button @click="$root.switchSubView('exceptions')" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
                                 查看异常队列
                             </button>
-                            <button @click="openSection('ops-section-import-recovery')" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
+                            <button @click="$root.switchSubView('exceptions')" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
                                 跟进导入任务
                             </button>
-                            <button @click="openMasterData('ops-section-full-workbench', 'ops-section-master-sourcing')" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
+                            <button @click="$root.switchSubView('master-data')" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
                                 维护供应商资料
                             </button>
                         </div>
@@ -378,39 +628,301 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 xl:grid-cols-4 gap-3">
-                    <button @click="openMasterData('ops-section-full-workbench', 'ops-section-master-sourcing')" class="text-left rounded-xl border border-emerald-200 bg-emerald-50 p-4 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-sm">
+                <div v-if="isOperationsSubview('overview')" class="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                    <button @click="$root.switchSubView('master-data')" class="text-left rounded-xl border border-emerald-200 bg-emerald-50 p-4 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-sm">
                         <div class="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">供应商档案</div>
                         <div class="mt-2 text-2xl font-semibold text-slate-900">{{ formatCount(suppliers.length) }}</div>
                         <div class="mt-1 text-xs text-slate-600">当前可协同供应商数量</div>
                     </button>
-                    <button @click="openSection('ops-section-supplier-collab')" class="text-left rounded-xl border border-cyan-200 bg-cyan-50 p-4 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-sm">
+                    <button @click="$root.switchSubView('master-data')" class="text-left rounded-xl border border-cyan-200 bg-cyan-50 p-4 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-sm">
                         <div class="text-[11px] font-semibold uppercase tracking-wide text-cyan-700">价格基线</div>
                         <div class="mt-2 text-2xl font-semibold text-slate-900">{{ formatCount(priceRecords.length) }}</div>
                         <div class="mt-1 text-xs text-slate-600">最近成交价与采购链接</div>
                     </button>
-                    <button @click="openSection('ops-section-import-recovery')" class="text-left rounded-xl border border-blue-200 bg-blue-50 p-4 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-sm">
+                    <button @click="$root.switchSubView('exceptions')" class="text-left rounded-xl border border-blue-200 bg-blue-50 p-4 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-sm">
                         <div class="text-[11px] font-semibold uppercase tracking-wide text-blue-700">导入恢复</div>
                         <div class="mt-2 text-2xl font-semibold text-slate-900">{{ formatCount(importRecoveryTasks.length) }}</div>
                         <div class="mt-1 text-xs text-slate-600">失败或处理中任务</div>
                     </button>
-                    <button @click="openSection('ops-section-invoices-preview')" class="text-left rounded-xl border border-slate-200 bg-slate-50 p-4 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-sm">
+                    <button @click="$root.switchSubView('exceptions')" class="text-left rounded-xl border border-slate-200 bg-slate-50 p-4 transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-sm">
                         <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-600">发票报销</div>
                         <div class="mt-2 text-2xl font-semibold text-slate-900">{{ formatCount(pendingInvoices.length) }}</div>
                         <div class="mt-1 text-xs text-slate-600">待闭环条目</div>
                     </button>
                 </div>
 
-                <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+                <div v-if="isOperationsSubview('procurement')" class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+                    <div id="ops-section-purchase-queue" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h4 class="text-base font-semibold text-slate-900">待下单采购主线</h4>
+                                <p class="mt-1 text-sm text-slate-500">把待采购条目转换成明确采购单，并顺手落下供应商和预计到货日期。</p>
+                            </div>
+                            <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                                {{ formatCount(visiblePurchaseQueue.length) }} 条
+                            </span>
+                        </div>
+                        <div class="mt-4 space-y-3">
+                            <div v-if="!visiblePurchaseQueue.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                                当前没有待下单条目。
+                            </div>
+                            <div v-for="item in visiblePurchaseQueue.slice(0, 6)" :key="'purchase-' + item.item_id" class="rounded-xl border border-slate-200 px-4 py-4">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="text-sm font-semibold text-slate-900">{{ item.item_name || '未命名条目' }}</div>
+                                        <div class="mt-1 text-xs text-slate-500">
+                                            {{ item.serial_number || '无流水号' }} · {{ item.department || '未分配部门' }} · {{ item.handler || '未填写经办人' }}
+                                        </div>
+                                        <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                            <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                                                数量 {{ formatCount(item.quantity) }}
+                                            </span>
+                                            <span :class="purchaseStatusClass(item.purchase_status)" class="inline-flex items-center rounded-full border px-2.5 py-1 font-medium">
+                                                {{ purchaseStatusLabel(item.purchase_status) }}
+                                            </span>
+                                            <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                                                已等 {{ formatCount(item.request_age_days) }} 天
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <button @click="locateQueueItem(item)" class="h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
+                                        定位台账
+                                    </button>
+                                </div>
+                                <div class="mt-3 rounded-lg border border-cyan-200 bg-cyan-50/70 px-3 py-3 text-xs text-cyan-800">
+                                    推荐供应商：{{ item.recommended_supplier_name || '待补供应商' }}
+                                    <span v-if="item.recommended_unit_price"> · 推荐单价 ¥ {{ formatCurrencyValue(item.recommended_unit_price) }}</span>
+                                    <span v-if="item.recommended_lead_time_days !== null"> · 推荐交期 {{ formatLeadTime(item.recommended_lead_time_days) }}</span>
+                                    <span v-if="item.recommended_quantity"> · 建议下单 {{ formatCount(item.recommended_quantity) }}</span>
+                                </div>
+                                <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <select
+                                        :value="ensurePurchaseOrderDraft(item).supplier_id"
+                                        @change="updatePurchaseOrderDraft(item, 'supplier_id', $event.target.value)"
+                                        class="h-10 px-3 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                    >
+                                        <option value="">选择供应商</option>
+                                        <option v-for="supplier in visibleSuppliers" :key="'purchase-draft-supplier-' + supplier.id" :value="String(supplier.id)">
+                                            {{ supplier.name }}
+                                        </option>
+                                    </select>
+                                    <select
+                                        :value="ensurePurchaseOrderDraft(item).status"
+                                        @change="updatePurchaseOrderDraft(item, 'status', $event.target.value)"
+                                        class="h-10 px-3 border border-slate-300 rounded-lg bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                    >
+                                        <option value="draft">待下单</option>
+                                        <option value="ordered">已下单</option>
+                                        <option value="cancelled">已取消</option>
+                                    </select>
+                                    <div class="flex gap-2">
+                                        <input
+                                            :value="ensurePurchaseOrderDraft(item).ordered_date"
+                                            @input="updatePurchaseOrderDraft(item, 'ordered_date', $event.target.value)"
+                                            type="date"
+                                            class="h-10 flex-1 px-3 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        >
+                                        <button type="button" @click="fillOrderDateToday(item)" class="h-10 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
+                                            今天
+                                        </button>
+                                    </div>
+                                    <input
+                                        :value="ensurePurchaseOrderDraft(item).expected_arrival_date"
+                                        @input="updatePurchaseOrderDraft(item, 'expected_arrival_date', $event.target.value)"
+                                        type="date"
+                                        class="h-10 px-3 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                    >
+                                </div>
+                                <div class="mt-3 flex items-end gap-3">
+                                    <textarea
+                                        :value="ensurePurchaseOrderDraft(item).note"
+                                        @input="updatePurchaseOrderDraft(item, 'note', $event.target.value)"
+                                        rows="2"
+                                        maxlength="500"
+                                        placeholder="记录阻塞、催单说明或供应商备注"
+                                        class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-y"
+                                    ></textarea>
+                                    <button
+                                        @click="$root.savePurchaseOrder(item)"
+                                        :disabled="$root.purchaseOrderSavingItemId === item.item_id"
+                                        class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out"
+                                    >
+                                        {{ $root.purchaseOrderSavingItemId === item.item_id ? '保存中...' : '保存采购单' }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="ops-section-receipt-queue" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h4 class="text-base font-semibold text-slate-900">待收货跟进</h4>
+                                <p class="mt-1 text-sm text-slate-500">已下单后继续跟进预计到货，收货确认后自动推动到分发阶段。</p>
+                            </div>
+                            <span class="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                                {{ formatCount(visibleReceiptQueue.length) }} 条
+                            </span>
+                        </div>
+                        <div class="mt-4 space-y-3">
+                            <div v-if="!visibleReceiptQueue.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                                当前没有待收货条目。
+                            </div>
+                            <div v-for="item in visibleReceiptQueue.slice(0, 6)" :key="'receipt-' + item.purchase_order_id" class="rounded-xl border border-slate-200 px-4 py-4">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="text-sm font-semibold text-slate-900">{{ item.item_name || '未命名条目' }}</div>
+                                        <div class="mt-1 text-xs text-slate-500">
+                                            {{ item.supplier_name || item.recommended_supplier_name || '待补供应商' }} · 下单 {{ formatDate(item.ordered_date) }} · 预计 {{ formatDate(item.expected_arrival_date) }}
+                                        </div>
+                                        <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                            <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                                                数量 {{ formatCount(item.quantity) }}
+                                            </span>
+                                            <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                                                已等 {{ formatCount(item.days_since_order) }} 天
+                                            </span>
+                                            <span v-if="item.overdue_days > 0" class="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-rose-700">
+                                                超期 {{ formatCount(item.overdue_days) }} 天
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <button @click="locateQueueItem(item)" class="h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
+                                        定位台账
+                                    </button>
+                                </div>
+                                <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div class="flex gap-2">
+                                        <input
+                                            :value="ensureReceiptDraft(item).received_date"
+                                            @input="updateReceiptDraft(item, 'received_date', $event.target.value)"
+                                            type="date"
+                                            class="h-10 flex-1 px-3 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        >
+                                        <button type="button" @click="fillReceiptDateToday(item)" class="h-10 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
+                                            今天
+                                        </button>
+                                    </div>
+                                    <input
+                                        :value="ensureReceiptDraft(item).received_quantity"
+                                        @input="updateReceiptDraft(item, 'received_quantity', $event.target.value)"
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        placeholder="收货数量"
+                                        class="h-10 px-3 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                    >
+                                </div>
+                                <div class="mt-3 flex items-end gap-3">
+                                    <textarea
+                                        :value="ensureReceiptDraft(item).note"
+                                        @input="updateReceiptDraft(item, 'note', $event.target.value)"
+                                        rows="2"
+                                        maxlength="500"
+                                        placeholder="记录催货、签收人或异常说明"
+                                        class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-y"
+                                    ></textarea>
+                                    <button
+                                        @click="$root.savePurchaseReceipt(item)"
+                                        :disabled="$root.purchaseReceiptSavingOrderId === item.purchase_order_id"
+                                        class="h-10 px-4 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out"
+                                    >
+                                        {{ $root.purchaseReceiptSavingOrderId === item.purchase_order_id ? '保存中...' : '确认收货' }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="ops-section-replenishment" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h4 class="text-base font-semibold text-slate-900">补货建议</h4>
+                                <p class="mt-1 text-sm text-slate-500">把库存档案、价格记忆和供应商偏好真正变成下一步建议。</p>
+                            </div>
+                            <span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                                {{ formatCount(visibleReplenishmentRecommendations.length) }} 条
+                            </span>
+                        </div>
+                        <div class="mt-4 space-y-3">
+                            <div v-if="!visibleReplenishmentRecommendations.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                                当前没有低库存补货建议。
+                            </div>
+                            <div v-for="item in visibleReplenishmentRecommendations.slice(0, 6)" :key="'replenishment-' + item.item_name" class="rounded-xl border border-slate-200 px-4 py-4">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="text-sm font-semibold text-slate-900">{{ item.item_name }}</div>
+                                        <div class="mt-1 text-xs text-slate-500">
+                                            当前库存 {{ formatCount(item.current_stock) }} {{ item.unit || '' }} · 阈值 {{ formatCount(item.low_stock_threshold) }}
+                                        </div>
+                                        <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                            <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700">
+                                                缺口 {{ formatCount(item.shortage) }}
+                                            </span>
+                                            <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                                                建议补货 {{ formatCount(item.recommended_quantity) }}
+                                            </span>
+                                            <span v-if="item.has_open_order" class="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-blue-700">
+                                                已有 {{ formatCount(item.open_order_count) }} 张在途单
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-xs text-emerald-800">
+                                    推荐供应商：{{ item.recommended_supplier_name || item.preferred_supplier_name || '待补供应商' }}
+                                    <span v-if="item.recommended_unit_price"> · 参考单价 ¥ {{ formatCurrencyValue(item.recommended_unit_price) }}</span>
+                                    <span v-if="item.recommended_lead_time_days !== null"> · 参考交期 {{ formatLeadTime(item.recommended_lead_time_days) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="ops-section-action-queues" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <h4 class="text-base font-semibold text-slate-900">行动队列</h4>
+                            <p class="mt-1 text-sm text-slate-500">按补货、下单、收货、导入恢复和报销闭环分桶，不再只是一堆提醒。</p>
+                        </div>
+                        <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                            {{ formatCount(actionQueueCount) }} 项
+                        </span>
+                    </div>
+                    <div class="mt-4 grid grid-cols-1 xl:grid-cols-5 gap-3">
+                        <div v-for="bucket in visibleActionQueueBuckets" :key="'action-bucket-' + bucket.key" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="text-sm font-semibold text-slate-900">{{ bucket.label }}</div>
+                                <span class="text-[11px] text-slate-500">{{ formatCount(bucket.rows.length) }}</span>
+                            </div>
+                            <div class="mt-3 space-y-2">
+                                <div v-if="!bucket.rows.length" class="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-4 text-xs text-slate-500">
+                                    暂无事项
+                                </div>
+                                <button
+                                    v-for="row in bucket.rows.slice(0, 3)"
+                                    :key="'action-row-' + bucket.key + '-' + (row.related_item_id || row.title)"
+                                    type="button"
+                                    @click="locateQueueItem(row)"
+                                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-left hover:bg-slate-50 transition-all duration-200 ease-in-out"
+                                >
+                                    <div class="text-xs font-semibold text-slate-900">{{ notificationTitleText(row) }}</div>
+                                    <div class="mt-1 text-[11px] text-slate-500 leading-5">{{ row.detail || notificationDetailText(row) }}</div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="isOperationsSubview('master-data') || isOperationsSubview('exceptions')" class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
                     <div class="xl:col-span-2 space-y-4">
-                        <div id="ops-section-supplier-collab" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div v-if="isOperationsSubview('master-data')" id="ops-section-supplier-collab" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                 <div>
                                     <h4 class="text-base font-semibold text-slate-900">供应商协同与价格基线</h4>
                                     <p class="mt-1 text-sm text-slate-500">这里保留供应商资料和最近价格，帮助你看清“哪些商品主要从哪些供应商买”。更完整的月报、年报和走势请到报表页查看。</p>
                                 </div>
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <button @click="$root.switchView('reports')" class="h-9 px-3 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">
+                                    <button @click="$root.goToViewSubview('reports', 'suppliers')" class="h-9 px-3 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">
                                         去看供应商分析
                                     </button>
                                     <button @click="openMasterData('ops-section-full-workbench', 'ops-section-master-sourcing')" class="h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
@@ -438,10 +950,10 @@
                                     <span class="text-[11px] text-slate-500">用于采购分析回填与比价参考</span>
                                 </div>
                                 <div class="mt-3 space-y-2">
-                                    <div v-if="!recentPriceRecords.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                                    <div v-if="!visibleRecentPriceRecords.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                                         暂无价格记录，建议先补常用品的最近成交价。
                                     </div>
-                                    <div v-for="record in recentPriceRecords" :key="'recent-price-' + record.id" class="rounded-lg border border-slate-200 px-4 py-3">
+                                    <div v-for="record in visibleRecentPriceRecords" :key="'recent-price-' + record.id" class="rounded-lg border border-slate-200 px-4 py-3">
                                         <div class="flex items-start justify-between gap-3">
                                             <div class="min-w-0">
                                                 <div class="text-sm font-semibold text-slate-900">{{ record.item_name }}</div>
@@ -463,7 +975,7 @@
                             </div>
                         </div>
 
-                        <div id="ops-section-exceptions" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div v-if="isOperationsSubview('exceptions')" id="ops-section-exceptions" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <h4 class="text-base font-semibold text-slate-900">优先异常队列</h4>
@@ -474,11 +986,11 @@
                                 </span>
                             </div>
                             <div class="mt-4 space-y-3">
-                                <div v-if="!priorityNotifications.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                                <div v-if="!visiblePriorityNotifications.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
                                     当前没有需要优先处理的异常。
                                 </div>
                                 <div
-                                    v-for="notification in priorityNotifications"
+                                    v-for="notification in visiblePriorityNotifications"
                                     :key="'priority-' + notification.category + '-' + notification.title + '-' + (notification.related_item_id || 'global')"
                                     :class="notificationClass(notification.severity)"
                                     class="rounded-xl border px-4 py-4"
@@ -517,7 +1029,7 @@
                             </div>
                         </div>
 
-                        <div id="ops-section-invoices-preview" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div v-if="isOperationsSubview('exceptions')" id="ops-section-invoices-preview" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <h4 class="text-base font-semibold text-slate-900">待跟进发票与报销</h4>
@@ -528,10 +1040,10 @@
                                 </button>
                             </div>
                             <div class="mt-4 space-y-3">
-                                <div v-if="!pendingInvoices.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                                <div v-if="!visiblePendingInvoices.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
                                     当前没有待跟进的报销条目。
                                 </div>
-                                <div v-for="item in pendingInvoices.slice(0, 5)" :key="'invoice-preview-' + item.item_id" class="rounded-xl border border-slate-200 px-4 py-4">
+                                <div v-for="item in visiblePendingInvoices.slice(0, 6)" :key="'invoice-preview-' + item.item_id" class="rounded-xl border border-slate-200 px-4 py-4">
                                     <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                         <div class="min-w-0">
                                             <div class="text-sm font-semibold text-slate-900">{{ item.item_name || '未命名条目' }}</div>
@@ -565,14 +1077,14 @@
                     </div>
 
                     <div class="space-y-4">
-                        <div id="ops-section-supplier-health" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div v-if="isOperationsSubview('master-data')" id="ops-section-supplier-health" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <h4 class="text-base font-semibold text-slate-900">供应商资料速览</h4>
                                     <p class="mt-1 text-sm text-slate-500">快速确认当前供应商目录是否齐全，并决定是去补资料，还是直接进入报表页看月报、年报和走势。</p>
                                 </div>
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <button @click="$root.switchView('reports')" class="h-9 px-3 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">
+                                    <button @click="$root.goToViewSubview('reports', 'suppliers')" class="h-9 px-3 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">
                                         打开统计报表
                                     </button>
                                     <button @click="openMasterData('ops-section-full-workbench', 'ops-section-master-sourcing')" class="h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
@@ -583,7 +1095,7 @@
                             <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                                     <div class="text-[11px] uppercase tracking-wide text-slate-500">供应商总数</div>
-                                    <div class="mt-2 text-2xl font-semibold text-slate-900">{{ formatCount(suppliers.length) }}</div>
+                                    <div class="mt-2 text-2xl font-semibold text-slate-900">{{ formatCount(visibleSuppliers.length) }}</div>
                                     <div class="mt-1 text-xs text-slate-500">启用中 {{ formatCount(activeSupplierCount) }}</div>
                                 </div>
                                 <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -595,10 +1107,10 @@
                             <div class="mt-5 border-t border-slate-200 pt-4">
                                 <div class="text-sm font-semibold text-slate-900">最近供应商目录</div>
                                 <div class="mt-3 space-y-2">
-                                    <div v-if="!suppliers.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                                    <div v-if="!visibleSuppliers.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                                         暂无供应商基础资料。
                                     </div>
-                                    <div v-for="supplier in suppliers.slice(0, 6)" :key="'supplier-quick-' + supplier.id" class="rounded-lg border border-slate-200 px-4 py-3">
+                                    <div v-for="supplier in visibleSuppliers.slice(0, 8)" :key="'supplier-quick-' + supplier.id" class="rounded-lg border border-slate-200 px-4 py-3">
                                         <div class="flex items-start justify-between gap-3">
                                             <div class="min-w-0">
                                                 <div class="text-sm font-semibold text-slate-900">{{ supplier.name }}</div>
@@ -617,7 +1129,7 @@
                             </div>
                         </div>
 
-                        <div id="ops-section-import-recovery" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div v-if="isOperationsSubview('exceptions')" id="ops-section-import-recovery" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <h4 class="text-base font-semibold text-slate-900">导入恢复队列</h4>
@@ -628,10 +1140,10 @@
                                 </button>
                             </div>
                             <div class="mt-4 space-y-2">
-                                <div v-if="!importRecoveryTasks.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                                <div v-if="!visibleImportRecoveryTasks.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                                     当前没有待恢复的导入任务。
                                 </div>
-                                <div v-for="task in importRecoveryTasks.slice(0, 5)" :key="'recovery-' + task.task_id" class="rounded-lg border border-slate-200 px-4 py-3">
+                                <div v-for="task in visibleImportRecoveryTasks.slice(0, 8)" :key="'recovery-' + task.task_id" class="rounded-lg border border-slate-200 px-4 py-3">
                                     <div class="flex items-start justify-between gap-3">
                                         <div class="min-w-0">
                                             <div class="truncate text-sm font-semibold text-slate-900">{{ task.file_name || task.task_id }}</div>
@@ -651,7 +1163,7 @@
                     </div>
                 </div>
 
-                <details id="ops-section-full-workbench" class="group rounded-xl border border-slate-200 bg-white shadow-sm">
+                <details v-if="isOperationsSubview('master-data') || isOperationsSubview('exceptions')" id="ops-section-full-workbench" open class="group rounded-xl border border-slate-200 bg-white shadow-sm">
                     <summary class="flex cursor-pointer list-none flex-col gap-3 p-5 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                             <div class="text-base font-semibold text-slate-900">展开完整运营台与资料维护</div>
@@ -668,14 +1180,14 @@
                     <div class="px-5 pb-5">
                         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
                             <div class="space-y-4">
-                                <div id="ops-section-master-sourcing" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div v-if="isOperationsSubview('master-data')" id="ops-section-master-sourcing" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <h4 class="text-base font-semibold text-slate-900">供应商与价格库</h4>
                                     <p class="mt-1 text-sm text-slate-500">维护供应商主数据，并沉淀常用物品的最近成交价。</p>
                                 </div>
                                 <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-                                    {{ suppliers.length }} 家供应商
+                                    {{ visibleSuppliers.length }} 家供应商
                                 </span>
                             </div>
 
@@ -700,10 +1212,10 @@
                             </form>
 
                             <div class="mt-4 space-y-2 max-h-60 overflow-y-auto pr-1">
-                                <div v-if="!suppliers.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                                <div v-if="!visibleSuppliers.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                                     暂无供应商档案。
                                 </div>
-                                <div v-for="supplier in suppliers" :key="'supplier-' + supplier.id" class="rounded-lg border border-slate-200 px-4 py-3">
+                                <div v-for="supplier in visibleSuppliers" :key="'supplier-' + supplier.id" class="rounded-lg border border-slate-200 px-4 py-3">
                                     <div class="flex items-start justify-between gap-3">
                                         <div>
                                             <div class="text-sm font-semibold text-slate-900">{{ supplier.name }}</div>
@@ -729,9 +1241,10 @@
                                 <input v-model.trim="$root.newPriceRecord.item_name" type="text" maxlength="200" placeholder="物品名称" class="h-10 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                                 <select v-model="$root.newPriceRecord.supplier_id" class="h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                                     <option value="">选择供应商</option>
-                                    <option v-for="supplier in suppliers" :key="'price-supplier-' + supplier.id" :value="String(supplier.id)">{{ supplier.name }}</option>
+                                    <option v-for="supplier in visibleSuppliers" :key="'price-supplier-' + supplier.id" :value="String(supplier.id)">{{ supplier.name }}</option>
                                 </select>
                                 <input v-model="$root.newPriceRecord.unit_price" type="number" min="0" step="0.01" placeholder="单价" class="h-10 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                                <input v-model="$root.newPriceRecord.lead_time_days" type="number" min="0" step="1" placeholder="交期天数" class="h-10 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                                 <input v-model="$root.newPriceRecord.last_purchase_date" type="date" class="h-10 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                                 <input v-model.trim="$root.newPriceRecord.purchase_link" type="url" maxlength="2000" placeholder="采购链接" class="h-10 px-3 border border-slate-300 rounded-lg text-sm md:col-span-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                                 <input v-model.trim="$root.newPriceRecord.last_serial_number" type="text" maxlength="120" placeholder="关联流水号" class="h-10 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
@@ -746,10 +1259,10 @@
                             </form>
 
                             <div class="mt-4 space-y-2 max-h-60 overflow-y-auto pr-1">
-                                <div v-if="!priceRecords.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                                <div v-if="!visiblePriceRecords.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                                     暂无价格记录。
                                 </div>
-                                <div v-for="record in priceRecords" :key="'price-' + record.id" class="rounded-lg border border-slate-200 px-4 py-3">
+                                <div v-for="record in visiblePriceRecords" :key="'price-' + record.id" class="rounded-lg border border-slate-200 px-4 py-3">
                                     <div class="flex items-start justify-between gap-3">
                                         <div>
                                             <div class="text-sm font-semibold text-slate-900">{{ record.item_name }}</div>
@@ -770,7 +1283,7 @@
                             </div>
                                 </div>
 
-                                <div class="rounded-xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                                <div v-if="isOperationsSubview('master-data')" class="rounded-xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
                                     <div class="text-base font-semibold text-slate-900">本期范围说明</div>
                                     <div class="mt-2 text-sm text-slate-500">库存与低库存预警能力仍保留在数据层，但这一期不再作为主界面重点功能展示，避免干扰供应商采购分析主线。</div>
                                     <div class="mt-4 space-y-2 text-sm text-slate-600">
@@ -785,7 +1298,7 @@
                                         </div>
                                     </div>
                                     <div class="mt-4 flex flex-wrap gap-2">
-                                        <button type="button" @click="$root.switchView('reports')" class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">
+                                        <button type="button" @click="$root.goToViewSubview('reports', 'suppliers')" class="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">
                                             去统计报表
                                         </button>
                                         <button type="button" @click="$root.switchView('ledger')" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
@@ -795,22 +1308,22 @@
                                 </div>
                             </div>
                             <div class="space-y-4">
-                                <div id="ops-section-full-imports" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div v-if="isOperationsSubview('exceptions')" id="ops-section-full-imports" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <h4 class="text-base font-semibold text-slate-900">导入任务中心</h4>
                                     <p class="mt-1 text-sm text-slate-500">记录 OCR / AI 导入任务的执行状态、失败原因和产出条数。</p>
                                 </div>
                                 <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-                                    最近 {{ importTasks.length }} 条
+                                    最近 {{ visibleImportTasks.length }} 条
                                 </span>
                             </div>
 
                             <div class="mt-4 space-y-2 max-h-80 overflow-y-auto pr-1">
-                                <div v-if="!importTasks.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                                <div v-if="!visibleImportTasks.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
                                     暂无导入任务历史。
                                 </div>
-                                <div v-for="task in importTasks" :key="task.task_id" class="rounded-lg border border-slate-200 px-4 py-3">
+                                <div v-for="task in visibleImportTasks" :key="task.task_id" class="rounded-lg border border-slate-200 px-4 py-3">
                                     <div class="flex items-start justify-between gap-3">
                                         <div class="min-w-0">
                                             <div class="truncate text-sm font-semibold text-slate-900">{{ task.file_name || task.task_id }}</div>
@@ -837,22 +1350,22 @@
                             </div>
                                 </div>
 
-                                <div id="ops-section-full-invoices" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div v-if="isOperationsSubview('exceptions')" id="ops-section-full-invoices" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <h4 class="text-base font-semibold text-slate-900">发票附件中心与报销闭环</h4>
                                     <p class="mt-1 text-sm text-slate-500">对已开票条目维护报销状态、发票号和附件，形成可追踪闭环。</p>
                                 </div>
                                 <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-                                    最近 {{ invoiceQueue.length }} 条
+                                    最近 {{ visibleInvoiceQueue.length }} 条
                                 </span>
                             </div>
 
                             <div class="mt-4 space-y-3 max-h-[720px] overflow-y-auto pr-1">
-                                <div v-if="!invoiceQueue.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                                <div v-if="!visibleInvoiceQueue.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
                                     暂无待跟进的发票/报销记录。
                                 </div>
-                                <div v-for="item in invoiceQueue" :key="'invoice-' + item.item_id" class="rounded-xl border border-slate-200 px-4 py-4">
+                                <div v-for="item in visibleInvoiceQueue" :key="'invoice-' + item.item_id" class="rounded-xl border border-slate-200 px-4 py-4">
                                     <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                         <div class="min-w-0">
                                             <div class="text-sm font-semibold text-slate-900">{{ item.item_name || '未命名条目' }}</div>
@@ -980,23 +1493,23 @@
                             </div>
                                 </div>
 
-                                <div id="ops-section-full-notifications" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div v-if="isOperationsSubview('exceptions')" id="ops-section-full-notifications" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <h4 class="text-base font-semibold text-slate-900">超期提醒与通知</h4>
                                     <p class="mt-1 text-sm text-slate-500">聚合低库存、导入失败、待报销和执行超期，优先暴露需要处理的风险。</p>
                                 </div>
                                 <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-                                    {{ notifications.length }} 条提醒
+                                    {{ visibleNotificationsAll.length }} 条提醒
                                 </span>
                             </div>
 
                             <div class="mt-4 space-y-2 max-h-80 overflow-y-auto pr-1">
-                                <div v-if="!notifications.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                                <div v-if="!visibleNotificationsAll.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
                                     暂无异常提醒。
                                 </div>
                                 <div
-                                    v-for="notification in notifications"
+                                    v-for="notification in visibleNotificationsAll"
                                     :key="notification.category + '-' + notification.title + '-' + (notification.related_item_id || 'global')"
                                     :class="notificationClass(notification.severity)"
                                     class="rounded-lg border px-4 py-3"

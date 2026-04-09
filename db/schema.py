@@ -149,6 +149,7 @@ async def _ensure_operations_tables(db: aiosqlite.Connection) -> None:
             purchase_link TEXT,
             last_purchase_date TEXT,
             last_serial_number TEXT,
+            lead_time_days INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -163,6 +164,7 @@ async def _ensure_operations_tables(db: aiosqlite.Connection) -> None:
             low_stock_threshold REAL NOT NULL DEFAULT 0,
             unit TEXT,
             preferred_supplier_id INTEGER,
+            reorder_quantity REAL NOT NULL DEFAULT 0,
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -212,6 +214,42 @@ async def _ensure_operations_tables(db: aiosqlite.Connection) -> None:
         )
         """
     )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS purchase_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL UNIQUE,
+            supplier_id INTEGER,
+            ordered_date TEXT,
+            expected_arrival_date TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            note TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS purchase_receipts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            purchase_order_id INTEGER NOT NULL UNIQUE,
+            received_date TEXT,
+            received_quantity REAL NOT NULL DEFAULT 0,
+            note TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    supplier_price_columns = await _get_existing_columns(db, "supplier_price_records")
+    if "lead_time_days" not in supplier_price_columns:
+        await db.execute("ALTER TABLE supplier_price_records ADD COLUMN lead_time_days INTEGER")
+    inventory_columns = await _get_existing_columns(db, "inventory_profiles")
+    if "reorder_quantity" not in inventory_columns:
+        await db.execute(
+            "ALTER TABLE inventory_profiles ADD COLUMN reorder_quantity REAL NOT NULL DEFAULT 0"
+        )
 
 
 async def _backfill_item_supplier_snapshot(db: aiosqlite.Connection) -> None:
@@ -403,5 +441,17 @@ async def init_db():
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_invoice_attachments_invoice_record_id ON invoice_attachments(invoice_record_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_purchase_orders_item_id ON purchase_orders(item_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_purchase_orders_status ON purchase_orders(status)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_purchase_orders_expected_arrival_date ON purchase_orders(expected_arrival_date)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_purchase_receipts_purchase_order_id ON purchase_receipts(purchase_order_id)"
         )
         await db.commit()

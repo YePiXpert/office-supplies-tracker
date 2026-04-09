@@ -113,6 +113,7 @@ class SupplierPriceRecordRequest(BaseModel):
     purchase_link: Optional[str] = Field(default=None, max_length=2000)
     last_purchase_date: Optional[str] = Field(default=None, max_length=32)
     last_serial_number: Optional[str] = Field(default=None, max_length=120)
+    lead_time_days: Optional[int] = Field(default=None, ge=0)
 
 
 class InventoryProfileRequest(BaseModel):
@@ -121,6 +122,7 @@ class InventoryProfileRequest(BaseModel):
     low_stock_threshold: float = Field(ge=0)
     unit: Optional[str] = Field(default=None, max_length=40)
     preferred_supplier_id: Optional[int] = Field(default=None, gt=0)
+    reorder_quantity: Optional[float] = Field(default=0, ge=0)
     notes: Optional[str] = Field(default=None, max_length=500)
 
 
@@ -128,6 +130,20 @@ class InvoiceRecordUpdateRequest(BaseModel):
     reimbursement_status: Literal["pending", "submitted", "reimbursed"] = Field(default="pending")
     reimbursement_date: Optional[str] = Field(default=None, max_length=32)
     invoice_number: Optional[str] = Field(default=None, max_length=120)
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class PurchaseOrderUpsertRequest(BaseModel):
+    supplier_id: Optional[int] = Field(default=None, gt=0)
+    ordered_date: Optional[str] = Field(default=None, max_length=32)
+    expected_arrival_date: Optional[str] = Field(default=None, max_length=32)
+    status: Literal["draft", "ordered", "received", "cancelled"] = Field(default="draft")
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class PurchaseReceiptUpsertRequest(BaseModel):
+    received_date: Optional[str] = Field(default=None, max_length=32)
+    received_quantity: Optional[float] = Field(default=None, ge=0)
     note: Optional[str] = Field(default=None, max_length=500)
 
 

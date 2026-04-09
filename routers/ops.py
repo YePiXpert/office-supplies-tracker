@@ -15,12 +15,16 @@ from db.operations import (
     delete_invoice_attachment,
     get_invoice_attachment,
     get_operations_center_snapshot,
+    upsert_purchase_order,
+    upsert_purchase_receipt,
     upsert_inventory_profile,
     upsert_invoice_record,
 )
 from schemas import (
     InventoryProfileRequest,
     InvoiceRecordUpdateRequest,
+    PurchaseOrderUpsertRequest,
+    PurchaseReceiptUpsertRequest,
     SupplierCreateRequest,
     SupplierPriceRecordRequest,
 )
@@ -70,6 +74,28 @@ async def upsert_inventory_profile_endpoint(request: InventoryProfileRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"id": profile_id, "message": "Inventory profile saved"}
+
+
+@router.put("/orders/{item_id}")
+async def upsert_purchase_order_endpoint(item_id: int, request: PurchaseOrderUpsertRequest):
+    if item_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid item id")
+    try:
+        purchase_order_id = await upsert_purchase_order(item_id, request.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"id": purchase_order_id, "message": "Purchase order saved"}
+
+
+@router.put("/receipts/{purchase_order_id}")
+async def upsert_purchase_receipt_endpoint(purchase_order_id: int, request: PurchaseReceiptUpsertRequest):
+    if purchase_order_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid purchase order id")
+    try:
+        receipt_id = await upsert_purchase_receipt(purchase_order_id, request.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"id": receipt_id, "message": "Purchase receipt saved"}
 
 
 @router.put("/invoices/{item_id}")

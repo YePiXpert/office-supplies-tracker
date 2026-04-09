@@ -5,6 +5,7 @@ import aiosqlite
 
 from .constants import DB_PATH
 from .filters import build_item_filters
+from .operations import get_procurement_tracker_report
 
 
 FLOW_STAGES = (
@@ -311,6 +312,13 @@ async def get_operations_report(
             month_summary[month_key]["unpaid_amount"] += amount
 
     trend_rows = sorted(month_summary.values(), key=lambda row: row["month"])[-12:]
+    tracker_report = await get_procurement_tracker_report(
+        limit=12,
+        status=status,
+        department=department,
+        month=month,
+        keyword=keyword,
+    )
 
     return {
         "funnel": [
@@ -343,6 +351,7 @@ async def get_operations_report(
             }
             for row in trend_rows
         ],
+        "tracker": tracker_report,
     }
 
 

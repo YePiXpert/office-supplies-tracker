@@ -46,6 +46,7 @@ from .operations import (
     create_import_task_run_sync,
     update_import_task_run_sync,
     get_operations_center_snapshot,
+    get_procurement_tracker_report,
     list_suppliers,
     create_supplier,
     create_price_record,
@@ -53,6 +54,8 @@ from .operations import (
     upsert_invoice_record,
     create_invoice_attachment,
     delete_invoice_attachment,
+    upsert_purchase_order,
+    upsert_purchase_receipt,
 )
 from .reports import get_amount_report, get_operations_report, get_stats_summary, get_supplier_report
 from .schema import init_db
@@ -106,6 +109,7 @@ __all__ = [
     "create_import_task_run_sync",
     "update_import_task_run_sync",
     "get_operations_center_snapshot",
+    "get_procurement_tracker_report",
     "list_suppliers",
     "create_supplier",
     "create_price_record",
@@ -113,4 +117,6 @@ __all__ = [
     "upsert_invoice_record",
     "create_invoice_attachment",
     "delete_invoice_attachment",
+    "upsert_purchase_order",
+    "upsert_purchase_receipt",
 ]
