@@ -19,17 +19,8 @@ from backup_service import (
     restore_from_archive,
 )
 from database import init_db
-from gemini_config import (
-    load_gemini_config,
-    public_gemini_config,
-    resolve_gemini_settings,
-    save_gemini_config,
-)
-from gemini_ocr import reset_gemini_model_cache
 from schemas import (
     BackupHealthCheckResponse,
-    GeminiConfigRequest,
-    GeminiModelsRequest,
     WebDAVConfigRequest,
     WebDAVRestoreRequest,
 )
@@ -152,49 +143,6 @@ def _handle_webdav_error(error: Exception) -> None:
     raise HTTPException(status_code=500, detail=f"WebDAV 操作失败: {str(error)}")
 
 
-def _normalize_gemini_model_name(value: str) -> str:
-    normalized = (value or "").strip()
-    if normalized.startswith("models/"):
-        return normalized
-    return f"models/{normalized}" if normalized else ""
-
-
-def _to_public_model_name(value: str) -> str:
-    normalized = (value or "").strip()
-    if normalized.startswith("models/"):
-        return normalized.removeprefix("models/")
-    return normalized
-
-
-def _list_gemini_models(api_key: str) -> list[str]:
-    if not api_key:
-        raise HTTPException(status_code=400, detail="请先填写 Gemini API Key")
-    try:
-        import google.generativeai as genai
-
-        genai.configure(api_key=api_key)
-        names: list[str] = []
-        for model in genai.list_models():
-            methods = getattr(model, "supported_generation_methods", None) or []
-            if "generateContent" not in methods:
-                continue
-            model_name = str(getattr(model, "name", "") or "").strip()
-            public_name = _to_public_model_name(model_name)
-            if public_name and public_name not in names:
-                names.append(public_name)
-        names.sort()
-        return names
-    except ModuleNotFoundError:
-        raise HTTPException(
-            status_code=500,
-            detail="缺少 google-generativeai 依赖，无法获取 Gemini 模型列表",
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"获取模型列表失败: {str(exc)}")
-
-
 @router.get("/", response_class=HTMLResponse)
 async def root():
     """返回主页。"""
@@ -267,51 +215,9 @@ async def get_webdav_config():
     return _public_webdav_config(_load_webdav_config())
 
 
-@router.get("/api/gemini/config")
-async def get_gemini_config():
-    config = load_gemini_config()
-    public = public_gemini_config(config)
-    public["model_name"] = _to_public_model_name(public.get("model_name", ""))
-    return public
-
-
 @router.get("/api/app/metadata")
 async def get_app_metadata():
-    config = load_gemini_config()
-    public = public_gemini_config(config)
-    return {
-        "version": APP_VERSION,
-        "gemini": {
-            "configured": bool(public.get("configured")),
-            "model_name": _to_public_model_name(public.get("model_name", "")),
-            "request_timeout_seconds": int(public.get("request_timeout_seconds") or 0),
-        },
-    }
-
-
-@router.put("/api/gemini/config")
-async def set_gemini_config(request: GeminiConfigRequest):
-    payload = request.model_dump()
-    payload["model_name"] = _normalize_gemini_model_name(payload.get("model_name", ""))
-    saved = save_gemini_config(payload)
-    reset_gemini_model_cache()
-    public = public_gemini_config(saved)
-    public["model_name"] = _to_public_model_name(public.get("model_name", ""))
-    return {
-        "message": "Gemini 配置已保存",
-        "config": public,
-    }
-
-
-@router.post("/api/gemini/models")
-async def list_gemini_models(request: GeminiModelsRequest):
-    payload = request.model_dump()
-    api_key, _model_name, _timeout = resolve_gemini_settings(payload.get("api_key", ""))
-    items = await run_in_threadpool(_list_gemini_models, api_key)
-    return {
-        "items": items,
-        "message": f"已获取可用模型 {len(items)} 个",
-    }
+    return {"version": APP_VERSION}
 
 
 @router.put("/api/webdav/config")

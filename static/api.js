@@ -290,119 +290,12 @@
                 closeAddModal() {
                     this.showAddModal = false;
                 },
-                normalizeLlmProtocol(protocol) {
-                    const normalized = (protocol || '').toString().trim().toLowerCase();
-                    return (normalized === 'google' || normalized === 'openai' || normalized === 'anthropic')
-                        ? normalized
-                        : 'openai';
-                },
-                getLlmStorageKey(protocol, field) {
-                    const normalizedProtocol = this.normalizeLlmProtocol(protocol);
-                    return `llm_${normalizedProtocol}_${field}`;
-                },
-                readLlmProtocolConfig(protocol) {
-                    const normalizedProtocol = this.normalizeLlmProtocol(protocol);
-                    return {
-                        apiKey: window.localStorage.getItem(
-                            this.getLlmStorageKey(normalizedProtocol, 'api_key')
-                        ) || '',
-                        modelName: window.localStorage.getItem(
-                            this.getLlmStorageKey(normalizedProtocol, 'model_name')
-                        ) || '',
-                        baseUrl: window.localStorage.getItem(
-                            this.getLlmStorageKey(normalizedProtocol, 'base_url')
-                        ) || '',
-                    };
-                },
-                persistLlmProtocolField(field, value, protocolOverride = null) {
-                    const protocol = this.normalizeLlmProtocol(protocolOverride || this.llmProtocol);
-                    window.localStorage.setItem(
-                        this.getLlmStorageKey(protocol, field),
-                        (value || '').toString()
-                    );
-                },
-                migrateLegacySharedLlmConfig(protocol) {
-                    const markerKey = 'llm_config_migrated_v2';
-                    if (window.localStorage.getItem(markerKey) === '1') {
-                        return;
-                    }
-                    const normalizedProtocol = this.normalizeLlmProtocol(protocol);
-                    const fields = ['api_key', 'model_name', 'base_url'];
-                    let hasLegacy = false;
-                    let migrated = false;
-                    for (const field of fields) {
-                        const legacyKey = `llm_${field}`;
-                        const legacyValue = window.localStorage.getItem(legacyKey);
-                        if (legacyValue === null || legacyValue === undefined) {
-                            continue;
-                        }
-                        hasLegacy = true;
-                        const scopedKey = this.getLlmStorageKey(normalizedProtocol, field);
-                        const scopedValue = window.localStorage.getItem(scopedKey);
-                        if (scopedValue === null || scopedValue === undefined) {
-                            window.localStorage.setItem(scopedKey, legacyValue);
-                            migrated = true;
-                        }
-                    }
-                    if (migrated || hasLegacy) {
-                        window.localStorage.setItem(markerKey, '1');
-                    }
-                },
-                migrateLegacyGoogleConfig() {
-                    const fields = ['api_key', 'model_name', 'base_url'];
-                    for (const field of fields) {
-                        const scopedKey = this.getLlmStorageKey('google', field);
-                        const scopedValue = window.localStorage.getItem(scopedKey);
-                        if (scopedValue !== null && scopedValue !== undefined) {
-                            continue;
-                        }
-                        const legacyKey = `gemini_${field}`;
-                        const legacyValue = window.localStorage.getItem(legacyKey);
-                        if (legacyValue !== null && legacyValue !== undefined) {
-                            window.localStorage.setItem(scopedKey, legacyValue);
-                        }
-                    }
-                },
-                applyStoredLlmConfigForProtocol(protocol) {
-                    const config = this.readLlmProtocolConfig(protocol);
-                    this.llmApiKey = config.apiKey;
-                    this.llmModelName = config.modelName;
-                    this.llmBaseUrl = config.baseUrl;
-                },
-                initOcrEngineSettings() {
-                    try {
-                        const engine = (window.localStorage.getItem('ocr_engine') || '').trim().toLowerCase();
-                        this.ocrEngine = (engine === 'cloud' || engine === 'local')
-                            ? engine
-                            : ((engine === 'gemini') ? 'cloud' : 'local');
-                        const protocol = this.normalizeLlmProtocol(window.localStorage.getItem('llm_protocol') || '');
-                        this.llmProtocol = protocol;
-                        this.migrateLegacySharedLlmConfig(protocol);
-                        if (protocol === 'google') {
-                            this.migrateLegacyGoogleConfig();
-                        }
-                        this.applyStoredLlmConfigForProtocol(protocol);
-                    } catch (_) {
-                        this.ocrEngine = 'local';
-                        this.llmProtocol = 'openai';
-                        this.llmApiKey = '';
-                        this.llmModelName = '';
-                        this.llmBaseUrl = '';
-                    }
-                },
                 async loadAppMetadata() {
                     try {
                         const res = await axios.get('/api/app/metadata');
-                        const payload = res?.data || {};
-                        const version = (payload.version || '').toString().trim();
-                        const gemini = payload.gemini || {};
-                        const geminiModelName = (gemini.model_name || '').toString().trim();
-
+                        const version = (res?.data?.version || '').toString().trim();
                         if (version) {
                             this.appVersion = version;
-                        }
-                        if (this.llmProtocol === 'google' && !this.llmModelName && geminiModelName) {
-                            this.llmModelName = geminiModelName;
                         }
                     } catch (_) {
                     }
@@ -2403,8 +2296,15 @@
                             .filter((item) => !this.isPreviewRowNoise(item.item_name))
                     };
                 },
-                openImportPreview(data) {
+                openImportPreview(data, meta) {
                     this.importPreview = this.normalizePreviewData(data);
+                    this.importMeta = meta || {
+                        parse_mode: '',
+                        fallbacks_used: [],
+                        warnings: [],
+                        missing_fields: [],
+                        suspect_rows: [],
+                    };
                     this.showAddModal = false;
                     this.showDuplicateModal = false;
                     this.showImportPreviewModal = true;
@@ -2413,6 +2313,7 @@
                     this.showImportPreviewModal = false;
                     this.pendingDuplicates = [];
                     this.pendingParsedData = null;
+                    this.pendingParseMeta = null;
                     this.importSubmitting = false;
                 },
                 addPreviewItem() {
@@ -2470,10 +2371,11 @@
                 closeDuplicateModal() {
                     this.showDuplicateModal = false;
                     if (this.pendingParsedData) {
-                        this.openImportPreview(this.pendingParsedData);
+                        this.openImportPreview(this.pendingParsedData, this.pendingParseMeta);
                     }
                     this.pendingDuplicates = [];
                     this.pendingParsedData = null;
+                    this.pendingParseMeta = null;
                 },
                 async loadAutocomplete() {
                     try {
@@ -2889,7 +2791,7 @@
                             if (!this.parseResult) {
                                 throw new Error('解析任务已完成，但未返回预览数据');
                             }
-                            this.openImportPreview(this.parseResult);
+                            this.openImportPreview(this.parseResult, result?.parse_meta || null);
                             this.showToast(result?.message || '解析完成，请确认后导入', 'success');
                             return;
                         }
@@ -2933,17 +2835,6 @@
                         this.showToast('已有解析任务正在执行，请稍候', 'error');
                         return;
                     }
-                    const engine = (this.ocrEngine === 'cloud') ? 'cloud' : 'local';
-                    const protocol = (this.llmProtocol === 'google' || this.llmProtocol === 'anthropic')
-                        ? this.llmProtocol
-                        : 'openai';
-                    const apiKey = (this.llmApiKey || '').toString().trim();
-                    const modelName = (this.llmModelName || '').toString().trim();
-                    const baseUrl = (this.llmBaseUrl || '').toString().trim();
-                    if (engine === 'cloud' && !apiKey) {
-                        this.showToast('请先在系统设置中填写云端协议 API Key', 'error');
-                        return;
-                    }
                     const validTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
                     const validExts = ['pdf', 'png', 'jpg', 'jpeg', 'jfif'];
                     const ext = (file.name.split('.').pop() || '').toLowerCase();
@@ -2961,11 +2852,6 @@
                     try {
                         const formData = new FormData();
                         formData.append('file', file);
-                        formData.append('engine', engine);
-                        formData.append('protocol', protocol);
-                        formData.append('api_key', apiKey);
-                        formData.append('model_name', modelName);
-                        formData.append('base_url', baseUrl);
                         const res = await axios.post('/api/upload-ocr', formData, {
                             headers: { 'Content-Type': 'multipart/form-data' }
                         });
@@ -3118,6 +3004,7 @@
                         if (res.data.has_duplicates) {
                             this.pendingDuplicates = res.data.duplicates || [];
                             this.pendingParsedData = payload;
+                            this.pendingParseMeta = this.importMeta || null;
                             this.showImportPreviewModal = false;
                             this.showDuplicateModal = true;
                             return;
@@ -3127,6 +3014,7 @@
                         this.showDuplicateModal = false;
                         this.pendingDuplicates = [];
                         this.pendingParsedData = null;
+                        this.pendingParseMeta = null;
                         this.parseResult = res.data.parsed_data;
                         this.importPreview = {
                             serial_number: '',

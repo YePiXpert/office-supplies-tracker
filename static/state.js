@@ -88,11 +88,6 @@
                     confirmModalDanger: false,
                     confirmModalResolver: null,
                     uploading: false,
-                    ocrEngine: 'local',
-                    llmProtocol: 'openai',
-                    llmApiKey: '',
-                    llmModelName: '',
-                    llmBaseUrl: '',
                     uploadTaskId: '',
                     uploadPollTimer: null,
                     uploadPollInFlight: false,
@@ -141,6 +136,7 @@
                     showDuplicateModal: false,
                     pendingDuplicates: [],
                     pendingParsedData: null,
+                    pendingParseMeta: null,
                     amountReportLoading: false,
                     amountReport: {
                         summary: {
@@ -226,6 +222,13 @@
                         handler: '',
                         request_date: '',
                         items: []
+                    },
+                    importMeta: {
+                        parse_mode: '',
+                        fallbacks_used: [],
+                        warnings: [],
+                        missing_fields: [],
+                        suspect_rows: [],
                     },
                     operationsCenter: {
                         summary: {
@@ -881,98 +884,26 @@
                 },
             },
         watch: {
-                ocrEngine(next) {
-                    // 设计意图：记录当前解析引擎，保证刷新后仍沿用用户选择。
-                    try {
-                        const value = (next === 'cloud' || next === 'local') ? next : 'local';
-                        window.localStorage.setItem('ocr_engine', value);
-                    } catch (_) {
-                    }
-                },
-                llmApiKey(next) {
-                    // 设计意图：按协议隔离存储 API Key，避免切换协议后串用凭证。
-                    try {
-                        if (typeof this.persistLlmProtocolField === 'function') {
-                            this.persistLlmProtocolField('api_key', next);
-                            return;
-                        }
-                        const protocol = (typeof this.normalizeLlmProtocol === 'function')
-                            ? this.normalizeLlmProtocol(this.llmProtocol)
-                            : ((this.llmProtocol === 'google' || this.llmProtocol === 'openai' || this.llmProtocol === 'anthropic')
-                                ? this.llmProtocol
-                                : 'openai');
-                        window.localStorage.setItem(
-                            `llm_${protocol}_api_key`,
-                            (next || '').toString()
-                        );
-                    } catch (_) {
-                    }
-                },
-                llmProtocol(next) {
-                    // 设计意图：协议切换时自动装载该协议的专属配置，减少重复输入。
-                    try {
-                        const value = (typeof this.normalizeLlmProtocol === 'function')
-                            ? this.normalizeLlmProtocol(next)
-                            : ((next === 'google' || next === 'openai' || next === 'anthropic') ? next : 'openai');
-                        window.localStorage.setItem('llm_protocol', value);
-                        if (value === 'google' && typeof this.migrateLegacyGoogleConfig === 'function') {
-                            this.migrateLegacyGoogleConfig();
-                        }
-                        if (typeof this.applyStoredLlmConfigForProtocol === 'function') {
-                            this.applyStoredLlmConfigForProtocol(value);
-                            return;
-                        }
-                        this.llmApiKey = window.localStorage.getItem(`llm_${value}_api_key`) || '';
-                        this.llmModelName = window.localStorage.getItem(`llm_${value}_model_name`) || '';
-                        this.llmBaseUrl = window.localStorage.getItem(`llm_${value}_base_url`) || '';
-                    } catch (_) {
-                    }
-                },
-                llmModelName(next) {
-                    // 设计意图：模型名与协议绑定保存，便于不同供应商独立维护默认模型。
-                    try {
-                        if (typeof this.persistLlmProtocolField === 'function') {
-                            this.persistLlmProtocolField('model_name', next);
-                            return;
-                        }
-                        const protocol = (typeof this.normalizeLlmProtocol === 'function')
-                            ? this.normalizeLlmProtocol(this.llmProtocol)
-                            : ((this.llmProtocol === 'google' || this.llmProtocol === 'openai' || this.llmProtocol === 'anthropic')
-                                ? this.llmProtocol
-                                : 'openai');
-                        window.localStorage.setItem(
-                            `llm_${protocol}_model_name`,
-                            (next || '').toString()
-                        );
-                    } catch (_) {
-                    }
-                },
-                llmBaseUrl(next) {
-                    // 设计意图：为每个协议单独保存中转地址/网关地址，避免误用。
-                    try {
-                        if (typeof this.persistLlmProtocolField === 'function') {
-                            this.persistLlmProtocolField('base_url', next);
-                            return;
-                        }
-                        const protocol = (typeof this.normalizeLlmProtocol === 'function')
-                            ? this.normalizeLlmProtocol(this.llmProtocol)
-                            : ((this.llmProtocol === 'google' || this.llmProtocol === 'openai' || this.llmProtocol === 'anthropic')
-                                ? this.llmProtocol
-                                : 'openai');
-                        window.localStorage.setItem(
-                            `llm_${protocol}_base_url`,
-                            (next || '').toString()
-                        );
-                    } catch (_) {
-                    }
-                },
             },
         async mounted() {
+                // 清理旧版云端配置 localStorage 键（本地离线模式不再需要这些）
+                try {
+                    const staleKeys = ['ocr_engine', 'llm_protocol', 'llm_config_migrated_v2'];
+                    for (const key of staleKeys) {
+                        window.localStorage.removeItem(key);
+                    }
+                    for (const proto of ['openai', 'google', 'anthropic']) {
+                        for (const field of ['api_key', 'model_name', 'base_url']) {
+                            window.localStorage.removeItem(`llm_${proto}_${field}`);
+                            window.localStorage.removeItem(`llm_${field}`);
+                        }
+                    }
+                    for (const field of ['api_key', 'model_name', 'base_url']) {
+                        window.localStorage.removeItem(`gemini_${field}`);
+                    }
+                } catch (_) {}
                 if (typeof this.loadAppMetadata === 'function') {
                     await this.loadAppMetadata();
-                }
-                if (typeof this.initOcrEngineSettings === 'function') {
-                    this.initOcrEngineSettings();
                 }
                 if (typeof this.initializeAuthLayer === 'function') {
                     await this.initializeAuthLayer();

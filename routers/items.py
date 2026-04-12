@@ -26,6 +26,7 @@ from database import (
     get_item,
     get_item_history,
     get_items,
+    get_items_page,
     stream_items,
     get_operations_report,
     get_supplier_report,
@@ -42,6 +43,7 @@ from export_utils import (
     ExportDependencyError,
     build_export_content_disposition,
     build_items_excel_stream,
+    build_items_excel_stream_async,
     build_supplier_report_excel_stream,
     SUPPLIER_EXPORT_DISPLAY_NAME_PREFIX,
     SUPPLIER_EXPORT_FALLBACK_FILENAME,
@@ -116,16 +118,13 @@ async def list_items(
     status, department, month, keyword = _normalize_item_filters(
         status, department, month, keyword
     )
-    items = await get_items(
+    items, total = await get_items_page(
         status=status,
         department=department,
         month=month,
         keyword=keyword,
         page=page,
         page_size=page_size,
-    )
-    total = await count_items(
-        status=status, department=department, month=month, keyword=keyword
     )
     return {
         "items": items,
@@ -205,8 +204,7 @@ async def export_items(
     )
 
     try:
-        rows = [row async for row in items]
-        output = build_items_excel_stream(rows)
+        output = await build_items_excel_stream_async(items)
     except ExportDependencyError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

@@ -522,6 +522,21 @@ async def get_execution_board(
     total = 0
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
+
+        # 一次 GROUP BY 查询取代 3 次独立 COUNT(*)
+        count_conditions, count_params = build_item_filters(
+            department=department, month=month, keyword=keyword
+        )
+        status_values = [status for _, status in EXECUTION_BOARD_COLUMNS]
+        placeholders = ", ".join("?" for _ in status_values)
+        base_conditions = list(count_conditions) + [f"status IN ({placeholders})"]
+        count_query = (
+            "SELECT status, COUNT(*) FROM items"
+            " WHERE " + " AND ".join(base_conditions) + " GROUP BY status"
+        )
+        async with db.execute(count_query, [*count_params, *status_values]) as cursor:
+            counts_by_status = {row[0]: int(row[1]) for row in await cursor.fetchall()}
+
         for key, status in EXECUTION_BOARD_COLUMNS:
             conditions, params = build_item_filters(
                 status=status,
@@ -530,20 +545,20 @@ async def get_execution_board(
                 keyword=keyword,
             )
 
-            count_query = "SELECT COUNT(*) FROM items"
-            if conditions:
-                count_query += " WHERE " + " AND ".join(conditions)
-            async with db.execute(count_query, params) as cursor:
-                row = await cursor.fetchone()
-                count = int(row[0] if row else 0)
-
-            list_query = "SELECT * FROM items"
+            list_query = (
+                "SELECT id, serial_number, department, handler, request_date,"
+                " item_name, quantity, unit_price, supplier_id, supplier_name_snapshot,"
+                " status, payment_status, invoice_issued, arrival_date,"
+                " distribution_date, signoff_note, created_at, updated_at"
+                " FROM items"
+            )
             if conditions:
                 list_query += " WHERE " + " AND ".join(conditions)
             list_query += " ORDER BY created_at DESC, id DESC LIMIT ?"
             async with db.execute(list_query, [*params, limit_per_status]) as cursor:
                 items = [dict(record) for record in await cursor.fetchall()]
 
+            count = counts_by_status.get(status, 0)
             columns.append(
                 {
                     "key": key,
@@ -579,6 +594,39 @@ async def count_items(
         async with db.execute(query, params) as cursor:
             row = await cursor.fetchone()
             return int(row[0] if row else 0)
+
+
+async def get_items_page(
+    status: Optional[str] = None,
+    department: Optional[str] = None,
+    month: Optional[str] = None,
+    keyword: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[dict], int]:
+    """在同一个 DB 连接内完成 COUNT + SELECT，返回 (items, total) 元组。"""
+    conditions, params = build_item_filters(
+        status=status, department=department, month=month, keyword=keyword
+    )
+    where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+
+    count_query = f"SELECT COUNT(*) FROM items{where_clause}"
+    offset = max(0, (page - 1) * page_size)
+    list_query = (
+        f"SELECT * FROM items{where_clause}"
+        " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
+    )
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(count_query, params) as cursor:
+            row = await cursor.fetchone()
+            total = int(row[0] if row else 0)
+
+        async with db.execute(list_query, [*params, page_size, offset]) as cursor:
+            items = [dict(row) for row in await cursor.fetchall()]
+
+    return items, total
 
 
 async def get_item(item_id: int) -> Optional[dict]:

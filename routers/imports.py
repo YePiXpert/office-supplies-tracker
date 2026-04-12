@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from uuid import uuid4
 
 import aiosqlite
@@ -13,15 +14,16 @@ from api_utils import (
 )
 from app_locks import DATA_MUTATION_LOCK
 from db.operations import create_import_task_run_sync, update_import_task_run_sync
-from gemini_ocr import GeminiParseError, parse_document_with_gemini
-from import_flow import build_preview_data, confirm_import_payload, normalize_import_payload
+from import_flow import (
+    build_preview_data,
+    confirm_import_payload,
+    normalize_import_payload,
+)
 from parser import parse_document
 from schemas import DuplicateHandleRequest, ImportConfirmRequest
 from task_registry import TaskRegistry
 
 router = APIRouter(prefix="/api")
-_DEFAULT_UPLOAD_ENGINE = "local"
-_DEFAULT_LLM_PROTOCOL = "openai"
 TASK_REGISTRY = TaskRegistry(
     max_tasks=200,
     active_ttl_seconds=6 * 60 * 60,
@@ -102,77 +104,85 @@ async def _confirm_import_with_lock(
         raise HTTPException(status_code=500, detail=f"{failure_prefix}: {exc}")
 
 
-def _normalize_engine(raw_engine: str | None) -> str:
-    engine = str(raw_engine or "").strip().lower()
-    if engine in {"local", "cloud"}:
-        return engine
-    if engine == "gemini":
-        return "cloud"
-    return _DEFAULT_UPLOAD_ENGINE
-
-
-def _normalize_protocol(raw_protocol: str | None) -> str:
-    protocol = str(raw_protocol or "").strip().lower()
-    if protocol in {"google", "openai", "anthropic"}:
-        return protocol
-    return _DEFAULT_LLM_PROTOCOL
-
-
-def _parse_by_engine(
-    file_path: Path,
-    *,
-    engine: str,
-    protocol: str,
-    api_key: str | None = None,
-    model_name: str | None = None,
-    base_url: str | None = None,
-) -> dict:
-    normalized_engine = _normalize_engine(engine)
-    if normalized_engine == "cloud":
-        return parse_document_with_gemini(
-            file_path,
-            protocol=_normalize_protocol(protocol),
-            api_key_override=api_key,
-            model_name_override=model_name,
-            base_url_override=base_url,
-        )
-    return parse_document(str(file_path))
-
-
-def _run_parse_task(
-    task_id: str,
-    file_path: Path,
-    engine: str,
-    protocol: str,
-    api_key: str,
-    model_name: str,
-    base_url: str,
-) -> None:
+def _run_parse_task(task_id: str, file_path: Path) -> None:
     TASK_REGISTRY.update(task_id, status="processing", result=None)
     create_import_task_run_sync(
         task_id=task_id,
         file_name=file_path.name,
-        engine=engine,
-        protocol=protocol,
+        engine="local",
+        protocol="local",
         status="processing",
     )
     try:
-        parsed = _parse_by_engine(
-            file_path,
-            engine=engine,
-            protocol=protocol,
-            api_key=api_key,
-            model_name=model_name,
-            base_url=base_url,
-        )
+        parsed = parse_document(str(file_path))
         normalized_payload = _normalize_payload_from_parse_result(parsed)
-        preview_data = build_preview_data(normalized_payload, normalized_payload["items"])
+        preview_data = build_preview_data(
+            normalized_payload, normalized_payload["items"]
+        )
+
+        # ---------- 解析元数据 ----------
+        parse_mode: str = parsed.get("_parse_mode") or "unknown"
+        fallbacks_used: list = list(parsed.get("_fallbacks_used") or [])
+        items = normalized_payload.get("items") or []
+
+        missing_fields = [
+            k
+            for k in ("department", "handler", "request_date")
+            if not str(normalized_payload.get(k) or "").strip()
+        ]
+
+        suspect_rows = [
+            i
+            for i, item in enumerate(items)
+            if len(re.sub(r"\s+", "", str(item.get("item_name") or ""))) < 2
+            or not re.search(r"[\u4e00-\u9fff]", str(item.get("item_name") or ""))
+        ]
+
+        default_quantity_rows = [
+            i for i, item in enumerate(items) if item.get("quantity") == 1
+        ]
+
+        missing_link_rows = [
+            i
+            for i, item in enumerate(items)
+            if not str(item.get("purchase_link") or "").strip()
+        ]
+
+        warnings: list[str] = []
+        if "ocr" in parse_mode:
+            warnings.append("本次解析使用了 OCR，识别结果可能存在偏差，建议核对")
+        if "preprocess_retry" in fallbacks_used:
+            warnings.append("原始图像质量偏低，已自动增强后重新识别")
+        for k, label in [
+            ("department", "申领部门"),
+            ("handler", "经办人"),
+            ("request_date", "申领日期"),
+        ]:
+            if not str(normalized_payload.get(k) or "").strip():
+                warnings.append(f"未识别到「{label}」，请手动补充")
+        if items and all(item.get("quantity") == 1 for item in items):
+            warnings.append("所有物品数量均为默认值 1，请核对实际数量")
+        if suspect_rows:
+            warnings.append(
+                f"第 {', '.join(str(i + 1) for i in suspect_rows)} 行物品名称疑似识别不完整，建议核对"
+            )
+        # --------------------------------
+
         TASK_REGISTRY.update(
             task_id,
             status="completed",
             result={
                 "message": f"解析完成，共 {len(preview_data['items'])} 条，请确认后导入",
                 "parsed_data": preview_data,
+                "parse_meta": {
+                    "parse_mode": parse_mode,
+                    "fallbacks_used": fallbacks_used,
+                    "warnings": warnings,
+                    "missing_fields": missing_fields,
+                    "suspect_rows": suspect_rows,
+                    "default_quantity_rows": default_quantity_rows,
+                    "missing_link_rows": missing_link_rows,
+                },
                 "has_duplicates": False,
                 "requires_confirmation": True,
             },
@@ -181,17 +191,6 @@ def _run_parse_task(
             task_id=task_id,
             status="completed",
             item_count=len(preview_data["items"]),
-        )
-    except GeminiParseError as exc:
-        TASK_REGISTRY.update(
-            task_id,
-            status="failed",
-            result={"detail": str(exc)},
-        )
-        update_import_task_run_sync(
-            task_id=task_id,
-            status="failed",
-            error_detail=str(exc),
         )
     except Exception as exc:
         detail = _friendly_task_error_detail(exc)
@@ -214,18 +213,8 @@ def _run_parse_task(
 async def upload_and_parse(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    engine: str = Form(default=_DEFAULT_UPLOAD_ENGINE),
-    protocol: str = Form(default=_DEFAULT_LLM_PROTOCOL),
-    api_key: str = Form(default=""),
-    model_name: str = Form(default=""),
-    base_url: str = Form(default=""),
 ):
     file_path = build_upload_path(file.filename or "")
-    normalized_engine = _normalize_engine(engine)
-    normalized_protocol = _normalize_protocol(protocol)
-    normalized_api_key = str(api_key or "").strip()
-    normalized_model_name = str(model_name or "").strip()
-    normalized_base_url = str(base_url or "").strip()
 
     try:
         save_upload_file_with_limit(
@@ -239,19 +228,14 @@ async def upload_and_parse(
         create_import_task_run_sync(
             task_id=task_id,
             file_name=file.filename or file_path.name,
-            engine=normalized_engine,
-            protocol=normalized_protocol,
+            engine="local",
+            protocol="local",
             status="pending",
         )
         background_tasks.add_task(
             _run_parse_task,
             task_id,
             file_path,
-            normalized_engine,
-            normalized_protocol,
-            normalized_api_key,
-            normalized_model_name,
-            normalized_base_url,
         )
         return {"task_id": task_id}
     except HTTPException:

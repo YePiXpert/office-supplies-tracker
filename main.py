@@ -27,10 +27,12 @@ from routers.items import router as items_router
 from routers.ops import router as ops_router
 from routers.system import router as system_router
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """启动时执行数据库迁移并初始化数据库。"""
-    upgrade_database_to_head()
+    if os.environ.get("AUTO_MIGRATE", "1") != "0":
+        upgrade_database_to_head()
     await init_db()
     yield
 
@@ -61,7 +63,11 @@ async def audit_operator_context(request, call_next):
 @app.middleware("http")
 async def auth_guard(request, call_next):
     path = request.url.path
-    if not path.startswith("/api") or path.startswith("/api/auth/") or path == "/api/app/metadata":
+    if (
+        not path.startswith("/api")
+        or path.startswith("/api/auth/")
+        or path == "/api/app/metadata"
+    ):
         return await call_next(request)
 
     if not await is_system_initialized():
@@ -94,7 +100,10 @@ async def auth_guard(request, call_next):
 async def maintenance_mode_guard(request, call_next):
     if MAINTENANCE_MODE.is_set():
         path = request.url.path
-        if path.startswith("/api") and path not in {"/api/restore", "/api/webdav/restore"}:
+        if path.startswith("/api") and path not in {
+            "/api/restore",
+            "/api/webdav/restore",
+        }:
             return JSONResponse(
                 status_code=503,
                 content={"detail": "系统正在执行数据恢复，请稍后重试"},

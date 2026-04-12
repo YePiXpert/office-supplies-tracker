@@ -1,13 +1,23 @@
 from datetime import datetime
 from io import BytesIO
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, AsyncIterable, Iterable, Mapping, Optional
 from urllib.parse import quote
 
 from time_utils import beijing_filename_timestamp
 
 EXPORT_HEADERS = (
-    "流水号", "申领日期", "申领部门", "经办人", "供应商", "物品名称",
-    "数量", "单价", "状态", "到货日期", "分发日期", "签收备注",
+    "流水号",
+    "申领日期",
+    "申领部门",
+    "经办人",
+    "供应商",
+    "物品名称",
+    "数量",
+    "单价",
+    "状态",
+    "到货日期",
+    "分发日期",
+    "签收备注",
 )
 EXPORT_COLUMN_WIDTHS = (18, 12, 24, 12, 18, 28, 10, 10, 12, 12, 12, 28)
 EXPORT_FALLBACK_FILENAME = "office_supplies_export.xlsx"
@@ -48,7 +58,9 @@ def build_items_excel_stream(items: Iterable[Mapping[str, Any]]) -> BytesIO:
         from openpyxl import Workbook
         from openpyxl.utils import get_column_letter
     except ModuleNotFoundError as exc:
-        raise ExportDependencyError("缺少 openpyxl 依赖，请先安装 requirements.txt") from exc
+        raise ExportDependencyError(
+            "缺少 openpyxl 依赖，请先安装 requirements.txt"
+        ) from exc
 
     workbook = Workbook()
     sheet = workbook.active
@@ -67,12 +79,45 @@ def build_items_excel_stream(items: Iterable[Mapping[str, Any]]) -> BytesIO:
     return output
 
 
-def build_supplier_report_excel_stream(report: Mapping[str, Any], *, mode: str = "full") -> BytesIO:
+async def build_items_excel_stream_async(
+    items: AsyncIterable[Mapping[str, Any]],
+) -> BytesIO:
+    """低内存版：逐行消费异步生成器，省去全量列表中间对象。"""
     try:
         from openpyxl import Workbook
         from openpyxl.utils import get_column_letter
     except ModuleNotFoundError as exc:
-        raise ExportDependencyError("缺少 openpyxl 依赖，请先安装 requirements.txt") from exc
+        raise ExportDependencyError(
+            "缺少 openpyxl 依赖，请先安装 requirements.txt"
+        ) from exc
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "采购记录"
+    sheet.append(list(EXPORT_HEADERS))
+
+    async for item in items:
+        sheet.append(_build_item_row(item))
+
+    for idx, width in enumerate(EXPORT_COLUMN_WIDTHS, start=1):
+        sheet.column_dimensions[get_column_letter(idx)].width = width
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
+
+
+def build_supplier_report_excel_stream(
+    report: Mapping[str, Any], *, mode: str = "full"
+) -> BytesIO:
+    try:
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+    except ModuleNotFoundError as exc:
+        raise ExportDependencyError(
+            "缺少 openpyxl 依赖，请先安装 requirements.txt"
+        ) from exc
 
     workbook = Workbook()
 
@@ -90,7 +135,15 @@ def build_supplier_report_excel_stream(report: Mapping[str, Any], *, mode: str =
     summary_sheet.append([])
     _append_rows(
         summary_sheet,
-        ["供应商", "供应商ID", "记录数", "商品数", "采购数量", "采购总额", "最近采购日期"],
+        [
+            "供应商",
+            "供应商ID",
+            "记录数",
+            "商品数",
+            "采购数量",
+            "采购总额",
+            "最近采购日期",
+        ],
         [
             [
                 row.get("supplier_name", ""),
@@ -108,7 +161,15 @@ def build_supplier_report_excel_stream(report: Mapping[str, Any], *, mode: str =
     item_sheet = workbook.create_sheet("供应商-商品明细")
     _append_rows(
         item_sheet,
-        ["供应商", "供应商ID", "物品名称", "记录数", "采购数量", "采购总额", "最近采购日期"],
+        [
+            "供应商",
+            "供应商ID",
+            "物品名称",
+            "记录数",
+            "采购数量",
+            "采购总额",
+            "最近采购日期",
+        ],
         [
             [
                 row.get("supplier_name", ""),
@@ -163,7 +224,17 @@ def build_supplier_report_excel_stream(report: Mapping[str, Any], *, mode: str =
     unassigned_sheet = workbook.create_sheet("未归属供应商")
     _append_rows(
         unassigned_sheet,
-        ["记录ID", "流水号", "申领日期", "部门", "经办人", "物品名称", "数量", "单价", "状态"],
+        [
+            "记录ID",
+            "流水号",
+            "申领日期",
+            "部门",
+            "经办人",
+            "物品名称",
+            "数量",
+            "单价",
+            "状态",
+        ],
         [
             [
                 row.get("id", ""),
@@ -183,7 +254,9 @@ def build_supplier_report_excel_stream(report: Mapping[str, Any], *, mode: str =
     for sheet in workbook.worksheets:
         for idx, column_cells in enumerate(sheet.columns, start=1):
             max_length = max(len(str(cell.value or "")) for cell in column_cells)
-            sheet.column_dimensions[get_column_letter(idx)].width = min(max(12, max_length + 2), 28)
+            sheet.column_dimensions[get_column_letter(idx)].width = min(
+                max(12, max_length + 2), 28
+            )
 
     output = BytesIO()
     workbook.save(output)
@@ -201,6 +274,6 @@ def build_export_content_disposition(
     filename = f"{display_name_prefix}_{timestamp}.xlsx"
     encoded_filename = quote(filename)
     return (
-        f"attachment; filename=\"{fallback_filename}\"; "
+        f'attachment; filename="{fallback_filename}"; '
         f"filename*=UTF-8''{encoded_filename}"
     )

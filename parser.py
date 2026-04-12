@@ -24,6 +24,36 @@ _OCR_MAX_CONCURRENT = _resolve_ocr_max_concurrent()
 _ocr_semaphore = threading.BoundedSemaphore(_OCR_MAX_CONCURRENT)
 
 
+def _resolve_ocr_retry_preprocess() -> bool:
+    return os.getenv("PARSER_OCR_RETRY_PREPROCESS", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+
+def _resolve_ocr_min_image_side() -> int:
+    raw = os.getenv("PARSER_OCR_MIN_IMAGE_SIDE", "800")
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        logger.warning("Invalid PARSER_OCR_MIN_IMAGE_SIDE=%r, fallback to 800", raw)
+        return 800
+
+
+def _resolve_ocr_enable_binarize() -> bool:
+    return os.getenv("PARSER_OCR_ENABLE_BINARIZE", "0").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+
+_OCR_RETRY_PREPROCESS = _resolve_ocr_retry_preprocess()
+_OCR_MIN_IMAGE_SIDE = _resolve_ocr_min_image_side()
+_OCR_ENABLE_BINARIZE = _resolve_ocr_enable_binarize()
+
+
 def _get_ocr():
     global _ocr
     if _ocr is None:
@@ -41,6 +71,52 @@ def _run_ocr(file_path: str):
     ocr = _get_ocr()
     with _ocr_semaphore:
         return ocr.ocr(file_path, cls=True)
+
+
+def _preprocess_image(
+    src_path: str, min_side: int = 800, enable_binarize: bool = False
+) -> str:
+    """Preprocess an image to improve OCR accuracy.
+
+    Pipeline:
+    1. EXIF rotation correction
+    2. Grayscale conversion
+    3. Upscale if shortest axis is below ``min_side``
+    4. Contrast enhancement (×1.5)
+    5. Light sharpen
+    6. Optional binarization (threshold=128)
+
+    Returns the path to a temporary file that the caller **must** delete.
+    """
+    import tempfile
+
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+
+    img = Image.open(src_path)
+    img = ImageOps.exif_transpose(img)
+    img = img.convert("L")
+
+    w, h = img.size
+    short = min(w, h)
+    if short > 0 and short < min_side:
+        scale = min_side / short
+        img = img.resize(
+            (max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS
+        )
+
+    img = ImageEnhance.Contrast(img).enhance(1.5)
+    img = img.filter(ImageFilter.SHARPEN)
+
+    if enable_binarize:
+        img = img.point(lambda x: 255 if x > 128 else 0)
+
+    suffix = os.path.splitext(src_path)[1].lower()
+    if suffix not in (".png", ".jpg", ".jpeg"):
+        suffix = ".png"
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    img.save(tmp_path)
+    return tmp_path
 
 
 class ParserStrategy:
@@ -70,7 +146,9 @@ class OCRImageStrategy(ParserStrategy):
     """处理图片和截图等 OCR 输入。"""
 
     def parse(self, parser: "DocumentParser") -> dict:
-        return parser._parse_image()
+        result = parser._parse_image()
+        result.setdefault("_parse_mode", "image_ocr")
+        return result
 
 
 class ParserContext:
@@ -93,7 +171,10 @@ class ParserContext:
         parsed = self._pdf_text_strategy.parse(self.parser)
         if self.parser._should_fallback_pdf_ocr(parsed):
             ocr_parsed = self._pdf_ocr_strategy.parse(self.parser)
-            return self.parser._merge_pdf_and_ocr_result(parsed, ocr_parsed)
+            result = self.parser._merge_pdf_and_ocr_result(parsed, ocr_parsed)
+            result["_parse_mode"] = "pdf_text+ocr"
+            return result
+        parsed["_parse_mode"] = "pdf_text"
         return parsed
 
 
@@ -108,15 +189,15 @@ class DocumentParser:
         r"(?:申\s*领\s*部\s*门|申\s*请\s*部\s*门|领\s*用\s*部\s*门|使\s*用\s*部\s*门)"
     )
     OCR_TABLE_SERIAL_HEADER = "序号"
-    OCR_TABLE_ITEM_HEADERS = ("物品", "名称")
+    OCR_TABLE_ITEM_HEADERS = ("物品", "名称", "品名", "物品名称", "物品名")
     OCR_PRIMARY_ITEM_HEADER = "物品"
     OCR_COLUMN_HEADERS = ("序号", "物品", "数量", "单价", "备注")
     OCR_QUANTITY_MAX = 1000
-    OCR_QUANTITY_UNIT_PATTERN = r"(?:个|本|支|盒|包|只|条|件|台|把|套)"
-    TABLE_HEADER_KEYWORDS = ("物品名称", "品名", "序号")
-    TABLE_HEADER_REQUIRED_KEYWORDS = ("数量", "备注")
+    OCR_QUANTITY_UNIT_PATTERN = r"(?:个|本|支|盒|包|只|条|件|台|把|套|张|卷|瓶|桶)"
+    TABLE_HEADER_KEYWORDS = ("物品名称", "品名", "序号", "名称")
+    TABLE_HEADER_REQUIRED_KEYWORDS = ("数量",)
     TABLE_SERIAL_ALIASES = ("序号", "编号")
-    TABLE_ITEM_ALIASES = ("物品", "品名", "名称")
+    TABLE_ITEM_ALIASES = ("物品", "品名", "名称", "物品名", "物品名称")
     TABLE_QUANTITY_HEADER = "数量"
     TABLE_UNIT_PRICE_HEADER = "单价"
     TABLE_REMARK_HEADER = "备注"
@@ -288,19 +369,54 @@ class DocumentParser:
 
         return base
 
+    def _score_parse_result(self, result: dict) -> int:
+        """综合评分：明细数×4 + 头字段数×3 + 有链接行数×1 + 非默认数量行数×2。"""
+        items = result.get("items") or []
+        header_fields = sum(
+            1 for k in self.HEADER_FIELD_KEYS if str(result.get(k) or "").strip()
+        )
+        link_rows = sum(
+            1 for item in items if str(item.get("purchase_link") or "").strip()
+        )
+        non_default_qty_rows = sum(
+            1 for item in items if item.get("quantity") not in (None, 1)
+        )
+        return len(items) * 4 + header_fields * 3 + link_rows + non_default_qty_rows * 2
+
     def _parse_image(self) -> dict:
-        """解析图片文件（OCR）"""
-        raw_result = _run_ocr(self.file_path)
+        """解析图片文件（OCR），支持预处理重试。"""
+        result = self._parse_image_from_path(self.file_path)
+        if _OCR_RETRY_PREPROCESS and self._is_parse_result_weak(result):
+            preprocessed = None
+            try:
+                preprocessed = _preprocess_image(
+                    self.file_path,
+                    min_side=_OCR_MIN_IMAGE_SIDE,
+                    enable_binarize=_OCR_ENABLE_BINARIZE,
+                )
+                result2 = self._parse_image_from_path(preprocessed)
+                if self._score_parse_result(result2) > self._score_parse_result(result):
+                    result2.setdefault("_fallbacks_used", []).append("preprocess_retry")
+                    return result2
+            except Exception as exc:
+                logger.warning("OCR preprocess retry failed: %s", exc)
+            finally:
+                if preprocessed:
+                    try:
+                        os.unlink(preprocessed)
+                    except OSError:
+                        pass
+        return result
+
+    def _parse_image_from_path(self, path: str) -> dict:
+        """OCR 并解析单张图片路径（内部复用方法）。"""
+        raw_result = _run_ocr(path)
         ocr_pages = self._extract_ocr_pages(raw_result)
         ocr_results = ocr_pages[0] if ocr_pages else []
 
-        # 按行分组OCR结果（根据Y坐标）
         lines = self._group_ocr_by_line_with_coords(ocr_results)
-
-        # 过滤掉UI元素（按钮、标签等）
         filtered_lines = self._filter_ui_elements(lines)
 
-        # 构建文本
         lines_text = [
             " ".join([item[1][0] for item in line]) for line in filtered_lines
         ]
@@ -309,6 +425,14 @@ class DocumentParser:
         parsed = self._parse_from_ocr_with_coords(filtered_lines)
         parsed["items"] = self._deduplicate_items(parsed.get("items", []))
         return parsed
+
+    def _is_parse_result_weak(self, result: dict) -> bool:
+        """判断解析结果是否不充分（需要预处理重试）。"""
+        items = result.get("items") or []
+        has_header = any(
+            str(result.get(k) or "").strip() for k in self.HEADER_FIELD_KEYS
+        )
+        return len(items) == 0 or (len(items) <= 1 and not has_header)
 
     def _should_fallback_pdf_ocr(self, parsed: dict) -> bool:
         items = parsed.get("items") or []
@@ -373,7 +497,91 @@ class DocumentParser:
         return pages
 
     def _parse_pdf_via_ocr(self) -> dict:
-        """PDF OCR 兜底：用于扫描件或文本提取失败场景。"""
+        """PDF OCR 兜底：优先用 pypdfium2 渲染页图（240 DPI）再 OCR；不可用时直接喂 PDF。"""
+        try:
+            return self._parse_pdf_via_ocr_with_pypdfium2()
+        except ImportError:
+            pass
+        except Exception as exc:
+            logger.warning("pypdfium2 PDF OCR failed, falling back to direct: %s", exc)
+        return self._parse_pdf_via_ocr_direct()
+
+    def _parse_pdf_via_ocr_with_pypdfium2(self) -> dict:
+        """用 pypdfium2 渲染 PDF 页为图片（240 DPI），逐页 OCR。"""
+        import pypdfium2 as pdfium
+
+        pdf = pdfium.PdfDocument(self.file_path)
+        page_count = min(len(pdf), self.MAX_PDF_PAGES)
+        if page_count == 0:
+            pdf.close()
+            return self._get_empty_result()
+
+        text_parts: list[str] = []
+        all_items: list[dict] = []
+        tmp_files: list[str] = []
+
+        try:
+            for page_idx in range(page_count):
+                page = pdf[page_idx]
+                # 240 DPI; PDF 使用 72pt/inch，scale = 240/72
+                scale = 240 / 72
+                bitmap = page.render(scale=scale, rotation=0)
+                pil_image = bitmap.to_pil()
+
+                import tempfile
+
+                fd, tmp_path = tempfile.mkstemp(suffix=".png")
+                os.close(fd)
+                pil_image.save(tmp_path)
+                tmp_files.append(tmp_path)
+
+                try:
+                    raw_result = _run_ocr(tmp_path)
+                except Exception as exc:
+                    logger.warning("OCR failed on PDF page %d: %s", page_idx, exc)
+                    continue
+
+                ocr_pages = self._extract_ocr_pages(raw_result)
+                page_results = ocr_pages[0] if ocr_pages else []
+                lines = self._group_ocr_by_line_with_coords(page_results)
+                filtered_lines = self._filter_ui_elements(lines)
+                if not filtered_lines:
+                    continue
+                lines_text = [
+                    " ".join([item[1][0] for item in line]) for line in filtered_lines
+                ]
+                text_parts.append("\n".join(lines_text))
+                all_items.extend(self._extract_items_from_ocr_lines(filtered_lines))
+        finally:
+            pdf.close()
+            for tmp in tmp_files:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+
+        if not text_parts and not all_items:
+            return self._get_empty_result()
+
+        original_text = self.text
+        self.text = "\n".join(text_parts)
+        result = self._get_empty_result()
+        result.update(self._extract_header_info())
+        result["items"] = self._deduplicate_items(all_items)
+
+        if not result["items"]:
+            result["items"] = self._deduplicate_items(
+                self._extract_items_from_text_lines(self.text.split("\n"))
+            )
+
+        if original_text and not any(result.get(k) for k in self.HEADER_FIELD_KEYS):
+            self.text = original_text
+            result.update(self._extract_header_info())
+
+        return result
+
+    def _parse_pdf_via_ocr_direct(self) -> dict:
+        """直接将 PDF 路径喂给 PaddleOCR（pypdfium2 不可用时的兜底）。"""
         try:
             raw_result = _run_ocr(self.file_path)
         except Exception as exc:
@@ -419,11 +627,30 @@ class DocumentParser:
         return result
 
     def _group_ocr_by_line_with_coords(
-        self, ocr_results: list, line_threshold: float = 20.0
+        self, ocr_results: list, line_threshold: Optional[float] = None
     ) -> list:
-        """将OCR结果按行分组（保留坐标）"""
+        """将OCR结果按行分组（保留坐标），阈值自适应 OCR 框高度。"""
         if not ocr_results:
             return []
+
+        # 若未传入阈值，根据框高度中位数自适应计算
+        if line_threshold is None:
+            box_heights: list[float] = []
+            for item in ocr_results:
+                try:
+                    coords = item[0]
+                    top = min(pt[1] for pt in coords)
+                    bot = max(pt[1] for pt in coords)
+                    h = bot - top
+                    if h > 0:
+                        box_heights.append(h)
+                except (TypeError, IndexError, ValueError):
+                    pass
+            if box_heights:
+                median_h = sorted(box_heights)[len(box_heights) // 2]
+                line_threshold = max(8.0, median_h * 0.6)
+            else:
+                line_threshold = 20.0
 
         lines = []
         current_line = [ocr_results[0]]
@@ -481,8 +708,17 @@ class DocumentParser:
         table_start = -1
         for idx, line in enumerate(lines):
             line_text = " ".join([item[1][0] for item in line])
-            if self.OCR_TABLE_SERIAL_HEADER in line_text and any(
+            has_item_header = any(
                 keyword in line_text for keyword in self.OCR_TABLE_ITEM_HEADERS
+            )
+            has_serial = self.OCR_TABLE_SERIAL_HEADER in line_text
+            # 首选：序号 + 物品/名称/品名
+            if has_serial and has_item_header:
+                table_start = idx
+                break
+            # 备选：有物品/名称头 + 数量/单价/规格（无序号也可识别）
+            if has_item_header and any(
+                kw in line_text for kw in ("数量", "单价", "金额", "规格")
             ):
                 table_start = idx
                 break
@@ -531,19 +767,33 @@ class DocumentParser:
         return items
 
     def _determine_column_ranges(self, header_line: list) -> dict:
-        """确定表格列的X坐标范围"""
-        # 找到各关键词的X位置
-        col_keywords = self.OCR_COLUMN_HEADERS
-        col_positions = {}
+        """确定表格列的X坐标范围（使用中心点坐标，支持列头别名）。"""
+        col_keywords = list(self.OCR_COLUMN_HEADERS)
+        col_positions: dict = {}
 
         for item in header_line:
             text = item[1][0]
-            x = item[0][0][0]  # 左边X坐标
+            # 使用中心点 X 坐标，定位更准确
+            try:
+                x_center = (item[0][0][0] + item[0][1][0]) / 2
+            except (IndexError, TypeError):
+                x_center = item[0][0][0]
 
+            # 检查主要列关键字
             for keyword in col_keywords:
                 if keyword in text:
-                    if keyword not in col_positions or x < col_positions[keyword]:
-                        col_positions[keyword] = x
+                    if (
+                        keyword not in col_positions
+                        or x_center < col_positions[keyword]
+                    ):
+                        col_positions[keyword] = x_center
+
+            # 物品名称列别名 → 统一映射到 "物品" 键
+            if "物品" not in col_positions:
+                for alias in self.OCR_TABLE_ITEM_HEADERS:
+                    if alias != "物品" and alias in text:
+                        col_positions["物品"] = x_center
+                        break
 
         # 根据关键词位置确定列范围
         (
@@ -582,7 +832,11 @@ class DocumentParser:
 
         for item in line:
             text = item[1][0]
-            x = item[0][0][0]
+            # 使用中心点 X 坐标，与 _determine_column_ranges 保持一致
+            try:
+                x = (item[0][0][0] + item[0][1][0]) / 2
+            except (IndexError, TypeError):
+                x = item[0][0][0]
 
             # 判断属于哪一列
             if col_ranges["item_name"][0] <= x <= col_ranges["item_name"][1]:
@@ -666,11 +920,20 @@ class DocumentParser:
             potential_qty = float(qty_match.group(1))
             # 只把看起来像数量的值当作数量（1-1000之间的小数或整数）
             if 0 < potential_qty <= self.OCR_QUANTITY_MAX:
-                # 检查是否是独立的数量（不是型号的一部分）
-                # 如果行中有单位词，或者数字单独出现
+                # 首选：行中有单位词时精确提取
                 if re.search(self.OCR_QUANTITY_UNIT_PATTERN, line_text):
-                    # 从行文本中智能提取数量
                     quantity = self._smart_extract_quantity_from_line(line_text)
+
+        # 备选：无单位词时，尝试提取行中独立出现的小整数作为数量
+        if quantity is None:
+            standalone = re.search(
+                r"(?<![a-zA-Z0-9\u4e00-\u9fff])([2-9]\d{0,2}|1\d{1,2})(?![a-zA-Z0-9\u4e00-\u9fff])",
+                line_text,
+            )
+            if standalone:
+                qty_val = int(standalone.group(1))
+                if 2 <= qty_val <= self.OCR_QUANTITY_MAX:
+                    quantity = qty_val
 
         # 提取物品名称（最左侧的中文字符）
         item_name = ""
@@ -1253,7 +1516,7 @@ class DocumentParser:
         return text
 
     def _clean_item_name(self, name: str) -> Optional[str]:
-        """清理物品名称"""
+        """清理物品名称，保留型号、规格、括号后缀，避免过度清洗。"""
         if not name:
             return None
 
@@ -1265,25 +1528,29 @@ class DocumentParser:
         # 移除序号
         name = re.sub(r"^\d+[\.\s、]*", "", name)
 
-        # 移除URL
-        name = re.sub(r"https?://[^\s]+", "", name)
+        # 移除完整 URL（http/https 开头）
+        name = re.sub(r"https?://[^\s\u4e00-\u9fff]+", "", name)
 
-        # 移除单位标注（更全面的处理）
+        # 移除"单位"标注（仅在"单位"关键字明确出现时才清洗，不影响型号/规格括号）
         unit_patterns = [
-            r"\s*[（\(]?\s*单位[:：]?\s*[^\））]*[\）)]?\s*$",
-            r"\s*[（\(]单位[^\））]*[\）)]\s*",
-            r"\s*单位[:：][^\s]*",
+            r"\s*[（(]\s*单位\s*[:：][^）)]*[）)]\s*",  # (单位:个)
+            r"\s*单位\s*[:：]\s*\S+\s*$",  # 末尾的 单位:包
             r"\s*京东\s*",
             r"\s*淘宝\s*",
-            r"\s*购买\s*",
+            r"\s*购买\s*$",  # 仅末尾单独出现的"购买"
         ]
         for pattern in unit_patterns:
             name = re.sub(pattern, "", name)
 
-        # 移除链接相关
-        for kw in ["链接", "http", "www", "购买"]:
-            if kw in name:
-                name = name.split(kw)[0]
+        # 仅在"链接"后跟 URL 时才截断，保留不含链接的括号内容
+        name = re.sub(
+            r"\s*(?:采购链接|关联链接|购买链接|链接)\s*[:：]?\s*(?:https?://|www\.)\S*",
+            "",
+            name,
+            flags=re.IGNORECASE,
+        )
+        # 清理残留的 www. 片段
+        name = re.sub(r"\s*www\.[^\s\u4e00-\u9fff]+", "", name, flags=re.IGNORECASE)
 
         name = name.strip()
 

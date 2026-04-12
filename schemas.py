@@ -3,7 +3,6 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 from db.constants import ItemStatus, PaymentStatus
-from gemini_config import DEFAULT_GEMINI_MODEL_NAME
 
 
 class ItemCreate(BaseModel):
@@ -61,6 +60,7 @@ class ImportConfirmRequest(BaseModel):
 
 class DuplicateHandleRequest(BaseModel):
     """处理重复物品的请求。"""
+
     action: Literal["skip", "add", "merge"]
     duplicates: list[dict]
     items_data: list[dict]
@@ -85,16 +85,6 @@ class WebDAVConfigRequest(BaseModel):
 
 class WebDAVRestoreRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=300)
-
-
-class GeminiConfigRequest(BaseModel):
-    api_key: str = Field(default="", max_length=300)
-    model_name: str = Field(default=DEFAULT_GEMINI_MODEL_NAME, max_length=120)
-    request_timeout_seconds: int = Field(default=90, ge=10, le=300)
-
-
-class GeminiModelsRequest(BaseModel):
-    api_key: str = Field(default="", max_length=300)
 
 
 class SupplierCreateRequest(BaseModel):
@@ -127,7 +117,9 @@ class InventoryProfileRequest(BaseModel):
 
 
 class InvoiceRecordUpdateRequest(BaseModel):
-    reimbursement_status: Literal["pending", "submitted", "reimbursed"] = Field(default="pending")
+    reimbursement_status: Literal["pending", "submitted", "reimbursed"] = Field(
+        default="pending"
+    )
     reimbursement_date: Optional[str] = Field(default=None, max_length=32)
     invoice_number: Optional[str] = Field(default=None, max_length=120)
     note: Optional[str] = Field(default=None, max_length=500)
@@ -137,7 +129,9 @@ class PurchaseOrderUpsertRequest(BaseModel):
     supplier_id: Optional[int] = Field(default=None, gt=0)
     ordered_date: Optional[str] = Field(default=None, max_length=32)
     expected_arrival_date: Optional[str] = Field(default=None, max_length=32)
-    status: Literal["draft", "ordered", "received", "cancelled"] = Field(default="draft")
+    status: Literal["draft", "ordered", "received", "cancelled"] = Field(
+        default="draft"
+    )
     note: Optional[str] = Field(default=None, max_length=500)
 
 
