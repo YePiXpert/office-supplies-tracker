@@ -74,7 +74,9 @@ def _load_google_runtime():
         import google.generativeai as genai
         from google.api_core import exceptions as google_exceptions
     except ModuleNotFoundError as exc:
-        raise GeminiParseError("缺少 google-generativeai 依赖，请先安装后再使用 Google 协议。") from exc
+        raise GeminiParseError(
+            "缺少 google-generativeai 依赖，请先安装后再使用 Google 协议。"
+        ) from exc
     return genai, google_exceptions
 
 
@@ -166,7 +168,15 @@ def _coalesce_value(raw: dict, keys: tuple[str, ...]) -> Any:
 
 
 def _extract_raw_items(payload: dict) -> list:
-    for key in ("物品明细", "明细", "采购明细", "items", "item_list", "line_items", "rows"):
+    for key in (
+        "物品明细",
+        "明细",
+        "采购明细",
+        "items",
+        "item_list",
+        "line_items",
+        "rows",
+    ):
         value = payload.get(key)
         if isinstance(value, list):
             return value
@@ -195,7 +205,15 @@ def _normalize_item_record(raw: Any) -> dict | None:
         )
         link_value = _coalesce_value(
             raw,
-            ("采购链接", "购买链接", "关联链接", "链接", "url", "link", "purchase_link"),
+            (
+                "采购链接",
+                "购买链接",
+                "关联链接",
+                "链接",
+                "url",
+                "link",
+                "purchase_link",
+            ),
         )
         if not link_value:
             link_value = _coalesce_value(raw, ("备注", "remark", "note", "说明"))
@@ -204,7 +222,9 @@ def _normalize_item_record(raw: Any) -> dict | None:
             ("单价", "price", "unit_price", "含税单价"),
         )
     elif isinstance(raw, (list, tuple)):
-        compact_values = [_normalize_text(value) for value in raw if _normalize_text(value)]
+        compact_values = [
+            _normalize_text(value) for value in raw if _normalize_text(value)
+        ]
         if not compact_values:
             return None
         name_value = compact_values[0]
@@ -254,7 +274,9 @@ def _should_use_local_supplement(parsed: dict) -> bool:
     return False
 
 
-def _merge_items_with_fallback(primary_items: list[dict], fallback_items: list[dict]) -> list[dict]:
+def _merge_items_with_fallback(
+    primary_items: list[dict], fallback_items: list[dict]
+) -> list[dict]:
     merged = _normalize_items(primary_items)
     if not fallback_items:
         return merged
@@ -293,7 +315,9 @@ def _supplement_with_local_parser(file_path: Path, parsed: dict) -> dict:
         from parser import parse_document
 
         local_parsed_raw = parse_document(str(file_path))
-        local_parsed = _normalize_payload(local_parsed_raw if isinstance(local_parsed_raw, dict) else {})
+        local_parsed = _normalize_payload(
+            local_parsed_raw if isinstance(local_parsed_raw, dict) else {}
+        )
     except Exception:
         return parsed
 
@@ -403,9 +427,10 @@ def _unwrap_payload_dict(parsed: Any) -> dict | None:
             if isinstance(nested, dict):
                 if _PAYLOAD_KEY_HINTS.intersection(nested.keys()):
                     return nested
-                return nested
             if isinstance(nested, str):
-                nested_payload = _try_parse_json(_sanitize_json_like(_strip_markdown_wrappers(nested)))
+                nested_payload = _try_parse_json(
+                    _sanitize_json_like(_strip_markdown_wrappers(nested))
+                )
                 if isinstance(nested_payload, dict):
                     return nested_payload
         return parsed
@@ -415,7 +440,6 @@ def _unwrap_payload_dict(parsed: Any) -> dict | None:
             if isinstance(item, dict):
                 if _PAYLOAD_KEY_HINTS.intersection(item.keys()):
                     return item
-                return item
     return None
 
 
@@ -479,7 +503,9 @@ def _normalize_payload(payload: dict) -> dict:
         payload = {}
 
     serial_number = _normalize_text(
-        _coalesce_value(payload, ("流水号", "单号", "编号", "serial_number", "serialNo"))
+        _coalesce_value(
+            payload, ("流水号", "单号", "编号", "serial_number", "serialNo")
+        )
     )
     department = _normalize_text(
         _coalesce_value(
@@ -491,7 +517,9 @@ def _normalize_payload(payload: dict) -> dict:
         _coalesce_value(payload, ("经办人", "申领人", "申请人", "handler", "operator"))
     )
     request_date = _normalize_date(
-        _coalesce_value(payload, ("日期", "申领日期", "申请日期", "request_date", "date"))
+        _coalesce_value(
+            payload, ("日期", "申领日期", "申请日期", "request_date", "date")
+        )
     )
     items = _normalize_items(_extract_raw_items(payload))
 
@@ -517,7 +545,9 @@ def _resolve_media_for_google(file_path: Path) -> Any:
 
 
 def _resolve_mime_type(file_path: Path) -> str:
-    return (mimetypes.guess_type(file_path.name)[0] or "application/octet-stream").lower()
+    return (
+        mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+    ).lower()
 
 
 def _image_to_jpeg_bytes(image: Image.Image) -> bytes:
@@ -539,7 +569,9 @@ def _load_vision_image_bytes(file_path: Path) -> tuple[str, bytes]:
         try:
             import pdfplumber
         except ModuleNotFoundError as exc:
-            raise GeminiParseError("缺少 pdfplumber 依赖，无法在云端协议下解析 PDF。") from exc
+            raise GeminiParseError(
+                "缺少 pdfplumber 依赖，无法在云端协议下解析 PDF。"
+            ) from exc
 
         try:
             with pdfplumber.open(str(file_path)) as pdf:
@@ -551,7 +583,9 @@ def _load_vision_image_bytes(file_path: Path) -> tuple[str, bytes]:
         except GeminiParseError:
             raise
         except Exception as exc:
-            raise GeminiParseError("PDF 转图片失败，请改用 Google 协议或本地 OCR。") from exc
+            raise GeminiParseError(
+                "PDF 转图片失败，请改用 Google 协议或本地 OCR。"
+            ) from exc
     raise GeminiParseError("云端视觉协议仅支持图片或 PDF 文件。")
 
 
@@ -665,7 +699,9 @@ def _parse_with_google(
             request_options={"timeout": timeout_seconds},
         )
     except google_exceptions.ResourceExhausted as exc:
-        raise GeminiParseError("Google 接口配额不足或请求过于频繁，请稍后重试。") from exc
+        raise GeminiParseError(
+            "Google 接口配额不足或请求过于频繁，请稍后重试。"
+        ) from exc
     except google_exceptions.DeadlineExceeded as exc:
         raise GeminiParseError("Google 接口请求超时，请稍后重试。") from exc
     except google_exceptions.GoogleAPICallError as exc:
@@ -687,7 +723,9 @@ def _parse_with_openai(
     try:
         from openai import OpenAI
     except ModuleNotFoundError as exc:
-        raise GeminiParseError("缺少 openai 依赖，请先安装后再使用 OpenAI 兼容协议。") from exc
+        raise GeminiParseError(
+            "缺少 openai 依赖，请先安装后再使用 OpenAI 兼容协议。"
+        ) from exc
 
     api_key = str(api_key_override or "").strip()
     if not api_key:
@@ -744,7 +782,9 @@ def _parse_with_anthropic(
     try:
         from anthropic import Anthropic
     except ModuleNotFoundError as exc:
-        raise GeminiParseError("缺少 anthropic 依赖，请先安装后再使用 Anthropic 协议。") from exc
+        raise GeminiParseError(
+            "缺少 anthropic 依赖，请先安装后再使用 Anthropic 协议。"
+        ) from exc
 
     api_key = str(api_key_override or "").strip()
     if not api_key:

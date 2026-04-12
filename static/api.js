@@ -1937,7 +1937,7 @@
                         `${label}: ${this.formatAuditTimelineValue(pair?.old)} -> ${this.formatAuditTimelineValue(pair?.new)}`
                     ));
                     if (entries.length > 3) {
-                        parts.push(`等 ${entries.length} 项`);
+                        parts.push(`等 ${entries.length - 3} 项`);
                     }
                     return parts.join('；');
                 },
@@ -2051,7 +2051,8 @@
                 canRollbackHistory(row) {
                     const itemId = Number(row?.item_id);
                     if (!Number.isFinite(itemId) || itemId <= 0) return false;
-                    return row?.action === 'update' || row?.action === 'delete';
+                    const action = (row?.action || '').toLowerCase();
+                    return action === 'update' || action === 'delete';
                 },
                 async rollbackHistoryRow(row) {
                     const itemId = Number(row?.item_id);
@@ -3078,12 +3079,16 @@
                     });
                     if (!ok) return;
                     try {
-                        await Promise.all(this.selectedItems.map(id => axios.delete(`/api/items/${id}`)));
+                        const ids = [...this.selectedItems];
+                        await Promise.all(ids.map(id => axios.delete(`/api/items/${id}`)));
                         this.selectedItems = [];
                         this.batchEditValue = '';
                         await this.refreshDataViews();
                     }
-                    catch(e) { this.showApiError('删除失败', e); }
+                    catch(e) {
+                        await this.refreshDataViews();
+                        this.showApiError('部分或全部删除失败，请刷新后确认结果', e);
+                    }
                 },
                 async submitImport(duplicateAction = null) {
                     const source = duplicateAction ? this.pendingParsedData : this.importPreview;

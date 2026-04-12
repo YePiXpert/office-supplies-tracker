@@ -40,7 +40,7 @@
             return Number.isNaN(parsed.getTime()) ? null : parsed;
         }
         if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) {
-            return new Date(`${raw.replace(' ', 'T')}Z`);
+            return new Date(`${raw.replace(' ', 'T')}+08:00`);
         }
         if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
             return new Date(`${raw}T00:00:00+08:00`);

@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import aiosqlite
@@ -16,17 +16,22 @@ def _parse_locked_until(value) -> Optional[datetime]:
     if value in (None, ""):
         return None
     if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
         return value
     text = str(value).strip()
     if not text:
         return None
     try:
-        return datetime.fromisoformat(text)
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except ValueError:
         pass
     for pattern in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(text, pattern)
+            return datetime.strptime(text, pattern).replace(tzinfo=timezone.utc)
         except ValueError:
             continue
     return None
@@ -57,12 +62,16 @@ async def is_system_initialized() -> bool:
     return bool(await get_system_security())
 
 
-async def initialize_system_security(password_hash: str, recovery_code_hash: str) -> None:
+async def initialize_system_security(
+    password_hash: str, recovery_code_hash: str
+) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("BEGIN IMMEDIATE")
         try:
-            async with db.execute("SELECT id FROM system_security WHERE id = 1 LIMIT 1") as cursor:
+            async with db.execute(
+                "SELECT id FROM system_security WHERE id = 1 LIMIT 1"
+            ) as cursor:
                 exists = await cursor.fetchone()
             if exists:
                 raise ValueError("系统已初始化")
@@ -81,7 +90,9 @@ async def initialize_system_security(password_hash: str, recovery_code_hash: str
             raise
 
 
-async def update_security_credentials(password_hash: str, recovery_code_hash: str) -> None:
+async def update_security_credentials(
+    password_hash: str, recovery_code_hash: str
+) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """
@@ -107,7 +118,7 @@ async def get_lock_remaining_seconds() -> int:
     if not row:
         return 0
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     locked_until = _parse_locked_until(row.get("locked_until"))
     if locked_until is None:
         return 0
@@ -134,7 +145,7 @@ async def register_failed_login_attempt() -> dict:
             if not row:
                 raise ValueError("系统未初始化")
 
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             locked_until = _parse_locked_until(row["locked_until"])
             failed_attempts = int(row["failed_attempts"] or 0)
 
@@ -164,7 +175,9 @@ async def register_failed_login_attempt() -> dict:
                 )
                 await db.commit()
                 return {
-                    "locked_seconds": max(1, int((new_locked_until - now).total_seconds())),
+                    "locked_seconds": max(
+                        1, int((new_locked_until - now).total_seconds())
+                    ),
                     "failed_attempts": 0,
                     "attempts_left": 0,
                 }

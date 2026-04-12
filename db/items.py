@@ -39,23 +39,25 @@ DEFAULT_PAYMENT_STATUS = "未付款"
 DEFAULT_INVOICE_ISSUED = 0
 ITEM_STATUS_VALUES = {status.value for status in ItemStatus}
 PAYMENT_STATUS_VALUES = {status.value for status in PaymentStatus}
-FULLWIDTH_TRANSLATION = str.maketrans({
-    "０": "0",
-    "１": "1",
-    "２": "2",
-    "３": "3",
-    "４": "4",
-    "５": "5",
-    "６": "6",
-    "７": "7",
-    "８": "8",
-    "９": "9",
-    "：": ":",
-    "／": "/",
-    "．": ".",
-    "－": "-",
-    "　": " ",
-})
+FULLWIDTH_TRANSLATION = str.maketrans(
+    {
+        "０": "0",
+        "１": "1",
+        "２": "2",
+        "３": "3",
+        "４": "4",
+        "５": "5",
+        "６": "6",
+        "７": "7",
+        "８": "8",
+        "９": "9",
+        "：": ":",
+        "／": "/",
+        "．": ".",
+        "－": "-",
+        "　": " ",
+    }
+)
 
 
 def _normalize_required_text(field: str, value) -> str:
@@ -183,7 +185,9 @@ def _normalize_request_date(value) -> str:
         if compact:
             year, month, day = compact.groups()
         else:
-            raise ValueError("request_date 格式应为 YYYY-MM-DD（支持 YYYY/M/D、YYYY年M月D日）")
+            raise ValueError(
+                "request_date 格式应为 YYYY-MM-DD（支持 YYYY/M/D、YYYY年M月D日）"
+            )
 
     try:
         parsed = datetime(int(year), int(month), int(day))
@@ -215,7 +219,9 @@ def _normalize_purchase_link(value) -> Optional[str]:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("purchase_link 必须是有效的 http(s) URL")
     if len(compact) > TEXT_FIELD_MAX_LENGTH["purchase_link"]:
-        raise ValueError(f"purchase_link 长度不能超过 {TEXT_FIELD_MAX_LENGTH['purchase_link']}")
+        raise ValueError(
+            f"purchase_link 长度不能超过 {TEXT_FIELD_MAX_LENGTH['purchase_link']}"
+        )
     return compact
 
 
@@ -223,10 +229,14 @@ def normalize_item_payload(item: dict) -> dict:
     """标准化并校验新增记录。"""
     payload = dict(item)
     payload["serial_number"] = _normalize_serial_number(payload.get("serial_number"))
-    payload["department"] = _normalize_required_text("department", payload.get("department"))
+    payload["department"] = _normalize_required_text(
+        "department", payload.get("department")
+    )
     payload["handler"] = _normalize_required_text("handler", payload.get("handler"))
     payload["request_date"] = _normalize_request_date(payload.get("request_date"))
-    payload["item_name"] = _normalize_required_text("item_name", payload.get("item_name"))
+    payload["item_name"] = _normalize_required_text(
+        "item_name", payload.get("item_name")
+    )
     payload["purchase_link"] = _normalize_purchase_link(payload.get("purchase_link"))
     payload["quantity"] = _normalize_quantity(payload.get("quantity"))
     payload["unit_price"] = _normalize_unit_price(payload.get("unit_price"))
@@ -238,12 +248,16 @@ def normalize_item_payload(item: dict) -> dict:
     payload["invoice_issued"] = _normalize_invoice_issued(
         payload.get("invoice_issued", DEFAULT_INVOICE_ISSUED)
     )
-    payload["arrival_date"] = _normalize_optional_date("arrival_date", payload.get("arrival_date"))
+    payload["arrival_date"] = _normalize_optional_date(
+        "arrival_date", payload.get("arrival_date")
+    )
     payload["distribution_date"] = _normalize_optional_date(
         "distribution_date",
         payload.get("distribution_date"),
     )
-    payload["signoff_note"] = _normalize_optional_text("signoff_note", payload.get("signoff_note"))
+    payload["signoff_note"] = _normalize_optional_text(
+        "signoff_note", payload.get("signoff_note")
+    )
     return payload
 
 
@@ -251,38 +265,56 @@ def normalize_update_payload(updates: dict) -> dict:
     """标准化并校验更新记录。"""
     payload = dict(updates)
     if "serial_number" in payload:
-        payload["serial_number"] = _normalize_serial_number(payload.get("serial_number"))
+        payload["serial_number"] = _normalize_serial_number(
+            payload.get("serial_number")
+        )
     if "department" in payload:
-        payload["department"] = _normalize_required_text("department", payload.get("department"))
+        payload["department"] = _normalize_required_text(
+            "department", payload.get("department")
+        )
     if "handler" in payload:
         payload["handler"] = _normalize_required_text("handler", payload.get("handler"))
     if "request_date" in payload:
         payload["request_date"] = _normalize_request_date(payload.get("request_date"))
     if "item_name" in payload:
-        payload["item_name"] = _normalize_required_text("item_name", payload.get("item_name"))
+        payload["item_name"] = _normalize_required_text(
+            "item_name", payload.get("item_name")
+        )
     if "purchase_link" in payload:
-        payload["purchase_link"] = _normalize_purchase_link(payload.get("purchase_link"))
+        payload["purchase_link"] = _normalize_purchase_link(
+            payload.get("purchase_link")
+        )
     if "quantity" in payload:
         payload["quantity"] = _normalize_quantity(payload.get("quantity"))
     if "unit_price" in payload:
         payload["unit_price"] = _normalize_unit_price(payload.get("unit_price"))
     if "supplier_id" in payload:
-        payload["supplier_id"] = _normalize_optional_supplier_id(payload.get("supplier_id"))
+        payload["supplier_id"] = _normalize_optional_supplier_id(
+            payload.get("supplier_id")
+        )
     if "status" in payload:
         payload["status"] = _normalize_status(payload.get("status"))
     if "payment_status" in payload:
-        payload["payment_status"] = _normalize_payment_status(payload.get("payment_status"))
+        payload["payment_status"] = _normalize_payment_status(
+            payload.get("payment_status")
+        )
     if "invoice_issued" in payload:
-        payload["invoice_issued"] = _normalize_invoice_issued(payload.get("invoice_issued"))
+        payload["invoice_issued"] = _normalize_invoice_issued(
+            payload.get("invoice_issued")
+        )
     if "arrival_date" in payload:
-        payload["arrival_date"] = _normalize_optional_date("arrival_date", payload.get("arrival_date"))
+        payload["arrival_date"] = _normalize_optional_date(
+            "arrival_date", payload.get("arrival_date")
+        )
     if "distribution_date" in payload:
         payload["distribution_date"] = _normalize_optional_date(
             "distribution_date",
             payload.get("distribution_date"),
         )
     if "signoff_note" in payload:
-        payload["signoff_note"] = _normalize_optional_text("signoff_note", payload.get("signoff_note"))
+        payload["signoff_note"] = _normalize_optional_text(
+            "signoff_note", payload.get("signoff_note")
+        )
     return payload
 
 
@@ -316,7 +348,9 @@ def _item_snapshot(item: Item) -> dict:
     return {column: getattr(item, column, None) for column in ITEM_COLUMNS}
 
 
-async def _resolve_supplier_snapshot(session, supplier_id: Optional[int]) -> tuple[Optional[int], Optional[str]]:
+async def _resolve_supplier_snapshot(
+    session, supplier_id: Optional[int]
+) -> tuple[Optional[int], Optional[str]]:
     if supplier_id is None:
         return None, None
 
@@ -342,7 +376,9 @@ async def _apply_supplier_snapshot(session, payload: dict) -> dict:
     if "supplier_id" not in normalized:
         return normalized
 
-    supplier_id, supplier_name = await _resolve_supplier_snapshot(session, normalized.get("supplier_id"))
+    supplier_id, supplier_name = await _resolve_supplier_snapshot(
+        session, normalized.get("supplier_id")
+    )
     normalized["supplier_id"] = supplier_id
     normalized["supplier_name_snapshot"] = supplier_name
     return normalized
@@ -410,7 +446,9 @@ def _item_unique_key(source) -> tuple[str, str, str]:
     )
 
 
-async def _load_items_by_unique_keys(session, keys: list[tuple[str, str, str]]) -> dict[tuple[str, str, str], Item]:
+async def _load_items_by_unique_keys(
+    session, keys: list[tuple[str, str, str]]
+) -> dict[tuple[str, str, str], Item]:
     unique_keys = list(dict.fromkeys(keys))
     if not unique_keys:
         return {}
@@ -428,7 +466,7 @@ async def get_items(
     month: Optional[str] = None,
     keyword: Optional[str] = None,
     page: Optional[int] = None,
-    page_size: Optional[int] = None
+    page_size: Optional[int] = None,
 ) -> list[dict]:
     """获取所有物品列表。"""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -450,6 +488,27 @@ async def get_items(
         async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
+
+
+async def stream_items(
+    status: Optional[str] = None,
+    department: Optional[str] = None,
+    month: Optional[str] = None,
+    keyword: Optional[str] = None,
+):
+    """以异步生成器方式逐行产出物品记录，避免全量加载至内存。"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        query = "SELECT * FROM items"
+        conditions, params = build_item_filters(
+            status=status, department=department, month=month, keyword=keyword
+        )
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY created_at DESC, id DESC"
+        async with db.execute(query, params) as cursor:
+            async for row in cursor:
+                yield dict(row)
 
 
 async def get_execution_board(
@@ -507,7 +566,7 @@ async def count_items(
     status: Optional[str] = None,
     department: Optional[str] = None,
     month: Optional[str] = None,
-    keyword: Optional[str] = None
+    keyword: Optional[str] = None,
 ) -> int:
     """获取筛选后的记录总数。"""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -657,7 +716,10 @@ async def batch_create_items(items: list[dict]) -> list[int]:
     normalized_items = [normalize_item_payload(raw_item) for raw_item in items]
     created_ids = []
     async with AsyncSessionLocal() as session:
-        normalized_items = [await _apply_supplier_snapshot(session, payload) for payload in normalized_items]
+        normalized_items = [
+            await _apply_supplier_snapshot(session, payload)
+            for payload in normalized_items
+        ]
         existing_by_key = await _load_items_by_unique_keys(
             session,
             [_item_unique_key(payload) for payload in normalized_items],
@@ -673,8 +735,8 @@ async def batch_create_items(items: list[dict]) -> list[int]:
                 continue
             if existing and existing.deleted_at is not None:
                 before_data = _item_snapshot(existing)
-                for key, value in payload.items():
-                    setattr(existing, key, value)
+                for field_name, field_value in payload.items():
+                    setattr(existing, field_name, field_value)
                 existing.deleted_at = None
                 existing.updated_at = datetime.utcnow()
                 await session.flush()
@@ -713,7 +775,9 @@ async def batch_create_items(items: list[dict]) -> list[int]:
     return created_ids
 
 
-async def get_existing_items_by_keys(keys: list[tuple[str, str, str]]) -> dict[tuple[str, str, str], dict]:
+async def get_existing_items_by_keys(
+    keys: list[tuple[str, str, str]],
+) -> dict[tuple[str, str, str], dict]:
     """按 (serial_number, item_name, handler) 批量查询已存在记录。"""
     unique_keys = list(dict.fromkeys(keys))
     if not unique_keys:
@@ -724,7 +788,7 @@ async def get_existing_items_by_keys(keys: list[tuple[str, str, str]]) -> dict[t
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         for start in range(0, len(unique_keys), chunk_size):
-            chunk = unique_keys[start:start + chunk_size]
+            chunk = unique_keys[start : start + chunk_size]
             placeholders = ", ".join(["(?, ?, ?)"] * len(chunk))
             params = []
             for serial_number, item_name, handler in chunk:
@@ -805,16 +869,22 @@ async def batch_update_items(item_ids: list[int], updates: dict) -> dict:
     async with AsyncSessionLocal() as session:
         payload = await _apply_supplier_snapshot(session, payload)
         rows = (
-            await session.execute(
-                select(Item).where(
-                    Item.id.in_(unique_ids),
-                    Item.deleted_at.is_(None),
+            (
+                await session.execute(
+                    select(Item).where(
+                        Item.id.in_(unique_ids),
+                        Item.deleted_at.is_(None),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         existing_by_id = {int(row.id): row for row in rows}
 
-        missing_ids = [item_id for item_id in unique_ids if item_id not in existing_by_id]
+        missing_ids = [
+            item_id for item_id in unique_ids if item_id not in existing_by_id
+        ]
         updated_count = 0
         unchanged_count = 0
 
@@ -931,10 +1001,12 @@ async def rollback_item_to_history(item_id: int, history_id: int) -> bool:
 
         history = (
             await session.execute(
-                select(ItemHistory).where(
+                select(ItemHistory)
+                .where(
                     ItemHistory.id == history_id,
                     ItemHistory.item_id == item_id,
-                ).limit(1)
+                )
+                .limit(1)
             )
         ).scalar_one_or_none()
         if not history:

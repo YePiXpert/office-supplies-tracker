@@ -19,7 +19,12 @@ from backup_service import (
     restore_from_archive,
 )
 from database import init_db
-from gemini_config import load_gemini_config, public_gemini_config, resolve_gemini_settings, save_gemini_config
+from gemini_config import (
+    load_gemini_config,
+    public_gemini_config,
+    resolve_gemini_settings,
+    save_gemini_config,
+)
 from gemini_ocr import reset_gemini_model_cache
 from schemas import (
     BackupHealthCheckResponse,
@@ -180,7 +185,10 @@ def _list_gemini_models(api_key: str) -> list[str]:
         names.sort()
         return names
     except ModuleNotFoundError:
-        raise HTTPException(status_code=500, detail="缺少 google-generativeai 依赖，无法获取 Gemini 模型列表")
+        raise HTTPException(
+            status_code=500,
+            detail="缺少 google-generativeai 依赖，无法获取 Gemini 模型列表",
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -205,7 +213,7 @@ async def backup_data():
     return StreamingResponse(
         archive_buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -236,7 +244,9 @@ async def restore_data(file: UploadFile = File(...)):
     async with DATA_MUTATION_LOCK:
         MAINTENANCE_MODE.set()
         try:
-            result = await run_in_threadpool(restore_from_archive, archive_path, _run_init_db_sync)
+            result = await run_in_threadpool(
+                restore_from_archive, archive_path, _run_init_db_sync
+            )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
@@ -350,6 +360,7 @@ async def backup_to_webdav():
     """创建本地备份并上传到 WebDAV。"""
     config = _require_webdav_config()
     local_archive_path = UPLOAD_DIR / f"webdav_backup_{uuid4().hex}.zip"
+    retention = {}
     async with DATA_MUTATION_LOCK:
         try:
             await run_in_threadpool(build_backup_archive_file, local_archive_path)
@@ -387,11 +398,16 @@ async def restore_from_webdav(request: WebDAVRestoreRequest):
         raise HTTPException(status_code=400, detail="filename 不能为空")
 
     archive_path = UPLOAD_DIR / f"restore_webdav_{uuid4().hex}.zip"
+    result = {}
     async with DATA_MUTATION_LOCK:
         MAINTENANCE_MODE.set()
         try:
-            await run_in_threadpool(download_backup_to_file, config, filename, archive_path)
-            result = await run_in_threadpool(restore_from_archive, archive_path, _run_init_db_sync)
+            await run_in_threadpool(
+                download_backup_to_file, config, filename, archive_path
+            )
+            result = await run_in_threadpool(
+                restore_from_archive, archive_path, _run_init_db_sync
+            )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:

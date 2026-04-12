@@ -6,7 +6,7 @@ from app_runtime import APP_STATE_DIR
 
 
 GEMINI_CONFIG_PATH = Path(APP_STATE_DIR) / ".gemini_config.json"
-DEFAULT_GEMINI_MODEL_NAME = "gemini-3.0-flash"
+DEFAULT_GEMINI_MODEL_NAME = "gemini-2.0-flash"
 DEFAULT_GEMINI_TIMEOUT_SECONDS = 90
 MIN_GEMINI_TIMEOUT_SECONDS = 10
 MAX_GEMINI_TIMEOUT_SECONDS = 300
@@ -38,8 +38,13 @@ def load_gemini_config() -> dict:
             raise ValueError("invalid config format")
         return {
             "api_key": str(data.get("api_key") or "").strip(),
-            "model_name": str(data.get("model_name") or DEFAULT_GEMINI_MODEL_NAME).strip() or DEFAULT_GEMINI_MODEL_NAME,
-            "request_timeout_seconds": _normalize_timeout(data.get("request_timeout_seconds")),
+            "model_name": str(
+                data.get("model_name") or DEFAULT_GEMINI_MODEL_NAME
+            ).strip()
+            or DEFAULT_GEMINI_MODEL_NAME,
+            "request_timeout_seconds": _normalize_timeout(
+                data.get("request_timeout_seconds")
+            ),
         }
     except (OSError, json.JSONDecodeError, ValueError):
         return {
@@ -55,7 +60,11 @@ def save_gemini_config(config: dict) -> dict:
     if not api_key:
         api_key = current.get("api_key", "")
 
-    model_name = str(config.get("model_name") or "").strip() or current.get("model_name") or DEFAULT_GEMINI_MODEL_NAME
+    model_name = (
+        str(config.get("model_name") or "").strip()
+        or current.get("model_name")
+        or DEFAULT_GEMINI_MODEL_NAME
+    )
     timeout = _normalize_timeout(config.get("request_timeout_seconds"))
 
     normalized = {
@@ -76,7 +85,10 @@ def save_gemini_config(config: dict) -> dict:
 
 
 def public_gemini_config(config: dict) -> dict:
-    model_name = str(config.get("model_name") or DEFAULT_GEMINI_MODEL_NAME).strip() or DEFAULT_GEMINI_MODEL_NAME
+    model_name = (
+        str(config.get("model_name") or DEFAULT_GEMINI_MODEL_NAME).strip()
+        or DEFAULT_GEMINI_MODEL_NAME
+    )
     timeout = _normalize_timeout(config.get("request_timeout_seconds"))
     has_api_key = bool(str(config.get("api_key") or "").strip())
     return {
@@ -87,7 +99,9 @@ def public_gemini_config(config: dict) -> dict:
     }
 
 
-def resolve_gemini_settings(api_key_override: str | None = None) -> tuple[str, str, int]:
+def resolve_gemini_settings(
+    api_key_override: str | None = None,
+) -> tuple[str, str, int]:
     config = load_gemini_config()
     env_api_key = str(os.getenv("GEMINI_API_KEY") or "").strip()
     env_model_name = str(os.getenv("GEMINI_MODEL_NAME") or "").strip()
@@ -95,6 +109,14 @@ def resolve_gemini_settings(api_key_override: str | None = None) -> tuple[str, s
 
     override_key = str(api_key_override or "").strip()
     api_key = override_key or env_api_key or str(config.get("api_key") or "").strip()
-    model_name = env_model_name or str(config.get("model_name") or DEFAULT_GEMINI_MODEL_NAME).strip() or DEFAULT_GEMINI_MODEL_NAME
-    timeout = _normalize_timeout(env_timeout if env_timeout is not None else config.get("request_timeout_seconds"))
+    model_name = (
+        env_model_name
+        or str(config.get("model_name") or DEFAULT_GEMINI_MODEL_NAME).strip()
+        or DEFAULT_GEMINI_MODEL_NAME
+    )
+    timeout = _normalize_timeout(
+        env_timeout
+        if env_timeout is not None
+        else config.get("request_timeout_seconds")
+    )
     return api_key, model_name, timeout

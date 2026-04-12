@@ -72,10 +72,10 @@ async def _drop_recipient_column(db: aiosqlite.Connection) -> None:
             )
             SELECT
                 id, serial_number, department, handler, request_date,
-                item_name, quantity, purchase_link, unit_price, NULL AS supplier_id, NULL AS supplier_name_snapshot,
+                item_name, quantity, purchase_link, unit_price, supplier_id, supplier_name_snapshot,
                 status, invoice_issued, payment_status,
                 arrival_date, distribution_date, signoff_note,
-                NULL AS deleted_at,
+                deleted_at,
                 created_at, updated_at
             FROM items
             """
@@ -244,7 +244,9 @@ async def _ensure_operations_tables(db: aiosqlite.Connection) -> None:
     )
     supplier_price_columns = await _get_existing_columns(db, "supplier_price_records")
     if "lead_time_days" not in supplier_price_columns:
-        await db.execute("ALTER TABLE supplier_price_records ADD COLUMN lead_time_days INTEGER")
+        await db.execute(
+            "ALTER TABLE supplier_price_records ADD COLUMN lead_time_days INTEGER"
+        )
     inventory_columns = await _get_existing_columns(db, "inventory_profiles")
     if "reorder_quantity" not in inventory_columns:
         await db.execute(
@@ -382,9 +384,7 @@ async def init_db():
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at DESC)"
         )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_items_status ON items(status)"
-        )
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_items_status ON items(status)")
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_department ON items(department)"
         )

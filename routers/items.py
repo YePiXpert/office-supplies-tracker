@@ -26,6 +26,7 @@ from database import (
     get_item,
     get_item_history,
     get_items,
+    stream_items,
     get_operations_report,
     get_supplier_report,
     list_deleted_items,
@@ -108,7 +109,7 @@ async def list_items(
     month: Optional[str] = None,
     keyword: Optional[str] = None,
     page: int = 1,
-    page_size: int = DEFAULT_PAGE_SIZE
+    page_size: int = DEFAULT_PAGE_SIZE,
 ):
     """获取所有物品列表。"""
     _validate_pagination(page, page_size)
@@ -116,10 +117,16 @@ async def list_items(
         status, department, month, keyword
     )
     items = await get_items(
-        status=status, department=department, month=month, keyword=keyword,
-        page=page, page_size=page_size
+        status=status,
+        department=department,
+        month=month,
+        keyword=keyword,
+        page=page,
+        page_size=page_size,
     )
-    total = await count_items(status=status, department=department, month=month, keyword=keyword)
+    total = await count_items(
+        status=status, department=department, month=month, keyword=keyword
+    )
     return {
         "items": items,
         "total": total,
@@ -137,7 +144,9 @@ async def execution_board(
 ):
     """采购执行看板（按待办状态分栏）。"""
     if limit_per_status < 1 or limit_per_status > 300:
-        raise HTTPException(status_code=400, detail="limit_per_status 必须在 1-300 之间")
+        raise HTTPException(
+            status_code=400, detail="limit_per_status 必须在 1-300 之间"
+        )
     _, department, month, keyword = _normalize_item_filters(
         None, department, month, keyword
     )
@@ -185,16 +194,19 @@ async def export_items(
     status: Optional[str] = None,
     department: Optional[str] = None,
     month: Optional[str] = None,
-    keyword: Optional[str] = None
+    keyword: Optional[str] = None,
 ):
     """导出筛选后的记录为 Excel。"""
     status, department, month, keyword = _normalize_item_filters(
         status, department, month, keyword
     )
-    items = await get_items(status=status, department=department, month=month, keyword=keyword)
+    items = stream_items(
+        status=status, department=department, month=month, keyword=keyword
+    )
 
     try:
-        output = build_items_excel_stream(items)
+        rows = [row async for row in items]
+        output = build_items_excel_stream(rows)
     except ExportDependencyError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -202,7 +214,7 @@ async def export_items(
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": content_disposition}
+        headers={"Content-Disposition": content_disposition},
     )
 
 
@@ -360,7 +372,7 @@ async def amount_report(
     status: Optional[str] = None,
     department: Optional[str] = None,
     month: Optional[str] = None,
-    keyword: Optional[str] = None
+    keyword: Optional[str] = None,
 ):
     """金额统计报表（支持与列表一致的筛选）。"""
     status, department, month, keyword = _normalize_item_filters(
@@ -376,7 +388,7 @@ async def operations_report(
     status: Optional[str] = None,
     department: Optional[str] = None,
     month: Optional[str] = None,
-    keyword: Optional[str] = None
+    keyword: Optional[str] = None,
 ):
     """执行漏斗、周期分布与月度金额趋势报表。"""
     status, department, month, keyword = _normalize_item_filters(
@@ -431,7 +443,9 @@ async def export_supplier_report(
 
     normalized_mode = str(mode or "full").strip().lower()
     if normalized_mode not in {"full", "monthly", "yearly"}:
-        raise HTTPException(status_code=400, detail="mode 仅支持 full / monthly / yearly")
+        raise HTTPException(
+            status_code=400, detail="mode 仅支持 full / monthly / yearly"
+        )
 
     report = await get_supplier_report(
         status=status,
@@ -471,14 +485,13 @@ async def history_list(
     keyword: Optional[str] = None,
     month: Optional[str] = None,
     page: int = 1,
-    page_size: int = DEFAULT_PAGE_SIZE
+    page_size: int = DEFAULT_PAGE_SIZE,
 ):
     """变更历史列表。"""
     _validate_pagination(page, page_size)
     action, keyword, month = _normalize_history_filters(action, keyword, month)
     items = await get_item_history(
-        action=action, keyword=keyword, month=month,
-        page=page, page_size=page_size
+        action=action, keyword=keyword, month=month, page=page, page_size=page_size
     )
     total = await count_item_history(action=action, keyword=keyword, month=month)
     return {

@@ -974,9 +974,6 @@
                 if (typeof this.initOcrEngineSettings === 'function') {
                     this.initOcrEngineSettings();
                 }
-                if (typeof this.loadAppMetadata === 'function') {
-                    await this.loadAppMetadata();
-                }
                 if (typeof this.initializeAuthLayer === 'function') {
                     await this.initializeAuthLayer();
                 }

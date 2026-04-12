@@ -1,6 +1,7 @@
 import os
 import secrets
 import string
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
@@ -43,7 +44,9 @@ def should_use_secure_cookie(request=None) -> bool:
     if request is None:
         return False
 
-    forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").strip().lower()
+    forwarded_proto = (
+        str(request.headers.get("x-forwarded-proto") or "").strip().lower()
+    )
     if forwarded_proto:
         return forwarded_proto.split(",", 1)[0].strip() == "https"
     return str(getattr(getattr(request, "url", None), "scheme", "")).lower() == "https"
@@ -68,7 +71,9 @@ def normalize_recovery_code(raw_value: str) -> str:
 
 
 def generate_recovery_code(length: int = RECOVERY_CODE_LENGTH) -> str:
-    return "".join(secrets.choice(_RECOVERY_ALPHABET) for _ in range(max(8, int(length))))
+    return "".join(
+        secrets.choice(_RECOVERY_ALPHABET) for _ in range(max(8, int(length)))
+    )
 
 
 def _load_or_create_cookie_secret() -> str:
@@ -79,18 +84,37 @@ def _load_or_create_cookie_secret() -> str:
 
     AUTH_COOKIE_SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
     secret = secrets.token_urlsafe(48)
-    AUTH_COOKIE_SECRET_PATH.write_text(secret, encoding="utf-8")
+    # Atomic write: write to a temp file in the same directory, then rename.
+    # This prevents a race condition where multiple processes each write a
+    # different secret and sessions signed by one process are rejected by another.
+    dir_path = AUTH_COOKIE_SECRET_PATH.parent
+    fd, tmp_path = tempfile.mkstemp(dir=dir_path)
     try:
-        AUTH_COOKIE_SECRET_PATH.chmod(0o600)
-    except OSError:
-        pass
-    return secret
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(secret)
+        try:
+            os.chmod(tmp_path, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp_path, AUTH_COOKIE_SECRET_PATH)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+    # Re-read the file: if another process won the race and wrote first,
+    # we use their secret so all workers stay consistent.
+    value = AUTH_COOKIE_SECRET_PATH.read_text(encoding="utf-8").strip()
+    return value if value else secret
 
 
 def _get_serializer() -> URLSafeTimedSerializer:
     global _serializer
     if _serializer is None:
-        _serializer = URLSafeTimedSerializer(_load_or_create_cookie_secret(), salt=AUTH_COOKIE_SALT)
+        _serializer = URLSafeTimedSerializer(
+            _load_or_create_cookie_secret(), salt=AUTH_COOKIE_SALT
+        )
     return _serializer
 
 
@@ -102,7 +126,9 @@ def create_auth_cookie(subject: str = "admin") -> str:
     return _get_serializer().dumps(payload)
 
 
-def verify_auth_cookie(cookie_value: str, max_age_seconds: int = AUTH_COOKIE_MAX_AGE_SECONDS) -> Optional[dict[str, Any]]:
+def verify_auth_cookie(
+    cookie_value: str, max_age_seconds: int = AUTH_COOKIE_MAX_AGE_SECONDS
+) -> Optional[dict[str, Any]]:
     if not cookie_value:
         return None
     try:

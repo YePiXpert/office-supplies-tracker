@@ -33,6 +33,7 @@ from .items import (
     get_handlers,
     get_item,
     get_items,
+    stream_items,
     list_deleted_items,
     purge_item,
     restore_item,
@@ -57,7 +58,12 @@ from .operations import (
     upsert_purchase_order,
     upsert_purchase_receipt,
 )
-from .reports import get_amount_report, get_operations_report, get_stats_summary, get_supplier_report
+from .reports import (
+    get_amount_report,
+    get_operations_report,
+    get_stats_summary,
+    get_supplier_report,
+)
 from .schema import init_db
 
 __all__ = [
@@ -69,6 +75,7 @@ __all__ = [
     "ItemStatus",
     "init_db",
     "get_items",
+    "stream_items",
     "count_items",
     "get_stats_summary",
     "get_amount_report",
