@@ -239,11 +239,15 @@ def run_smoke_checks() -> None:
 
                 operations_report = client.get("/api/reports/operations")
                 _expect_status(operations_report, 200, "operations report")
-                tracker_payload = operations_report.json().get("tracker") or {}
-                if int(tracker_payload.get("summary", {}).get("pending_invoice_count") or 0) < 1:
-                    raise AssertionError("Tracker report should include pending invoice count")
-                if not isinstance(tracker_payload.get("supplier_lead_time_trend"), list):
-                    raise AssertionError("Tracker report should include supplier lead-time trend rows")
+                ops_payload = operations_report.json()
+                status_snapshot = ops_payload.get("status_snapshot") or []
+                if not isinstance(status_snapshot, list):
+                    raise AssertionError("Operations report should include status_snapshot list")
+                total_snapshot_count = sum(int(row.get("record_count") or 0) for row in status_snapshot)
+                if total_snapshot_count < 1:
+                    raise AssertionError("Operations report status_snapshot should include at least one record")
+                if not isinstance(ops_payload.get("funnel"), list):
+                    raise AssertionError("Operations report should include funnel list")
 
                 delete_attachment = client.delete(f"/api/ops/invoice-attachments/{attachment_id}")
                 _expect_status(delete_attachment, 200, "delete invoice attachment")
