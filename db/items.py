@@ -1186,13 +1186,17 @@ async def get_serial_numbers() -> list[str]:
 
 
 async def get_departments() -> list[str]:
-    """获取所有部门（用于自动补全）。"""
+    """获取所有部门（用于自动补全）。
+
+    从 items 表动态提取所有历史部门名称（含已软删除记录），
+    部门名称在导入单据时由解析器自动识别写入。
+    """
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT DISTINCT department FROM items WHERE deleted_at IS NULL ORDER BY department"
+            "SELECT DISTINCT department FROM items ORDER BY department"
         ) as cursor:
             rows = await cursor.fetchall()
-            return [row[0] for row in rows]
+    return [row[0] for row in rows if row[0]]
 
 
 async def get_handlers() -> list[str]:
