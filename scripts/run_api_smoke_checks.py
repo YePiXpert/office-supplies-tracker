@@ -251,13 +251,104 @@ def run_smoke_checks() -> None:
 
                 delete_attachment = client.delete(f"/api/ops/invoice-attachments/{attachment_id}")
                 _expect_status(delete_attachment, 200, "delete invoice attachment")
+
+                # --- 部门自动补全：Option B 策略验证 ---
+                # 验证点 1：创建 item 后部门出现在 autocomplete 中
+                autocomplete_before = client.get("/api/autocomplete")
+                _expect_status(autocomplete_before, 200, "autocomplete before soft-delete")
+                depts_before = autocomplete_before.json().get("departments") or []
+                if "QA" not in depts_before:
+                    raise AssertionError(
+                        "Autocomplete departments should include 'QA' after creating an item with that department"
+                    )
+
+                # 软删除该 item
+                soft_delete_response = client.delete(f"/api/items/{item_id}")
+                _expect_status(soft_delete_response, 200, "soft-delete smoke item")
+
+                # 验证点 2：软删后 'QA' 仍在 autocomplete（Option B 历史包含策略）
+                autocomplete_after = client.get("/api/autocomplete")
+                _expect_status(autocomplete_after, 200, "autocomplete after soft-delete")
+                depts_after = autocomplete_after.json().get("departments") or []
+                if "QA" not in depts_after:
+                    raise AssertionError(
+                        "Autocomplete departments should still include 'QA' after soft-delete "
+                        "(Option B: historical-inclusive policy)"
+                    )
         finally:
             os.environ.pop("OFFICE_SUPPLIES_DATA_DIR", None)
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def _run_parser_department_unit_tests() -> None:
+    """内联单元测试：验证 parser 部门提取方法对旁路字段的拒绝行为。"""
+    import sys
+    from pathlib import Path
+
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+
+    from parser import DocumentParser
+
+    # 用一个不存在的路径仅构造实例（不需要真实文件）
+    p = DocumentParser.__new__(DocumentParser)
+    p.tables = []
+    p.text = ""
+    p.file_path = ""
+    p.file_type = "pdf"
+
+    # _looks_like_department 应接受的值
+    accept_cases = [
+        "财务管理中心",
+        "综合管理部（董事会办公室）",
+        "资产运营管理委员会",
+        "人力资源中心（党委组织部）",
+        "采购管理中心",
+        "行政办公室",
+        "规划运营部",
+    ]
+    for v in accept_cases:
+        if not p._looks_like_department(v):
+            raise AssertionError(
+                f"_looks_like_department should accept valid department name: {v!r}"
+            )
+
+    # _looks_like_department 应拒绝的值
+    reject_cases = [
+        "张三",          # 人名（短，无后缀）
+        "2026-04-13",   # 日期
+        "20260413",     # 纯数字日期
+        "2026年4月",    # 日期变体
+        "李四",          # 人名
+        "001",           # 编号
+    ]
+    for v in reject_cases:
+        if p._looks_like_department(v):
+            raise AssertionError(
+                f"_looks_like_department should reject non-department value: {v!r}"
+            )
+
+    # _extract_department_from_row_cells 跨列扫描时应忽略人名/日期
+    row_with_spillover = ["申领部门", "张三", "2026-04-13", "财务管理中心"]
+    result = p._extract_department_from_row_cells(row_with_spillover, start_idx=1)
+    if result != "财务管理中心":
+        raise AssertionError(
+            f"_extract_department_from_row_cells should skip handler/date and return '财务管理中心', got {result!r}"
+        )
+
+    # 整行均为非部门值时应返回空字符串
+    row_no_dept = ["申领部门", "张三", "2026-04-13"]
+    result_empty = p._extract_department_from_row_cells(row_no_dept, start_idx=1)
+    if result_empty != "":
+        raise AssertionError(
+            f"_extract_department_from_row_cells should return '' when no valid department found, got {result_empty!r}"
+        )
+
+
 def main() -> None:
+    _run_parser_department_unit_tests()
     run_smoke_checks()
     print("api smoke ok")
 

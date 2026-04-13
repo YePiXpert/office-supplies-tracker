@@ -1105,8 +1105,38 @@ class DocumentParser:
         compact = self._normalize_label_text(value)
         return "部门领导意见" in compact or "管理员意见" in compact
 
+    # 常见部门名称后缀，用于区分部门值与人名/日期等旁路字段
+    _DEPT_SUFFIX_HINT = re.compile(
+        r"[部局处室厅委院所中心站队组科办事业]$|委员会$|管理中心$|办公室$"
+    )
+    # 纯日期或纯数字形态，不可能是部门名
+    _DATE_LIKE = re.compile(r"^[\d\-/年月日\.]+$")
+
+    def _looks_like_department(self, value: str) -> bool:
+        """粗略判断候选值是否可能是部门名称。
+
+        规则（宽松）：
+        - 包含常见部门后缀词 → 接受
+        - 全为日期/数字格式 → 拒绝
+        - 长度 >= 4 且不含明显非部门特征 → 接受（防止截断的短部门名）
+        - 其余短串（< 4 字）无后缀 → 拒绝（可能是人名或编号）
+        """
+        if not value:
+            return False
+        if self._DATE_LIKE.fullmatch(value):
+            return False
+        if self._DEPT_SUFFIX_HINT.search(value):
+            return True
+        if len(value) < 4:
+            return False
+        return True
+
     def _extract_department_from_row_cells(self, row: list, start_idx: int = 0) -> str:
-        """从同一行中提取部门值，容忍空单元格与跨列。"""
+        """从同一行中提取部门值，容忍空单元格与跨列。
+
+        候选值额外经过 _looks_like_department 初筛，防止把人名、日期等
+        旁路字段误写成部门。
+        """
         if not row:
             return ""
         for idx in range(max(0, start_idx), len(row)):
@@ -1118,7 +1148,7 @@ class DocumentParser:
             ) or self._contains_department_label(cell_text):
                 continue
             dept = self._clean_department_text(cell_text)
-            if dept:
+            if dept and self._looks_like_department(dept):
                 return dept
         return ""
 
@@ -1217,12 +1247,14 @@ class DocumentParser:
                             return dept
 
                         # 情况3：下一行（或下几行）是值（处理表格换行）
+                        # 严格锚定：只扫与情况2相同的列区域（start_idx），
+                        # 避免抓到下一行中本属于其他字段的第一个非空单元格。
                         for next_idx in range(
-                            row_index + 1, min(row_index + 4, len(table))
+                            row_index + 1, min(row_index + 3, len(table))
                         ):
                             next_row = table[next_idx]
                             dept = self._extract_department_from_row_cells(
-                                next_row, start_idx=0
+                                next_row, start_idx=start_idx
                             )
                             if dept:
                                 return dept

@@ -1188,8 +1188,10 @@ async def get_serial_numbers() -> list[str]:
 async def get_departments() -> list[str]:
     """获取所有部门（用于自动补全）。
 
-    从 items 表动态提取所有历史部门名称（含已软删除记录），
-    部门名称在导入单据时由解析器自动识别写入。
+    策略（Option B）：返回 items 表中所有历史部门名称，包含已软删除记录。
+    部门名称完全由导入时解析器自动写入，不使用硬编码列表。
+    选择历史包含策略的理由：台账筛选器需要能回溯已删除单据的部门，
+    确保用户不会因为部门下的所有单据被删除后该部门从筛选项消失而丢失上下文。
     """
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
