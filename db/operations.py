@@ -335,6 +335,39 @@ async def create_supplier(payload: dict) -> int:
         return int(cursor.lastrowid)
 
 
+async def update_supplier(supplier_id: int, payload: dict) -> bool:
+    normalized = _normalize_supplier_payload(payload)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            """
+            UPDATE suppliers
+            SET name = ?, contact_name = ?, contact_phone = ?, contact_email = ?,
+                notes = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                normalized["name"],
+                normalized["contact_name"],
+                normalized["contact_phone"],
+                normalized["contact_email"],
+                normalized["notes"],
+                normalized["is_active"],
+                supplier_id,
+            ),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def delete_supplier(supplier_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "DELETE FROM suppliers WHERE id = ?", (supplier_id,)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 async def list_price_records(limit: int = 50) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row

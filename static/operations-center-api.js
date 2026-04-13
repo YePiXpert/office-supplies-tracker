@@ -85,6 +85,14 @@
             const res = await axios.post('/api/ops/suppliers', payload);
             return res?.data || {};
         },
+        async updateSupplier(supplierId, payload) {
+            const res = await axios.put(`/api/ops/suppliers/${supplierId}`, payload);
+            return res?.data || {};
+        },
+        async deleteSupplier(supplierId) {
+            const res = await axios.delete(`/api/ops/suppliers/${supplierId}`);
+            return res?.data || {};
+        },
         async createPriceRecord(payload) {
             const res = await axios.post('/api/ops/prices', payload);
             return res?.data || {};

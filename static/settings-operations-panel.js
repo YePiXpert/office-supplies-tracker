@@ -1215,21 +1215,56 @@
                                 <div v-if="!visibleSuppliers.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                                     暂无供应商档案。
                                 </div>
-                                <div v-for="supplier in visibleSuppliers" :key="'supplier-' + supplier.id" class="rounded-lg border border-slate-200 px-4 py-3">
-                                    <div class="flex items-start justify-between gap-3">
-                                        <div>
-                                            <div class="text-sm font-semibold text-slate-900">{{ supplier.name }}</div>
-                                            <div class="mt-1 text-xs text-slate-500">
-                                                {{ supplier.contact_name || '未填写联系人' }}
-                                                <span v-if="supplier.contact_phone"> · {{ supplier.contact_phone }}</span>
-                                                <span v-if="supplier.contact_email"> · {{ supplier.contact_email }}</span>
+                                <div v-for="supplier in visibleSuppliers" :key="'supplier-' + supplier.id" class="rounded-lg border border-slate-200 px-4 py-3 transition-all duration-200">
+                                    <!-- 编辑展开表单 -->
+                                    <template v-if="$root.editingSupplier && $root.editingSupplier.id === supplier.id">
+                                        <div class="space-y-2">
+                                            <input v-model.trim="$root.editingSupplier.name" type="text" maxlength="200" placeholder="供应商名称" class="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <input v-model.trim="$root.editingSupplier.contact_name" type="text" maxlength="200" placeholder="联系人" class="h-9 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                                                <input v-model.trim="$root.editingSupplier.contact_phone" type="text" maxlength="80" placeholder="联系电话" class="h-9 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                                            </div>
+                                            <input v-model.trim="$root.editingSupplier.contact_email" type="email" maxlength="200" placeholder="邮箱" class="w-full h-9 px-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                                            <textarea v-model.trim="$root.editingSupplier.notes" maxlength="500" placeholder="备注" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"></textarea>
+                                            <label class="inline-flex items-center gap-2 text-sm text-slate-600">
+                                                <input v-model="$root.editingSupplier.is_active" type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20">
+                                                启用供应商
+                                            </label>
+                                            <div class="flex gap-2 pt-1">
+                                                <button type="button" @click="$root.cancelEditSupplier()" class="h-9 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">
+                                                    取消
+                                                </button>
+                                                <button type="button" @click="$root.saveEditSupplier()" :disabled="$root.supplierEditSaving" class="flex-1 h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out">
+                                                    {{ $root.supplierEditSaving ? '保存中...' : '保存更改' }}
+                                                </button>
                                             </div>
                                         </div>
-                                        <span :class="supplier.is_active ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'" class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium">
-                                            {{ supplier.is_active ? '启用中' : '已停用' }}
-                                        </span>
-                                    </div>
-                                    <div v-if="supplier.notes" class="mt-2 text-xs text-slate-500">{{ supplier.notes }}</div>
+                                    </template>
+                                    <!-- 只读展示 -->
+                                    <template v-else>
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div class="min-w-0 flex-1">
+                                                <div class="text-sm font-semibold text-slate-900 truncate">{{ supplier.name }}</div>
+                                                <div class="mt-1 text-xs text-slate-500">
+                                                    {{ supplier.contact_name || '未填写联系人' }}
+                                                    <span v-if="supplier.contact_phone"> · {{ supplier.contact_phone }}</span>
+                                                    <span v-if="supplier.contact_email"> · {{ supplier.contact_email }}</span>
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center gap-1.5 shrink-0">
+                                                <span :class="supplier.is_active ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'" class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium">
+                                                    {{ supplier.is_active ? '启用中' : '已停用' }}
+                                                </span>
+                                                <button type="button" @click="$root.startEditSupplier(supplier)" class="h-7 px-2.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium hover:bg-slate-200 transition-all duration-150">
+                                                    编辑
+                                                </button>
+                                                <button type="button" @click="$root.deleteSupplierRecord(supplier.id)" class="h-7 px-2.5 rounded-md bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 transition-all duration-150">
+                                                    删除
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div v-if="supplier.notes" class="mt-2 text-xs text-slate-500">{{ supplier.notes }}</div>
+                                    </template>
                                 </div>
                             </div>
 

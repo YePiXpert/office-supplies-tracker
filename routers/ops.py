@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import aiosqlite
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,8 +14,10 @@ from db.operations import (
     create_price_record,
     create_supplier,
     delete_invoice_attachment,
+    delete_supplier,
     get_invoice_attachment,
     get_operations_center_snapshot,
+    update_supplier,
     upsert_purchase_order,
     upsert_purchase_receipt,
     upsert_inventory_profile,
@@ -27,6 +30,7 @@ from schemas import (
     PurchaseReceiptUpsertRequest,
     SupplierCreateRequest,
     SupplierPriceRecordRequest,
+    SupplierUpdateRequest,
 )
 
 router = APIRouter(prefix="/api/ops")
@@ -53,9 +57,36 @@ async def operations_center():
 async def create_supplier_endpoint(request: SupplierCreateRequest):
     try:
         supplier_id = await create_supplier(request.model_dump())
+    except aiosqlite.IntegrityError:
+        raise HTTPException(status_code=409, detail="供应商名称已存在")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"id": supplier_id, "message": "Supplier created"}
+
+
+@router.put("/suppliers/{supplier_id}")
+async def update_supplier_endpoint(supplier_id: int, request: SupplierUpdateRequest):
+    if supplier_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid supplier id")
+    try:
+        found = await update_supplier(supplier_id, request.model_dump())
+    except aiosqlite.IntegrityError:
+        raise HTTPException(status_code=409, detail="供应商名称已存在")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not found:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return {"id": supplier_id, "message": "Supplier updated"}
+
+
+@router.delete("/suppliers/{supplier_id}")
+async def delete_supplier_endpoint(supplier_id: int):
+    if supplier_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid supplier id")
+    found = await delete_supplier(supplier_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return {"message": "Supplier deleted"}
 
 
 @router.post("/prices")

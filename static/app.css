@@ -888,3 +888,60 @@ body {
         animation: none !important;
     }
 }
+
+/* ─── Modern SaaS UI 增强 ────────────────────────────────────────────────── */
+
+/* 侧边栏导航：激活项左侧蓝色指示条 */
+.sidebar-nav-active {
+    position: relative;
+    background-color: #eff6ff;
+    color: #1d4ed8;
+}
+.sidebar-nav-active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.25rem;
+    bottom: 0.25rem;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background-color: #2563eb;
+}
+
+/* 卡片 hover 轻微上浮效果 */
+.card-hover {
+    transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+.card-hover:hover {
+    box-shadow: 0 6px 18px -4px rgba(15, 23, 42, 0.12), 0 2px 6px -2px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+}
+
+/* 主按钮微渐变 lift 效果 */
+.btn-primary-lift {
+    background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+    box-shadow: 0 2px 6px -1px rgba(37, 99, 235, 0.45);
+    transition: filter 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+.btn-primary-lift:hover:not(:disabled) {
+    filter: brightness(1.06);
+    box-shadow: 0 4px 10px -2px rgba(37, 99, 235, 0.5);
+    transform: translateY(-1px);
+}
+.btn-primary-lift:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px -1px rgba(37, 99, 235, 0.4);
+}
+
+/* 统计卡片顶部微渐变背景 */
+.stat-card-header {
+    background: linear-gradient(160deg, #f8fafc 0%, #ffffff 100%);
+    border-bottom: 1px solid #f1f5f9;
+}
+
+/* 数字高亮辉光 */
+.stat-number-glow {
+    text-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+/* ───────────────────────────────────────────────────────────────────────── */

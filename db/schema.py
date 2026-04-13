@@ -254,6 +254,27 @@ async def _ensure_operations_tables(db: aiosqlite.Connection) -> None:
         )
 
 
+async def _seed_default_suppliers(db: aiosqlite.Connection) -> None:
+    """预置常用供应商，已存在则跳过（INSERT OR IGNORE）。"""
+    default_names = [
+        "史泰博",
+        "上海晨光",
+        "徳致商城",
+        "咸亨国际",
+        "深圳齐心",
+        "得力集团",
+        "大江科技",
+        "欧菲斯",
+        "中国长城",
+        "长城信息",
+    ]
+    for name in default_names:
+        await db.execute(
+            "INSERT OR IGNORE INTO suppliers (name, is_active) VALUES (?, 1)",
+            (name,),
+        )
+
+
 async def _backfill_item_supplier_snapshot(db: aiosqlite.Connection) -> None:
     await db.execute(
         """
@@ -380,6 +401,7 @@ async def init_db():
         await _ensure_audit_log_table(db)
         await _ensure_system_security_table(db)
         await _ensure_operations_tables(db)
+        await _seed_default_suppliers(db)
         await _backfill_item_supplier_snapshot(db)
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at DESC)"

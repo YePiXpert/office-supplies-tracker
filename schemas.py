@@ -96,6 +96,15 @@ class SupplierCreateRequest(BaseModel):
     is_active: bool = True
 
 
+class SupplierUpdateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    contact_name: Optional[str] = Field(default=None, max_length=200)
+    contact_phone: Optional[str] = Field(default=None, max_length=80)
+    contact_email: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=500)
+    is_active: bool = True
+
+
 class SupplierPriceRecordRequest(BaseModel):
     item_name: str = Field(min_length=1, max_length=200)
     supplier_id: Optional[int] = Field(default=None, gt=0)

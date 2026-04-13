@@ -990,6 +990,62 @@
                         is_active: true,
                     };
                 },
+                startEditSupplier(supplier) {
+                    this.editingSupplier = {
+                        id: supplier.id,
+                        name: (supplier.name || '').toString(),
+                        contact_name: (supplier.contact_name || '').toString(),
+                        contact_phone: (supplier.contact_phone || '').toString(),
+                        contact_email: (supplier.contact_email || '').toString(),
+                        notes: (supplier.notes || '').toString(),
+                        is_active: supplier.is_active !== false && supplier.is_active !== 0,
+                    };
+                },
+                cancelEditSupplier() {
+                    this.editingSupplier = null;
+                },
+                async saveEditSupplier() {
+                    const supplier = this.editingSupplier;
+                    if (!supplier || !supplier.id) return;
+                    const name = (supplier.name || '').toString().trim();
+                    if (!name) {
+                        this.showToast('请先填写供应商名称', 'error');
+                        return;
+                    }
+                    this.supplierEditSaving = true;
+                    try {
+                        const payload = {
+                            name,
+                            contact_name: (supplier.contact_name || '').toString().trim() || null,
+                            contact_phone: (supplier.contact_phone || '').toString().trim() || null,
+                            contact_email: (supplier.contact_email || '').toString().trim() || null,
+                            notes: (supplier.notes || '').toString().trim() || null,
+                            is_active: !!supplier.is_active,
+                        };
+                        await global.AppOperationsApi.updateSupplier(supplier.id, payload);
+                        this.editingSupplier = null;
+                        this.showToast('供应商已更新', 'success');
+                        await this.loadOperationsCenter();
+                    } catch (e) {
+                        this.showApiError('更新供应商失败', e);
+                    } finally {
+                        this.supplierEditSaving = false;
+                    }
+                },
+                async deleteSupplierRecord(supplierId) {
+                    if (!supplierId) return;
+                    if (!window.confirm('确定要删除该供应商吗？此操作不可撤销。')) return;
+                    try {
+                        await global.AppOperationsApi.deleteSupplier(supplierId);
+                        if (this.editingSupplier && this.editingSupplier.id === supplierId) {
+                            this.editingSupplier = null;
+                        }
+                        this.showToast('供应商已删除', 'success');
+                        await this.loadOperationsCenter();
+                    } catch (e) {
+                        this.showApiError('删除供应商失败', e);
+                    }
+                },
                 resetNewPriceRecordForm() {
                     this.newPriceRecord = {
                         item_name: '',

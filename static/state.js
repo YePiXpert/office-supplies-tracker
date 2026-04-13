@@ -300,6 +300,8 @@
                     purchaseReceiptSavingOrderId: null,
                     invoiceSavingItemId: null,
                     supplierSaving: false,
+                    supplierEditSaving: false,
+                    editingSupplier: null,
                     priceSaving: false,
                     inventorySaving: false,
                     operationsError: '',
