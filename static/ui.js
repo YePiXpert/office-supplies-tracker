@@ -30,6 +30,18 @@
     if (global.SettingsMaintenancePanel) {
         app.component('settings-maintenance-panel', global.SettingsMaintenancePanel);
     }
+    if (global.OpsOverviewPanel) {
+        app.component('ops-overview-panel', global.OpsOverviewPanel);
+    }
+    if (global.OpsProcurementPanel) {
+        app.component('ops-procurement-panel', global.OpsProcurementPanel);
+    }
+    if (global.OpsMasterDataPanel) {
+        app.component('ops-master-data-panel', global.OpsMasterDataPanel);
+    }
+    if (global.OpsExceptionsPanel) {
+        app.component('ops-exceptions-panel', global.OpsExceptionsPanel);
+    }
     if (global.SettingsOperationsPanel) {
         app.component('settings-operations-panel', global.SettingsOperationsPanel);
         app.component('operations-center-panel', global.SettingsOperationsPanel);

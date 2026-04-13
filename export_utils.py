@@ -202,6 +202,24 @@ def build_supplier_report_excel_stream(
             ],
         )
 
+    if mode in {"full", "quarterly"}:
+        quarterly_sheet = workbook.create_sheet("季度汇总")
+        _append_rows(
+            quarterly_sheet,
+            ["季度", "供应商", "供应商ID", "记录数", "采购数量", "采购总额"],
+            [
+                [
+                    row.get("quarter", ""),
+                    row.get("supplier_name", ""),
+                    row.get("supplier_id", ""),
+                    row.get("record_count", 0),
+                    row.get("total_quantity", 0),
+                    row.get("total_amount", 0),
+                ]
+                for row in (report.get("quarterly_trend") or [])
+            ],
+        )
+
     if mode in {"full", "yearly"}:
         yearly_sheet = workbook.create_sheet("年度汇总")
         _append_rows(

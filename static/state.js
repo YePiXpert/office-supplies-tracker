@@ -138,7 +138,9 @@
                     pendingParsedData: null,
                     pendingParseMeta: null,
                     amountReportLoading: false,
+                    reportGranularity: 'month',
                     amountReport: {
+                        granularity: 'month',
                         summary: {
                             totalRecords: 0,
                             totalAmount: 0,
@@ -147,9 +149,11 @@
                         },
                         byDepartment: [],
                         byStatus: [],
+                        byPeriod: [],
                         byMonth: []
                     },
                     operationsReport: {
+                        statusSnapshot: [],
                         funnel: [],
                         cycleDistribution: {
                             requestToArrival: {
@@ -164,27 +168,13 @@
                             },
                         },
                         monthlyAmountTrend: [],
-                        tracker: {
-                            summary: {
-                                toOrderCount: 0,
-                                waitingReceiptCount: 0,
-                                pendingInvoiceCount: 0,
-                                replenishmentCount: 0,
-                                actionQueueCount: 0,
-                                overdueReceiptCount: 0,
-                            },
-                            queues: {
-                                toOrder: [],
-                                waitingReceipt: [],
-                                pendingInvoice: [],
-                            },
-                            supplierLeadTimeTrend: [],
-                        },
                     },
                     supplierReportYear: String(new Date().getFullYear()),
+                    supplierReportGranularity: 'month',
                     supplierReportFocusKey: '',
                     supplierReport: {
                         selectedYear: '',
+                        granularity: 'month',
                         summary: {
                             totalRecords: 0,
                             supplierCount: 0,
@@ -196,6 +186,7 @@
                         },
                         topSuppliers: [],
                         monthlyTrend: [],
+                        quarterlyTrend: [],
                         yearlySummary: [],
                         supplierItems: [],
                         unassignedItems: [],
@@ -370,15 +361,10 @@
                     };
                 },
                 reportsSubviewBadgeMap() {
-                    const trackerSummary = this.operationsReport?.tracker?.summary || {};
                     const supplierSummary = this.supplierReport?.summary || {};
                     return {
                         overview: null,
-                        tracker: (
-                            (Number(trackerSummary.toOrderCount) || 0)
-                            + (Number(trackerSummary.waitingReceiptCount) || 0)
-                            + (Number(trackerSummary.pendingInvoiceCount) || 0)
-                        ) || null,
+                        periods: null,
                         suppliers: Number(supplierSummary.unassignedRecords) || null,
                         efficiency: null,
                     };
@@ -554,7 +540,23 @@
                         background: `conic-gradient(${segments.join(', ')})`,
                     };
                 },
+                reportPeriodRows() {
+                    const rows = Array.isArray(this.amountReport?.byPeriod)
+                        ? this.amountReport.byPeriod
+                        : [];
+                    const normalized = rows
+                        .map((row) => ({
+                            ...row,
+                            _amount: Number(row?.total_amount) || 0,
+                        }));
+                    const maxAmount = normalized.reduce((max, row) => Math.max(max, row._amount), 0);
+                    return normalized.map((row) => ({
+                        ...row,
+                        _barHeight: maxAmount > 0 ? Math.max(4, (row._amount / maxAmount) * 150) : 4,
+                    }));
+                },
                 reportMonthRows() {
+                    // Backward compat — always month granularity
                     const rows = Array.isArray(this.amountReport?.byMonth)
                         ? this.amountReport.byMonth
                         : [];
@@ -569,6 +571,18 @@
                     return normalized.map((row) => ({
                         ...row,
                         _barHeight: maxAmount > 0 ? Math.max(16, (row._amount / maxAmount) * 150) : 16,
+                    }));
+                },
+                reportStatusSnapshotRows() {
+                    // Use new status_snapshot if available, fall back to funnel
+                    const rows = Array.isArray(this.operationsReport?.statusSnapshot)
+                        ? this.operationsReport.statusSnapshot
+                        : [];
+                    return rows.map((row) => ({
+                        ...row,
+                        _count: Number(row?.record_count) || 0,
+                        _amount: Number(row?.total_amount) || 0,
+                        _overdue: Number(row?.overdue_count) || 0,
                     }));
                 },
                 reportFunnelRows() {
@@ -589,32 +603,31 @@
                     }));
                 },
                 requestToArrivalRows() {
-                    const rows = Array.isArray(this.operationsReport?.cycleDistribution?.requestToArrival?.buckets)
+                    const buckets = Array.isArray(this.operationsReport?.cycleDistribution?.requestToArrival?.buckets)
                         ? this.operationsReport.cycleDistribution.requestToArrival.buckets
                         : [];
-                    const normalized = rows.map((row) => ({
-                        ...row,
-                        _count: Number(row?.count) || 0,
-                    }));
-                    const maxCount = normalized.reduce((max, row) => Math.max(max, row._count), 0);
-                    return normalized.map((row) => ({
-                        ...row,
-                        _ratio: maxCount > 0 ? (row._count / maxCount) * 100 : 0,
-                    }));
+                    const sampleSize = Number(this.operationsReport?.cycleDistribution?.requestToArrival?.sampleSize) || 0;
+                    return buckets.map((row) => {
+                        const count = Number(row?.count) || 0;
+                        // Use backend-provided ratio if available, else calculate from sampleSize
+                        const ratio = row?.ratio != null
+                            ? Number(row.ratio)
+                            : (sampleSize > 0 ? (count / sampleSize) * 100 : 0);
+                        return { ...row, _count: count, _ratio: ratio };
+                    });
                 },
                 arrivalToDistributionRows() {
-                    const rows = Array.isArray(this.operationsReport?.cycleDistribution?.arrivalToDistribution?.buckets)
+                    const buckets = Array.isArray(this.operationsReport?.cycleDistribution?.arrivalToDistribution?.buckets)
                         ? this.operationsReport.cycleDistribution.arrivalToDistribution.buckets
                         : [];
-                    const normalized = rows.map((row) => ({
-                        ...row,
-                        _count: Number(row?.count) || 0,
-                    }));
-                    const maxCount = normalized.reduce((max, row) => Math.max(max, row._count), 0);
-                    return normalized.map((row) => ({
-                        ...row,
-                        _ratio: maxCount > 0 ? (row._count / maxCount) * 100 : 0,
-                    }));
+                    const sampleSize = Number(this.operationsReport?.cycleDistribution?.arrivalToDistribution?.sampleSize) || 0;
+                    return buckets.map((row) => {
+                        const count = Number(row?.count) || 0;
+                        const ratio = row?.ratio != null
+                            ? Number(row.ratio)
+                            : (sampleSize > 0 ? (count / sampleSize) * 100 : 0);
+                        return { ...row, _count: count, _ratio: ratio };
+                    });
                 },
                 reportMonthlyTrendRows() {
                     const rows = Array.isArray(this.operationsReport?.monthlyAmountTrend)
@@ -724,13 +737,31 @@
                 },
                 supplierFocusTrendRows() {
                     const selectedKey = this.supplierEffectiveFocusKey;
-                    const rows = Array.isArray(this.supplierReport?.monthlyTrend)
-                        ? this.supplierReport.monthlyTrend
-                        : [];
-                    const filtered = rows
+                    const granularity = this.supplierReportGranularity || 'month';
+
+                    let sourceRows;
+                    let periodField;
+                    if (granularity === 'quarter') {
+                        sourceRows = Array.isArray(this.supplierReport?.quarterlyTrend)
+                            ? this.supplierReport.quarterlyTrend
+                            : [];
+                        periodField = 'quarter';
+                    } else if (granularity === 'year') {
+                        sourceRows = Array.isArray(this.supplierReport?.yearlySummary)
+                            ? this.supplierReport.yearlySummary
+                            : [];
+                        periodField = 'year';
+                    } else {
+                        sourceRows = Array.isArray(this.supplierReport?.monthlyTrend)
+                            ? this.supplierReport.monthlyTrend
+                            : [];
+                        periodField = 'month';
+                    }
+
+                    const filtered = sourceRows
                         .filter((row) => {
-                            const supplierId = Number(row?.supplierId);
-                            const supplierName = (row?.supplierName || '未归属供应商').toString();
+                            const supplierId = Number(row?.supplierId || row?.supplier_id);
+                            const supplierName = (row?.supplierName || row?.supplier_name || '未归属供应商').toString();
                             const rowKey = Number.isFinite(supplierId) && supplierId > 0
                                 ? `id:${supplierId}`
                                 : `name:${supplierName}`;
@@ -738,10 +769,11 @@
                         })
                         .map((row) => ({
                             ...row,
-                            _amount: Number(row?.totalAmount) || 0,
+                            period: row[periodField] || '',
+                            _amount: Number(row?.totalAmount || row?.total_amount) || 0,
                         }))
-                        .sort((a, b) => String(a?.month || '').localeCompare(String(b?.month || '')))
-                        .slice(-12);
+                        .sort((a, b) => String(a.period).localeCompare(String(b.period)));
+
                     const maxAmount = filtered.reduce((max, row) => Math.max(max, row._amount), 0);
                     return filtered.map((row) => ({
                         ...row,
@@ -749,9 +781,11 @@
                     }));
                 },
                 supplierYearOverviewRows() {
+                    // Use backend-aggregated yearly summary directly (no LIMIT truncation risk)
                     const sourceRows = Array.isArray(this.supplierReport?.yearlySummary)
                         ? this.supplierReport.yearlySummary
                         : [];
+                    // Collapse multiple suppliers per year into a year-level total
                     const totals = new Map();
                     for (const row of sourceRows) {
                         const year = (row?.year || '').toString();
@@ -760,15 +794,14 @@
                             year,
                             totalAmount: 0,
                             recordCount: 0,
-                            supplierCount: 0,
                             _supplierKeys: new Set(),
                         };
-                        existing.totalAmount += Number(row?.totalAmount) || 0;
-                        existing.recordCount += Number(row?.recordCount) || 0;
-                        const supplierId = Number(row?.supplierId);
+                        existing.totalAmount += Number(row?.total_amount || row?.totalAmount) || 0;
+                        existing.recordCount += Number(row?.record_count || row?.recordCount) || 0;
+                        const supplierId = Number(row?.supplier_id || row?.supplierId);
                         const supplierKey = Number.isFinite(supplierId) && supplierId > 0
                             ? `id:${supplierId}`
-                            : `name:${(row?.supplierName || '未归属供应商').toString()}`;
+                            : `name:${(row?.supplier_name || row?.supplierName || '未归属供应商').toString()}`;
                         existing._supplierKeys.add(supplierKey);
                         totals.set(year, existing);
                     }
@@ -815,51 +848,6 @@
                 },
                 reportSearchQuery() {
                     return (this.viewSearchQueryByView?.reports || '').toString();
-                },
-                reportTrackerToOrderRows() {
-                    const rows = Array.isArray(this.operationsReport?.tracker?.queues?.toOrder)
-                        ? this.operationsReport.tracker.queues.toOrder
-                        : [];
-                    return rows.filter((row) => this.matchesSearchQuery([
-                        row?.itemName,
-                        row?.requestDate,
-                        row?.department,
-                        row?.handler,
-                        row?.recommendedSupplierName,
-                        row?.serialNumber,
-                    ], this.reportSearchQuery));
-                },
-                reportTrackerWaitingReceiptRows() {
-                    const rows = Array.isArray(this.operationsReport?.tracker?.queues?.waitingReceipt)
-                        ? this.operationsReport.tracker.queues.waitingReceipt
-                        : [];
-                    return rows.filter((row) => this.matchesSearchQuery([
-                        row?.itemName,
-                        row?.supplierName,
-                        row?.orderedDate,
-                        row?.expectedArrivalDate,
-                    ], this.reportSearchQuery));
-                },
-                reportTrackerPendingInvoiceRows() {
-                    const rows = Array.isArray(this.operationsReport?.tracker?.queues?.pendingInvoice)
-                        ? this.operationsReport.tracker.queues.pendingInvoice
-                        : [];
-                    return rows.filter((row) => this.matchesSearchQuery([
-                        row?.itemName,
-                        row?.requestDate,
-                        row?.invoiceNumber,
-                        row?.reimbursementStatus,
-                    ], this.reportSearchQuery));
-                },
-                reportTrackerLeadTimeRows() {
-                    const rows = Array.isArray(this.operationsReport?.tracker?.supplierLeadTimeTrend)
-                        ? this.operationsReport.tracker.supplierLeadTimeTrend
-                        : [];
-                    return rows.filter((row) => this.matchesSearchQuery([
-                        row?.supplierName,
-                        row?.itemName,
-                        row?.latestPurchaseDate,
-                    ], this.reportSearchQuery));
                 },
                 visibleSupplierTopRows() {
                     return this.supplierTopRows.filter((row) => this.matchesSearchQuery([

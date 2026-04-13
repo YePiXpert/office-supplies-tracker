@@ -467,12 +467,47 @@
                             </div>
 
                             <div v-if="amountReport.summary.totalRecords" class="mt-6 space-y-6">
-                                <div v-if="isCurrentSubview('reports', 'tracker')" class="border border-slate-200 rounded-xl p-5">
-                                    <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                        <div>
-                                            <h4 class="text-base font-semibold text-slate-900">Tracker 报表</h4>
-                                            <p class="mt-1 text-sm text-slate-500">直接回答“还有什么没下单、没到货、没闭环”，并附带供应商交期趋势。</p>
+                                <div v-if="isCurrentSubview('reports', 'periods')" class="space-y-6">
+                                    <!-- 粒度切换 Tab -->
+                                    <div class="flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit">
+                                        <button @click="reportGranularity = 'month'; loadAmountReport()"
+                                            :class="reportGranularity === 'month' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'"
+                                            class="px-4 py-2 rounded-md text-sm font-medium transition-all">月</button>
+                                        <button @click="reportGranularity = 'quarter'; loadAmountReport()"
+                                            :class="reportGranularity === 'quarter' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'"
+                                            class="px-4 py-2 rounded-md text-sm font-medium transition-all">季</button>
+                                        <button @click="reportGranularity = 'year'; loadAmountReport()"
+                                            :class="reportGranularity === 'year' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'"
+                                            class="px-4 py-2 rounded-md text-sm font-medium transition-all">年</button>
+                                    </div>
+
+                                    <!-- 柱状图 -->
+                                    <div class="border border-slate-200 rounded-xl p-4">
+                                        <div class="flex items-center justify-between">
+                                            <h4 class="text-sm font-semibold text-slate-800">
+                                                {{ reportGranularity === 'month' ? '月度' : reportGranularity === 'quarter' ? '季度' : '年度' }}金额趋势
+                                            </h4>
+                                            <span class="text-[11px] text-slate-500">单位：元</span>
                                         </div>
+                                        <div class="mt-6 h-52 flex items-end gap-2">
+                                            <div v-for="(row, idx) in reportPeriodRows" :key="`period-chart-${row.period}`"
+                                                 class="flex-1 min-w-0 flex flex-col items-center gap-2">
+                                                <div class="w-full max-w-[52px] rounded-t-md bg-gradient-to-t from-indigo-600 to-blue-500 transition-all duration-500 report-animate-y"
+                                                     :style="{ height: `${row._barHeight}px`, opacity: row._amount > 0 ? 0.95 : 0.22, animationDelay: `${idx * 40}ms` }"></div>
+                                                <div class="text-[10px] font-medium text-slate-500 truncate w-full text-center px-1">{{ row.period || '-' }}</div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
+                                            <div v-for="row in reportPeriodRows" :key="`period-amount-${row.period}`"
+                                                 class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 flex items-center justify-between gap-2">
+                                                <span class="text-xs text-slate-500">{{ row.period || '-' }}</span>
+                                                <span class="text-xs font-semibold font-mono text-slate-700">¥ {{ formatCurrency(row._amount) }}</span>
+                                            </div>
+                                            <div v-if="!reportPeriodRows.length"
+                                                 class="col-span-2 sm:col-span-3 xl:col-span-4 py-10 text-center text-xs text-slate-500">暂无数据</div>
+                                        </div>
+                                    </div>
+                                </div>
                                         <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                                             <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1">待下单 {{ operationsReport.tracker.summary.toOrderCount }}</span>
                                             <span class="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1">待收货 {{ operationsReport.tracker.summary.waitingReceiptCount }}</span>
@@ -687,7 +722,8 @@
                                                 <option v-if="!supplierYearOverviewRows.length" :value="supplierReportYear">{{ supplierReportYear }} 年</option>
                                             </select>
                                             <button @click="exportSupplierReport('monthly')" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">导出月报</button>
-                                            <button @click="exportSupplierReport('yearly')" class="h-10 px-4 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-all duration-200 ease-in-out">导出年报</button>
+                                             <button @click="exportSupplierReport('quarterly')" class="h-10 px-4 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-all duration-200 ease-in-out">导出季报</button>
+                                             <button @click="exportSupplierReport('yearly')" class="h-10 px-4 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-all duration-200 ease-in-out">导出年报</button>
                                         </div>
                                     </div>
 
@@ -741,35 +777,48 @@
                                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                                 <div>
                                                     <h5 class="text-sm font-semibold text-slate-800">供应商采购额走势</h5>
-                                                    <p class="mt-1 text-[11px] text-slate-500">按所选供应商展示 {{ supplierReport.selectedYear || supplierReportYear }} 年月度走势</p>
+                                                    <p class="mt-1 text-[11px] text-slate-500">{{ supplierReport.selectedYear || supplierReportYear }} 年 · {{ supplierReportGranularity === 'month' ? '月度' : supplierReportGranularity === 'quarter' ? '季度' : '年度' }}走势</p>
                                                 </div>
-                                                <select v-model="supplierReportFocusKey" class="h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                                                    <option v-for="option in supplierFocusOptions" :key="`supplier-focus-${option.key}`" :value="option.key">{{ option.label }}</option>
-                                                </select>
+                                                <div class="flex items-center gap-2">
+                                                    <div class="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg">
+                                                        <button @click="supplierReportGranularity = 'month'; loadAmountReport()"
+                                                            :class="supplierReportGranularity === 'month' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'"
+                                                            class="px-3 py-1.5 rounded-md text-xs font-medium transition-all">月</button>
+                                                        <button @click="supplierReportGranularity = 'quarter'; loadAmountReport()"
+                                                            :class="supplierReportGranularity === 'quarter' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'"
+                                                            class="px-3 py-1.5 rounded-md text-xs font-medium transition-all">季</button>
+                                                        <button @click="supplierReportGranularity = 'year'; loadAmountReport()"
+                                                            :class="supplierReportGranularity === 'year' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'"
+                                                            class="px-3 py-1.5 rounded-md text-xs font-medium transition-all">年</button>
+                                                    </div>
+                                                    <select v-model="supplierReportFocusKey" class="h-10 px-3 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                                                        <option v-for="option in supplierFocusOptions" :key="`supplier-focus-${option.key}`" :value="option.key">{{ option.label }}</option>
+                                                    </select>
+                                                </div>
                                             </div>
                                             <div class="mt-6 h-52 flex items-end gap-2">
                                                 <div
                                                     v-for="(row, idx) in supplierFocusTrendRows"
-                                                    :key="`supplier-trend-${row.month}-${idx}`"
+                                                    :key="`supplier-trend-${row.period}-${idx}`"
                                                     class="flex-1 min-w-0 flex flex-col items-center gap-2"
                                                 >
                                                     <div
                                                         class="w-full max-w-[52px] rounded-t-md bg-gradient-to-t from-emerald-600 to-teal-400 transition-all duration-500 report-animate-y"
                                                         :style="{ height: `${row._barHeight}px`, opacity: row._amount > 0 ? 0.95 : 0.25 }"
                                                     ></div>
-                                                    <div class="text-[10px] font-medium text-slate-500 truncate w-full text-center px-1">{{ row.month || '-' }}</div>
+                                                    <div class="text-[10px] font-medium text-slate-500 truncate w-full text-center px-1">{{ row.period || '-' }}</div>
                                                 </div>
                                             </div>
                                             <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
                                                 <div
                                                     v-for="row in supplierFocusTrendRows"
-                                                    :key="`supplier-trend-amount-${row.month}`"
+                                                    :key="`supplier-trend-amount-${row.period}`"
                                                     class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
                                                 >
-                                                    <div class="text-xs text-slate-500">{{ row.month || '-' }}</div>
+                                                    <div class="text-xs text-slate-500">{{ row.period || '-' }}</div>
                                                     <div class="mt-1 text-xs font-semibold font-mono text-slate-700">¥ {{ formatCurrency(row._amount) }}</div>
                                                 </div>
-                                                <div v-if="!supplierFocusTrendRows.length" class="sm:col-span-2 xl:col-span-3 py-10 text-center text-xs text-slate-500">暂无供应商月度走势</div>
+                                                <div v-if="!supplierFocusTrendRows.length" class="sm:col-span-2 xl:col-span-3 py-10 text-center text-xs text-slate-500">暂无供应商走势数据</div>
                                             </div>
                                         </div>
                                     </div>
@@ -848,29 +897,25 @@
 
                                 <div v-if="isCurrentSubview('reports', 'efficiency')" class="border border-slate-200 rounded-xl p-4">
                                     <div class="flex items-center justify-between">
-                                        <h4 class="text-sm font-semibold text-slate-800">执行漏斗（按状态记录数）</h4>
-                                        <span class="text-[11px] text-slate-500">转化率基于首阶段</span>
+                                        <h4 class="text-sm font-semibold text-slate-800">状态快照（各状态存量）</h4>
+                                        <span class="text-[11px] text-slate-500">当前实际库存各状态分布</span>
                                     </div>
                                     <div class="mt-4 space-y-3">
                                         <div
-                                            v-for="(row, idx) in reportFunnelRows"
-                                            :key="`funnel-${row.key}`"
+                                            v-for="row in reportStatusSnapshotRows"
+                                            :key="`snapshot-${row.status}`"
                                             class="rounded-lg border border-slate-200 bg-slate-50 p-3"
                                         >
                                             <div class="flex items-center justify-between gap-2">
-                                                <span class="text-sm font-medium text-slate-700">{{ row.label }}</span>
-                                                <span class="text-sm font-semibold font-mono text-blue-700">{{ row._count }} 条</span>
-                                            </div>
-                                            <div class="mt-2 h-2 rounded-full bg-slate-200/80 overflow-hidden">
-                                                <div class="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-500 report-animate-x" :style="{ width: `${row._ratio.toFixed(2)}%`, animationDelay: `${idx * 45}ms` }"></div>
-                                            </div>
-                                            <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500">
-                                                <span>转化率 {{ row._conversion.toFixed(1) }}%</span>
-                                                <span v-if="row._stepDrop > 0">较上一阶段减少 {{ row._stepDrop }} 条</span>
-                                                <span v-else>较上一阶段无减少</span>
+                                                <span class="text-sm font-medium text-slate-700">{{ row.status || '未标记' }}</span>
+                                                <div class="flex items-center gap-3">
+                                                    <span v-if="row._overdue > 0" class="text-[11px] text-rose-600 font-medium">超期 {{ row._overdue }}</span>
+                                                    <span class="text-sm font-semibold font-mono text-blue-700">¥ {{ formatCurrency(row._amount) }}</span>
+                                                    <span class="text-sm font-semibold font-mono text-slate-700">{{ row._count }} 条</span>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div v-if="!reportFunnelRows.length" class="py-10 text-center text-xs text-slate-500">暂无执行漏斗数据</div>
+                                        <div v-if="!reportStatusSnapshotRows.length" class="py-10 text-center text-xs text-slate-500">暂无状态快照数据</div>
                                     </div>
                                 </div>
 
@@ -1001,14 +1046,7 @@
                                     </section>
 
                 <section v-else-if="currentView === 'operations'" class="view-pane h-full overflow-y-auto pr-1">
-                    <div class="space-y-6">
-                        <div class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl p-6 md:p-8">
-                            <h2 class="text-3xl font-semibold tracking-tight text-slate-900">{{ currentSubViewMeta.title || '采购运营工作台' }}</h2>
-                            <p class="mt-1 text-sm text-slate-500">{{ currentSubViewMeta.description || '聚焦供应商协同、价格基线、导入恢复、异常处理和报销闭环。供应商月报、年报和采购额走势统一在统计报表页查看。' }}</p>
-                        </div>
-
-                        <operations-center-panel></operations-center-panel>
-                    </div>
+                    <operations-center-panel></operations-center-panel>
                 </section>
 
                 <section v-else-if="currentView === 'settings'" class="view-pane h-full overflow-y-auto pr-1">
@@ -2155,6 +2193,11 @@
     <script src="/static/ledger-table-panel.js?v=1.2.26"></script>
     <script src="/static/ledger-detail-modal.js?v=1.2.26"></script>
     <script src="/static/ledger-add-modal.js?v=1.2.26"></script>
+    <script src="/static/ops-panel-mixin.js?v=1.2.26"></script>
+    <script src="/static/ops-overview-panel.js?v=1.2.26"></script>
+    <script src="/static/ops-procurement-panel.js?v=1.2.26"></script>
+    <script src="/static/ops-master-data-panel.js?v=1.2.26"></script>
+    <script src="/static/ops-exceptions-panel.js?v=1.2.26"></script>
     <script src="/static/settings-operations-panel.js?v=1.2.26"></script>
     <script src="/static/settings-ai-panel.js?v=1.2.26"></script>
     <script src="/static/settings-backup-panel.js?v=1.2.26"></script>

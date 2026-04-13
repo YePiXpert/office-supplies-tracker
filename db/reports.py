@@ -83,6 +83,79 @@ def _normalize_year_value(year: Optional[str], month: Optional[str]) -> str:
     return str(date.today().year)
 
 
+def _month_to_quarter(month_str: str) -> str:
+    """Convert '2024-03' -> '2024-Q1'. Returns '' on invalid input."""
+    text = (month_str or "").strip()
+    if len(text) < 7 or text[4] != "-":
+        return ""
+    year = text[:4]
+    month_num = _safe_int(text[5:7])
+    if month_num < 1 or month_num > 12:
+        return ""
+    quarter = (month_num - 1) // 3 + 1
+    return f"{year}-Q{quarter}"
+
+
+def _fill_month_zeros(data: list[dict], count: int = 12) -> list[dict]:
+    """Return the most-recent `count` months, zero-filling any gaps.
+    Each element in `data` must have a 'period' key (YYYY-MM).
+    """
+    today = date.today()
+    months = []
+    for i in range(count - 1, -1, -1):
+        yr = today.year - (today.month - 1 - i < 0 and 1 or 0)
+        mn = (today.month - 1 - i) % 12 + 1
+        # simpler: walk back month by month
+        yr2 = today.year
+        mn2 = today.month - i
+        while mn2 <= 0:
+            mn2 += 12
+            yr2 -= 1
+        months.append(f"{yr2:04d}-{mn2:02d}")
+
+    lookup = {row["period"]: row for row in data}
+    return [
+        lookup.get(m) or {"period": m, "record_count": 0, "total_amount": 0.0}
+        for m in months
+    ]
+
+
+def _fill_quarter_zeros(data: list[dict], count: int = 8) -> list[dict]:
+    """Return the most-recent `count` natural quarters, zero-filling gaps.
+    Each element in `data` must have a 'period' key (YYYY-Qn).
+    """
+    today = date.today()
+    current_q = (today.month - 1) // 3 + 1
+    current_year = today.year
+    quarters = []
+    q = current_q
+    y = current_year
+    for _ in range(count):
+        quarters.append(f"{y:04d}-Q{q}")
+        q -= 1
+        if q == 0:
+            q = 4
+            y -= 1
+    quarters.reverse()
+
+    lookup = {row["period"]: row for row in data}
+    return [
+        lookup.get(q) or {"period": q, "record_count": 0, "total_amount": 0.0}
+        for q in quarters
+    ]
+
+
+def _fill_year_zeros(data: list[dict], count: int = 5) -> list[dict]:
+    """Return the most-recent `count` years, zero-filling gaps."""
+    current_year = date.today().year
+    years = [str(current_year - i) for i in range(count - 1, -1, -1)]
+    lookup = {row["period"]: row for row in data}
+    return [
+        lookup.get(y) or {"period": y, "record_count": 0, "total_amount": 0.0}
+        for y in years
+    ]
+
+
 async def get_stats_summary() -> dict:
     """获取统计信息（SQL 聚合）。"""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -128,9 +201,10 @@ async def get_amount_report(
     status: Optional[str] = None,
     department: Optional[str] = None,
     month: Optional[str] = None,
-    keyword: Optional[str] = None
+    keyword: Optional[str] = None,
+    granularity: str = "month",
 ) -> dict:
-    """金额统计报表。"""
+    """金额统计报表，支持 granularity=month|quarter|year。"""
     conditions, params = build_item_filters(
         status=status, department=department, month=month, keyword=keyword
     )
@@ -180,28 +254,60 @@ async def get_amount_report(
         async with db.execute(status_query, params) as cursor:
             by_status = [dict(row) for row in await cursor.fetchall()]
 
-        month_conditions = list(conditions)
-        month_params = list(params)
-        month_conditions.append("request_date IS NOT NULL")
-        month_conditions.append("request_date <> ''")
-        month_where = f" WHERE {' AND '.join(month_conditions)}"
+        # Period trend — always pull raw month rows then aggregate/fill in Python
+        period_conditions = list(conditions)
+        period_params = list(params)
+        period_conditions.append("request_date IS NOT NULL")
+        period_conditions.append("request_date <> ''")
+        period_where = f" WHERE {' AND '.join(period_conditions)}"
 
         month_query = f"""
             SELECT
-                SUBSTR(request_date, 1, 7) AS month,
+                SUBSTR(request_date, 1, 7) AS period,
                 COUNT(*) AS record_count,
                 COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount
             FROM items
-            {month_where}
-            GROUP BY month
-            HAVING month IS NOT NULL AND month <> ''
-            ORDER BY month DESC
-            LIMIT 12
+            {period_where}
+            GROUP BY period
+            HAVING period IS NOT NULL AND period <> ''
+            ORDER BY period ASC
         """
-        async with db.execute(month_query, month_params) as cursor:
-            by_month = [dict(row) for row in await cursor.fetchall()]
+        async with db.execute(month_query, period_params) as cursor:
+            raw_month_rows = [dict(row) for row in await cursor.fetchall()]
+
+    # Build normalised period rows
+    norm_month = [
+        {
+            "period": r["period"],
+            "record_count": _safe_int(r["record_count"]),
+            "total_amount": _safe_float(r["total_amount"]),
+        }
+        for r in raw_month_rows
+    ]
+
+    if granularity == "year":
+        year_map: dict[str, dict] = {}
+        for r in norm_month:
+            yr = r["period"][:4]
+            e = year_map.setdefault(yr, {"period": yr, "record_count": 0, "total_amount": 0.0})
+            e["record_count"] += r["record_count"]
+            e["total_amount"] += r["total_amount"]
+        by_period = _fill_year_zeros(list(year_map.values()), count=5)
+    elif granularity == "quarter":
+        q_map: dict[str, dict] = {}
+        for r in norm_month:
+            qk = _month_to_quarter(r["period"])
+            if not qk:
+                continue
+            e = q_map.setdefault(qk, {"period": qk, "record_count": 0, "total_amount": 0.0})
+            e["record_count"] += r["record_count"]
+            e["total_amount"] += r["total_amount"]
+        by_period = _fill_quarter_zeros(list(q_map.values()), count=8)
+    else:
+        by_period = _fill_month_zeros(norm_month, count=12)
 
     return {
+        "granularity": granularity,
         "summary": {
             "total_records": int(summary.get("total_records") or 0),
             "total_amount": float(summary.get("total_amount") or 0),
@@ -225,13 +331,22 @@ async def get_amount_report(
             }
             for row in by_status
         ],
+        "by_period": [
+            {
+                "period": row.get("period") or "",
+                "record_count": int(row.get("record_count") or 0),
+                "total_amount": round(float(row.get("total_amount") or 0), 2),
+            }
+            for row in by_period
+        ],
+        # Keep by_month for backward compat (last 12 filled months)
         "by_month": [
             {
-                "month": row.get("month") or "",
+                "month": row.get("period") or "",
                 "record_count": int(row.get("record_count") or 0),
-                "total_amount": float(row.get("total_amount") or 0),
+                "total_amount": round(float(row.get("total_amount") or 0), 2),
             }
-            for row in by_month
+            for row in _fill_month_zeros(norm_month, count=12)
         ],
     }
 
@@ -242,7 +357,7 @@ async def get_operations_report(
     month: Optional[str] = None,
     keyword: Optional[str] = None,
 ) -> dict:
-    """执行漏斗、采购周期与月度金额趋势报表。"""
+    """状态快照、采购周期与月度金额趋势报表。"""
     conditions, params = build_item_filters(
         status=status, department=department, month=month, keyword=keyword
     )
@@ -250,6 +365,27 @@ async def get_operations_report(
 
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
+
+        # Status snapshot (count + amount per status, overdue counts)
+        today_str = date.today().isoformat()
+        snapshot_query = f"""
+            SELECT
+                status,
+                COUNT(*) AS record_count,
+                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+                SUM(CASE
+                    WHEN status IN ('待采购','待到货','待分发')
+                         AND request_date IS NOT NULL
+                         AND request_date <> ''
+                         AND request_date < date('{today_str}', '-14 days')
+                    THEN 1 ELSE 0 END) AS overdue_count
+            FROM items
+            {where_clause}
+            GROUP BY status
+        """
+        async with db.execute(snapshot_query, params) as cursor:
+            snapshot_rows = [dict(row) for row in await cursor.fetchall()]
+
         query = f"""
             SELECT
                 status,
@@ -265,16 +401,11 @@ async def get_operations_report(
         async with db.execute(query, params) as cursor:
             rows = [dict(row) for row in await cursor.fetchall()]
 
-    status_counts = {label: 0 for _, label in FLOW_STAGES}
     req_to_arrival_days: list[int] = []
     arrival_to_dist_days: list[int] = []
     month_summary: dict[str, dict] = {}
 
     for row in rows:
-        status_value = str(row.get("status") or "").strip()
-        if status_value in status_counts:
-            status_counts[status_value] += 1
-
         request_dt = _parse_iso_date(row.get("request_date"))
         arrival_dt = _parse_iso_date(row.get("arrival_date"))
         distribution_dt = _parse_iso_date(row.get("distribution_date"))
@@ -311,34 +442,57 @@ async def get_operations_report(
         elif payment_status == UNPAID_STATUS:
             month_summary[month_key]["unpaid_amount"] += amount
 
-    trend_rows = sorted(month_summary.values(), key=lambda row: row["month"])[-12:]
-    tracker_report = await get_procurement_tracker_report(
-        limit=12,
-        status=status,
-        department=department,
-        month=month,
-        keyword=keyword,
-    )
+    trend_rows = sorted(month_summary.values(), key=lambda r: r["month"])[-12:]
+
+    # Build cycle buckets with sample-size denominator (not max-count)
+    req_sample = len(req_to_arrival_days)
+    dist_sample = len(arrival_to_dist_days)
+
+    def _buckets_with_ratio(values: list[int], sample_size: int) -> list[dict]:
+        raw = _bucketize_days(values)
+        for bucket in raw:
+            bucket["ratio"] = round(
+                (bucket["count"] / sample_size * 100) if sample_size > 0 else 0.0, 2
+            )
+        return raw
 
     return {
+        # Renamed from 'funnel' to 'status_snapshot' — these are current-state counts
+        "status_snapshot": [
+            {
+                "status": row.get("status") or "",
+                "record_count": _safe_int(row.get("record_count")),
+                "total_amount": round(_safe_float(row.get("total_amount")), 2),
+                "overdue_count": _safe_int(row.get("overdue_count")),
+            }
+            for row in snapshot_rows
+        ],
+        # Keep 'funnel' alias so existing frontend code doesn't break immediately
         "funnel": [
             {
                 "key": key,
                 "label": label,
-                "count": int(status_counts.get(label, 0)),
+                "count": next(
+                    (
+                        _safe_int(r.get("record_count"))
+                        for r in snapshot_rows
+                        if r.get("status") == label
+                    ),
+                    0,
+                ),
             }
             for key, label in FLOW_STAGES
         ],
         "cycle_distribution": {
             "request_to_arrival": {
-                "buckets": _bucketize_days(req_to_arrival_days),
+                "buckets": _buckets_with_ratio(req_to_arrival_days, req_sample),
                 "average_days": _average_days(req_to_arrival_days),
-                "sample_size": len(req_to_arrival_days),
+                "sample_size": req_sample,
             },
             "arrival_to_distribution": {
-                "buckets": _bucketize_days(arrival_to_dist_days),
+                "buckets": _buckets_with_ratio(arrival_to_dist_days, dist_sample),
                 "average_days": _average_days(arrival_to_dist_days),
-                "sample_size": len(arrival_to_dist_days),
+                "sample_size": dist_sample,
             },
         },
         "monthly_amount_trend": [
@@ -351,7 +505,6 @@ async def get_operations_report(
             }
             for row in trend_rows
         ],
-        "tracker": tracker_report,
     }
 
 
@@ -362,8 +515,9 @@ async def get_supplier_report(
     keyword: Optional[str] = None,
     year: Optional[str] = None,
     supplier_id: Optional[int] = None,
+    granularity: str = "month",
 ) -> dict:
-    """供应商采购分析报表。"""
+    """供应商采购分析报表，支持 granularity=month|quarter|year。"""
     selected_year = _normalize_year_value(year, month)
     summary_conditions, summary_params = build_item_filters(
         status=status, department=department, month=month, keyword=keyword
@@ -431,6 +585,7 @@ async def get_supplier_report(
         async with db.execute(top_suppliers_query, summary_params) as cursor:
             top_supplier_rows = [dict(row) for row in await cursor.fetchall()]
 
+        # Monthly trend for selected year (used for month/quarter granularity)
         monthly_trend_query = f"""
             SELECT
                 SUBSTR(request_date, 1, 7) AS month,
@@ -448,6 +603,7 @@ async def get_supplier_report(
         async with db.execute(monthly_trend_query, trend_params) as cursor:
             monthly_trend_rows = [dict(row) for row in await cursor.fetchall()]
 
+        # Yearly summary — direct GROUP BY year, no LIMIT truncation
         yearly_summary_query = f"""
             SELECT
                 SUBSTR(request_date, 1, 4) AS year,
@@ -462,7 +618,6 @@ async def get_supplier_report(
             GROUP BY year, supplier_id, supplier_name
             HAVING year IS NOT NULL AND year <> ''
             ORDER BY year DESC, total_amount DESC, supplier_name COLLATE NOCASE ASC
-            LIMIT 80
         """
         async with db.execute(yearly_summary_query, yearly_params) as cursor:
             yearly_summary_rows = [dict(row) for row in await cursor.fetchall()]
@@ -498,8 +653,37 @@ async def get_supplier_report(
         async with db.execute(unassigned_query, summary_params) as cursor:
             unassigned_rows = [dict(row) for row in await cursor.fetchall()]
 
+    # Build quarterly trend from monthly rows
+    quarterly_trend_map: dict[tuple, dict] = {}
+    for r in monthly_trend_rows:
+        qk = _month_to_quarter(r["month"])
+        if not qk:
+            continue
+        sid = _safe_int(r.get("supplier_id")) or None
+        sname = r.get("supplier_name") or "未归属供应商"
+        key = (qk, sid, sname)
+        e = quarterly_trend_map.setdefault(
+            key,
+            {
+                "quarter": qk,
+                "supplier_id": sid,
+                "supplier_name": sname,
+                "record_count": 0,
+                "total_quantity": 0.0,
+                "total_amount": 0.0,
+            },
+        )
+        e["record_count"] += _safe_int(r.get("record_count"))
+        e["total_quantity"] += _safe_float(r.get("total_quantity"))
+        e["total_amount"] += _safe_float(r.get("total_amount"))
+
+    quarterly_trend_rows = sorted(
+        quarterly_trend_map.values(), key=lambda r: (r["quarter"], -(r["total_amount"]))
+    )
+
     return {
         "selected_year": selected_year,
+        "granularity": granularity,
         "selected_supplier_id": int(supplier_id) if supplier_id else None,
         "summary": {
             "total_records": _safe_int(summary_row.get("total_records")),
@@ -532,6 +716,17 @@ async def get_supplier_report(
                 "total_amount": _safe_float(row.get("total_amount")),
             }
             for row in monthly_trend_rows
+        ],
+        "quarterly_trend": [
+            {
+                "quarter": row.get("quarter") or "",
+                "supplier_id": row.get("supplier_id"),
+                "supplier_name": row.get("supplier_name") or "未归属供应商",
+                "record_count": _safe_int(row.get("record_count")),
+                "total_quantity": round(_safe_float(row.get("total_quantity")), 2),
+                "total_amount": round(_safe_float(row.get("total_amount")), 2),
+            }
+            for row in quarterly_trend_rows
         ],
         "yearly_summary": [
             {

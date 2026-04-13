@@ -1581,10 +1581,17 @@
                         if (this.filterDepartment) params.department = this.filterDepartment;
                         if (this.filterMonth) params.month = this.filterMonth;
                         if (this.supplierReportYear) params.year = this.supplierReportYear;
+                        if (this.reportGranularity) params.granularity = this.reportGranularity;
+
+                        const supplierParams = { ...params };
+                        if (this.supplierReportGranularity) {
+                            supplierParams.granularity = this.supplierReportGranularity;
+                        }
+
                         const [amountResult, operationsResult, supplierResult] = await Promise.allSettled([
                             axios.get('/api/reports/amount', { params }),
                             axios.get('/api/reports/operations', { params }),
-                            axios.get('/api/reports/suppliers', { params }),
+                            axios.get('/api/reports/suppliers', { params: supplierParams }),
                         ]);
                         if (amountResult.status !== 'fulfilled') {
                             throw amountResult.reason;
@@ -1605,6 +1612,7 @@
                             this.showToast('供应商分析加载失败，已展示基础报表', 'error');
                         }
                         this.amountReport = {
+                            granularity: data.granularity || this.reportGranularity || 'month',
                             summary: {
                                 totalRecords: data.summary?.total_records || 0,
                                 totalAmount: data.summary?.total_amount || 0,
@@ -1613,9 +1621,11 @@
                             },
                             byDepartment: Array.isArray(data.by_department) ? data.by_department : [],
                             byStatus: Array.isArray(data.by_status) ? data.by_status : [],
+                            byPeriod: Array.isArray(data.by_period) ? data.by_period : [],
                             byMonth: Array.isArray(data.by_month) ? data.by_month : []
                         };
                         this.operationsReport = {
+                            statusSnapshot: Array.isArray(operations.status_snapshot) ? operations.status_snapshot : [],
                             funnel: Array.isArray(operations.funnel) ? operations.funnel : [],
                             cycleDistribution: {
                                 requestToArrival: {
@@ -1642,79 +1652,10 @@
                                     recordCount: Number(row.record_count) || 0,
                                 }))
                                 : [],
-                            tracker: {
-                                summary: {
-                                    toOrderCount: Number(operations.tracker?.summary?.to_order_count) || 0,
-                                    waitingReceiptCount: Number(operations.tracker?.summary?.waiting_receipt_count) || 0,
-                                    pendingInvoiceCount: Number(operations.tracker?.summary?.pending_invoice_count) || 0,
-                                    replenishmentCount: Number(operations.tracker?.summary?.replenishment_count) || 0,
-                                    actionQueueCount: Number(operations.tracker?.summary?.action_queue_count) || 0,
-                                    overdueReceiptCount: Number(operations.tracker?.summary?.overdue_receipt_count) || 0,
-                                },
-                                queues: {
-                                    toOrder: Array.isArray(operations.tracker?.purchase_queue)
-                                        ? operations.tracker.purchase_queue.map((row) => ({
-                                            itemId: Number(row.item_id) || 0,
-                                            purchaseOrderId: Number(row.purchase_order_id) || 0,
-                                            serialNumber: row.serial_number || '',
-                                            department: row.department || '',
-                                            handler: row.handler || '',
-                                            requestDate: row.request_date || '',
-                                            itemName: row.item_name || '',
-                                            quantity: Number(row.quantity) || 0,
-                                            purchaseStatus: row.purchase_status || 'draft',
-                                            supplierName: row.supplier_name || row.item_supplier_name || '',
-                                            recommendedSupplierName: row.recommended_supplier_name || '',
-                                            recommendedUnitPrice: Number(row.recommended_unit_price) || 0,
-                                            recommendedLeadTimeDays: row.recommended_lead_time_days == null ? null : Number(row.recommended_lead_time_days),
-                                            recommendedQuantity: Number(row.recommended_quantity) || 0,
-                                            requestAgeDays: Number(row.request_age_days) || 0,
-                                        }))
-                                        : [],
-                                    waitingReceipt: Array.isArray(operations.tracker?.receipt_queue)
-                                        ? operations.tracker.receipt_queue.map((row) => ({
-                                            itemId: Number(row.item_id) || 0,
-                                            purchaseOrderId: Number(row.purchase_order_id) || 0,
-                                            serialNumber: row.serial_number || '',
-                                            requestDate: row.request_date || '',
-                                            itemName: row.item_name || '',
-                                            supplierName: row.supplier_name || '',
-                                            orderedDate: row.ordered_date || '',
-                                            expectedArrivalDate: row.expected_arrival_date || '',
-                                            overdueDays: Number(row.overdue_days) || 0,
-                                            daysSinceOrder: Number(row.days_since_order) || 0,
-                                            quantity: Number(row.quantity) || 0,
-                                        }))
-                                        : [],
-                                    pendingInvoice: Array.isArray(operations.tracker?.invoice_queue)
-                                        ? operations.tracker.invoice_queue.map((row) => ({
-                                            itemId: Number(row.item_id) || 0,
-                                            serialNumber: row.serial_number || '',
-                                            requestDate: row.request_date || '',
-                                            itemName: row.item_name || '',
-                                            reimbursementStatus: row.reimbursement_status || 'pending',
-                                            reimbursementDate: row.reimbursement_date || '',
-                                            invoiceNumber: row.invoice_number || '',
-                                            attachmentCount: Number(row.attachment_count) || 0,
-                                        }))
-                                        : [],
-                                },
-                                supplierLeadTimeTrend: Array.isArray(operations.tracker?.supplier_lead_time_trend)
-                                    ? operations.tracker.supplier_lead_time_trend.map((row) => ({
-                                        supplierId: row.supplier_id || null,
-                                        supplierName: row.supplier_name || '',
-                                        itemName: row.item_name || '',
-                                        averageLeadTimeDays: row.average_lead_time_days == null ? null : Number(row.average_lead_time_days),
-                                        latestLeadTimeDays: row.latest_lead_time_days == null ? null : Number(row.latest_lead_time_days),
-                                        latestUnitPrice: row.latest_unit_price == null ? null : Number(row.latest_unit_price),
-                                        latestPurchaseDate: row.latest_purchase_date || '',
-                                        priceRecordCount: Number(row.price_record_count) || 0,
-                                    }))
-                                    : [],
-                            },
                         };
                         this.supplierReport = {
                             selectedYear: suppliers.selected_year || this.supplierReportYear || '',
+                            granularity: suppliers.granularity || this.supplierReportGranularity || 'month',
                             summary: {
                                 totalRecords: Number(suppliers.summary?.total_records) || 0,
                                 supplierCount: Number(suppliers.summary?.supplier_count) || 0,
@@ -1738,6 +1679,16 @@
                             monthlyTrend: Array.isArray(suppliers.monthly_trend)
                                 ? suppliers.monthly_trend.map((row) => ({
                                     month: row.month || '',
+                                    supplierId: row.supplier_id || null,
+                                    supplierName: row.supplier_name || '未归属供应商',
+                                    recordCount: Number(row.record_count) || 0,
+                                    totalQuantity: Number(row.total_quantity) || 0,
+                                    totalAmount: Number(row.total_amount) || 0,
+                                }))
+                                : [],
+                            quarterlyTrend: Array.isArray(suppliers.quarterly_trend)
+                                ? suppliers.quarterly_trend.map((row) => ({
+                                    quarter: row.quarter || '',
                                     supplierId: row.supplier_id || null,
                                     supplierName: row.supplier_name || '未归属供应商',
                                     recordCount: Number(row.record_count) || 0,
@@ -2602,7 +2553,7 @@
                     }
                 },
                 async exportSupplierReport(mode = 'full') {
-                    const normalizedMode = ['full', 'monthly', 'yearly'].includes(mode) ? mode : 'full';
+                    const normalizedMode = ['full', 'monthly', 'quarterly', 'yearly'].includes(mode) ? mode : 'full';
                     if (normalizedMode === 'monthly' && !this.filterMonth) {
                         this.showToast('请先选择要导出的月份', 'error');
                         return;
@@ -2624,9 +2575,11 @@
                         });
                         const fallbackName = normalizedMode === 'monthly'
                             ? 'supplier_purchase_monthly_report.xlsx'
-                            : normalizedMode === 'yearly'
-                                ? 'supplier_purchase_yearly_report.xlsx'
-                                : 'supplier_purchase_report.xlsx';
+                            : normalizedMode === 'quarterly'
+                                ? 'supplier_purchase_quarterly_report.xlsx'
+                                : normalizedMode === 'yearly'
+                                    ? 'supplier_purchase_yearly_report.xlsx'
+                                    : 'supplier_purchase_report.xlsx';
                         const filename = this.parseDownloadFilename(
                             response?.headers?.['content-disposition'],
                             fallbackName
