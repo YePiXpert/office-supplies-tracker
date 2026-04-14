@@ -125,13 +125,13 @@ async def get_item_history_page(
     conditions, params = build_history_filters(
         action=action, keyword=keyword, month=month
     )
-    base_where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
-    data_query = (
-        "SELECT * FROM item_history"
-        + base_where
-        + " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
-    )
-    count_query = "SELECT COUNT(*) FROM item_history" + base_where
+    data_query = "SELECT * FROM item_history"
+    count_query = "SELECT COUNT(*) FROM item_history"
+    if conditions:
+        where = " WHERE " + " AND ".join(conditions)
+        data_query += where
+        count_query += where
+    data_query += " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
 
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row

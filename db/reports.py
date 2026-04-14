@@ -324,33 +324,6 @@ async def get_operations_report(
     )
     where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
 
-    # Build filter conditions for cycle and trend subqueries.
-    # These add extra constraints on top of the base filters.
-    and_prefix = " AND " if conditions else " WHERE "
-
-    req_to_arrival_where = (
-        where_clause
-        + and_prefix
-        + "request_date IS NOT NULL AND request_date != ''"
-        + " AND arrival_date IS NOT NULL AND arrival_date != ''"
-        + " AND julianday(arrival_date) >= julianday(request_date)"
-    )
-
-    arrival_to_dist_where = (
-        where_clause
-        + and_prefix
-        + "arrival_date IS NOT NULL AND arrival_date != ''"
-        + " AND distribution_date IS NOT NULL AND distribution_date != ''"
-        + " AND julianday(distribution_date) >= julianday(arrival_date)"
-    )
-
-    monthly_trend_where = (
-        where_clause
-        + and_prefix
-        + "request_date IS NOT NULL AND request_date != ''"
-        + " AND LENGTH(request_date) >= 7 AND SUBSTR(request_date, 5, 1) = '-'"
-    )
-
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
 
@@ -374,7 +347,9 @@ async def get_operations_report(
         async with db.execute(snapshot_query, params) as cursor:
             snapshot_rows = [dict(row) for row in await cursor.fetchall()]
 
-        # Cycle distribution: request → arrival (all in SQL, no Python row loop)
+        # Cycle distribution: request → arrival.
+        # Extra date validity and ordering conditions are applied in the outer WHERE so
+        # the inner subquery uses the same {where_clause} pattern as snapshot_query.
         req_cycle_query = f"""
             SELECT
                 SUM(CASE WHEN diff <= 3                  THEN 1 ELSE 0 END) AS bucket_0_3,
@@ -387,8 +362,9 @@ async def get_operations_report(
             FROM (
                 SELECT CAST(julianday(arrival_date) - julianday(request_date) AS INTEGER) AS diff
                 FROM items
-                {req_to_arrival_where}
+                {where_clause}
             )
+            WHERE diff >= 0
         """
         async with db.execute(req_cycle_query, params) as cursor:
             req_cycle_row = dict(await cursor.fetchone() or {})
@@ -406,13 +382,15 @@ async def get_operations_report(
             FROM (
                 SELECT CAST(julianday(distribution_date) - julianday(arrival_date) AS INTEGER) AS diff
                 FROM items
-                {arrival_to_dist_where}
+                {where_clause}
             )
+            WHERE diff >= 0
         """
         async with db.execute(dist_cycle_query, params) as cursor:
             dist_cycle_row = dict(await cursor.fetchone() or {})
 
         # Monthly amount trend (last 12 months) — aggregated in SQL.
+        # Extra date validity is handled via HAVING (avoids an intermediate derived WHERE var).
         # Payment status values use parameterized placeholders (not string interpolation)
         # to keep the query consistent with the module-level PAID_STATUSES / UNPAID_STATUS.
         paid_placeholders = ", ".join(["?"] * len(PAID_STATUSES))
@@ -426,9 +404,11 @@ async def get_operations_report(
                 COALESCE(SUM(CASE WHEN payment_status = ?
                                   THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS unpaid_amount
             FROM items
-            {monthly_trend_where}
+            {where_clause}
             GROUP BY month
-            HAVING month IS NOT NULL AND month != ''
+            HAVING month IS NOT NULL
+               AND LENGTH(month) = 7
+               AND SUBSTR(month, 5, 1) = '-'
             ORDER BY month ASC
         """
         monthly_trend_params = params + list(PAID_STATUSES) + [UNPAID_STATUS]
