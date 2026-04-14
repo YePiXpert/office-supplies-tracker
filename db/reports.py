@@ -15,6 +15,10 @@ FLOW_STAGES = (
     ("distributed", "已分发"),
 )
 
+# Payment status values used in SQL aggregation queries
+PAID_STATUSES = ("已付款", "已报销")
+UNPAID_STATUS = "未付款"
+
 def _safe_float(value) -> float:
     try:
         return float(value)
@@ -59,12 +63,12 @@ def _fill_month_zeros(data: list[dict], count: int = 12) -> list[dict]:
     today = date.today()
     months = []
     for i in range(count - 1, -1, -1):
-        yr2 = today.year
-        mn2 = today.month - i
-        while mn2 <= 0:
-            mn2 += 12
-            yr2 -= 1
-        months.append(f"{yr2:04d}-{mn2:02d}")
+        year = today.year
+        month = today.month - i
+        while month <= 0:
+            month += 12
+            year -= 1
+        months.append(f"{year:04d}-{month:02d}")
 
     lookup = {row["period"]: row for row in data}
     return [
@@ -408,15 +412,18 @@ async def get_operations_report(
         async with db.execute(dist_cycle_query, params) as cursor:
             dist_cycle_row = dict(await cursor.fetchone() or {})
 
-        # Monthly amount trend (last 12 months) — aggregated in SQL
+        # Monthly amount trend (last 12 months) — aggregated in SQL.
+        # Payment status values use parameterized placeholders (not string interpolation)
+        # to keep the query consistent with the module-level PAID_STATUSES / UNPAID_STATUS.
+        paid_placeholders = ", ".join(["?"] * len(PAID_STATUSES))
         monthly_trend_query = f"""
             SELECT
                 SUBSTR(request_date, 1, 7) AS month,
                 COUNT(*) AS record_count,
                 COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
-                COALESCE(SUM(CASE WHEN payment_status IN ('已付款', '已报销')
+                COALESCE(SUM(CASE WHEN payment_status IN ({paid_placeholders})
                                   THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS paid_amount,
-                COALESCE(SUM(CASE WHEN payment_status = '未付款'
+                COALESCE(SUM(CASE WHEN payment_status = ?
                                   THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS unpaid_amount
             FROM items
             {monthly_trend_where}
@@ -424,7 +431,8 @@ async def get_operations_report(
             HAVING month IS NOT NULL AND month != ''
             ORDER BY month ASC
         """
-        async with db.execute(monthly_trend_query, params) as cursor:
+        monthly_trend_params = params + list(PAID_STATUSES) + [UNPAID_STATUS]
+        async with db.execute(monthly_trend_query, monthly_trend_params) as cursor:
             monthly_trend_rows = [dict(row) for row in await cursor.fetchall()]
 
     def _cycle_buckets_from_row(row: dict) -> tuple[list[dict], int, float]:
