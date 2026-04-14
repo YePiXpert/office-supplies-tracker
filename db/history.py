@@ -114,6 +114,49 @@ async def get_item_history(
     return records
 
 
+async def get_item_history_page(
+    action: Optional[str] = None,
+    keyword: Optional[str] = None,
+    month: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[dict], int]:
+    """分页查询变更历史，同一连接内返回 (items, total)。"""
+    conditions, params = build_history_filters(
+        action=action, keyword=keyword, month=month
+    )
+    base_where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    data_query = (
+        "SELECT * FROM item_history"
+        + base_where
+        + " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
+    )
+    count_query = "SELECT COUNT(*) FROM item_history" + base_where
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            data_query, params + [page_size, max(0, (page - 1) * page_size)]
+        ) as cursor:
+            rows = await cursor.fetchall()
+        async with db.execute(count_query, params) as cursor:
+            count_row = await cursor.fetchone()
+            total = int(count_row[0] if count_row else 0)
+
+    records = []
+    for row in rows:
+        record = dict(row)
+        record["changed_fields"] = (
+            record.get("changed_fields", "").split(",")
+            if record.get("changed_fields")
+            else []
+        )
+        record["before_data"] = safe_json_loads(record.get("before_data"))
+        record["after_data"] = safe_json_loads(record.get("after_data"))
+        records.append(record)
+    return records, total
+
+
 async def count_item_history(
     action: Optional[str] = None,
     keyword: Optional[str] = None,

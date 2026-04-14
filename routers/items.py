@@ -19,14 +19,15 @@ from database import (
     delete_item,
     get_data_quality_report,
     get_amount_report,
+    get_audit_logs_page,
     get_departments,
-    get_audit_logs,
     get_execution_board,
     get_handlers,
     get_item,
-    get_item_history,
+    get_item_history_page,
     get_items,
     get_items_page,
+    get_deleted_items_page,
     stream_items,
     get_operations_report,
     get_supplier_report,
@@ -285,12 +286,11 @@ async def recycle_bin_list(
     """回收站列表（软删除记录）。"""
     _validate_pagination(page, page_size)
     normalized_keyword = normalize_text_filter(keyword)
-    items = await list_deleted_items(
+    items, total = await get_deleted_items_page(
         keyword=normalized_keyword,
         page=page,
         page_size=page_size,
     )
-    total = await count_deleted_items(keyword=normalized_keyword)
     return {
         "items": items,
         "total": total,
@@ -503,10 +503,9 @@ async def history_list(
     """变更历史列表。"""
     _validate_pagination(page, page_size)
     action, keyword, month = _normalize_history_filters(action, keyword, month)
-    items = await get_item_history(
+    items, total = await get_item_history_page(
         action=action, keyword=keyword, month=month, page=page, page_size=page_size
     )
-    total = await count_item_history(action=action, keyword=keyword, month=month)
     return {
         "items": items,
         "total": total,
@@ -525,8 +524,7 @@ async def audit_logs(
     _validate_pagination(page, page_size)
     if record_id is not None and record_id <= 0:
         raise HTTPException(status_code=400, detail="record_id 必须为正整数")
-    items = await get_audit_logs(record_id=record_id, page=page, page_size=page_size)
-    total = await count_audit_logs(record_id=record_id)
+    items, total = await get_audit_logs_page(record_id=record_id, page=page, page_size=page_size)
     return {
         "items": items,
         "total": total,

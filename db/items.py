@@ -970,6 +970,34 @@ async def batch_update_items(item_ids: list[int], updates: dict) -> dict:
     }
 
 
+async def get_deleted_items_page(
+    keyword: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[dict], int]:
+    """回收站分页查询，同一连接内返回 (items, total)。"""
+    conditions, params = build_item_filters(keyword=keyword, only_deleted=True)
+    base_where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    data_query = (
+        "SELECT * FROM items"
+        + base_where
+        + " ORDER BY deleted_at DESC, id DESC LIMIT ? OFFSET ?"
+    )
+    count_query = "SELECT COUNT(*) FROM items" + base_where
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            data_query, params + [page_size, max(0, (page - 1) * page_size)]
+        ) as cursor:
+            rows = await cursor.fetchall()
+            items = [dict(row) for row in rows]
+        async with db.execute(count_query, params) as cursor:
+            count_row = await cursor.fetchone()
+            total = int(count_row[0] if count_row else 0)
+    return items, total
+
+
 async def list_deleted_items(
     keyword: Optional[str] = None,
     page: int = 1,

@@ -307,9 +307,9 @@
         computed: {
                 totalPages() { return Math.max(1, Math.ceil(this.totalItems / this.pageSize)); },
                 latestItems() {
-                    return [...(this.items || [])]
-                        .sort((a, b) => (Number(b?.id) || 0) - (Number(a?.id) || 0))
-                        .slice(0, 5);
+                    // items is already sorted newest-first (created_at DESC, id DESC)
+                    // from the API, so slicing avoids an O(n log n) sort on every render.
+                    return (this.items || []).slice(0, 5);
                 },
                 pageRangeStart() {
                     if (!this.totalItems) return 0;
