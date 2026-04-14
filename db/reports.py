@@ -63,12 +63,12 @@ def _fill_month_zeros(data: list[dict], count: int = 12) -> list[dict]:
     today = date.today()
     months = []
     for i in range(count - 1, -1, -1):
-        year = today.year
-        month = today.month - i
-        while month <= 0:
-            month += 12
-            year -= 1
-        months.append(f"{year:04d}-{month:02d}")
+        yr = today.year
+        mn = today.month - i
+        while mn <= 0:
+            mn += 12
+            yr -= 1
+        months.append(f"{yr:04d}-{mn:02d}")
 
     lookup = {row["period"]: row for row in data}
     return [
@@ -416,7 +416,16 @@ async def get_operations_report(
             monthly_trend_rows = [dict(row) for row in await cursor.fetchall()]
 
     def _cycle_buckets_from_row(row: dict) -> tuple[list[dict], int, float]:
-        """Convert a flat cycle-distribution SQL result row into (buckets, sample_size, avg_days)."""
+        """Convert a flat cycle-distribution SQL result row into (buckets, sample_size, avg_days).
+
+        Args:
+            row: Dict with keys bucket_0_3, bucket_4_7, bucket_8_14, bucket_15_30,
+                 bucket_31_plus, sample_size, average_days from the cycle SQL query.
+
+        Returns:
+            (buckets, sample_size, average_days) where buckets is a list of
+            {label, count, ratio} dicts ordered from shortest to longest cycle.
+        """
         sample_size = _safe_int(row.get("sample_size"))
         average_days = round(_safe_float(row.get("average_days")), 2)
         bucket_counts = [
