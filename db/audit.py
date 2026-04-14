@@ -52,6 +52,51 @@ async def get_audit_logs(
     return result
 
 
+async def get_audit_logs_page(
+    record_id: Optional[int] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[dict], int]:
+    """字段级审计日志分页查询，同一连接内返回 (items, total)。"""
+    conditions = []
+    params = []
+    if record_id is not None:
+        conditions.append("record_id = ?")
+        params.append(int(record_id))
+
+    base_where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    order = (
+        " ORDER BY created_at ASC, log_id ASC"
+        if record_id is not None
+        else " ORDER BY created_at DESC, log_id DESC"
+    )
+    data_query = (
+        "SELECT log_id, record_id, action, changed_fields, operator_ip, created_at"
+        " FROM audit_logs"
+        + base_where
+        + order
+        + " LIMIT ? OFFSET ?"
+    )
+    count_query = "SELECT COUNT(*) FROM audit_logs" + base_where
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            data_query, params + [page_size, max(0, (page - 1) * page_size)]
+        ) as cursor:
+            rows = await cursor.fetchall()
+        async with db.execute(count_query, params) as cursor:
+            count_row = await cursor.fetchone()
+            total = int(count_row[0] if count_row else 0)
+
+    result = []
+    for row in rows:
+        entry = dict(row)
+        entry["changed_fields"] = _safe_json_loads(entry.get("changed_fields"))
+        result.append(entry)
+    return result, total
+
+
 async def count_audit_logs(record_id: Optional[int] = None) -> int:
     conditions = []
     params = []

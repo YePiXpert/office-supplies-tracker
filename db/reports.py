@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 
 import aiosqlite
@@ -15,49 +15,9 @@ FLOW_STAGES = (
     ("distributed", "已分发"),
 )
 
-CYCLE_BUCKETS = (
-    ("0-3天", 0, 3),
-    ("4-7天", 4, 7),
-    ("8-14天", 8, 14),
-    ("15-30天", 15, 30),
-    ("31天以上", 31, None),
-)
-
-PAID_STATUSES = {"已付款", "已报销"}
+# Payment status values used in SQL aggregation queries
+PAID_STATUSES = ("已付款", "已报销")
 UNPAID_STATUS = "未付款"
-
-
-def _parse_iso_date(value) -> Optional[datetime]:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        return datetime.strptime(text, "%Y-%m-%d")
-    except ValueError:
-        return None
-
-
-def _bucketize_days(values: list[int]) -> list[dict]:
-    buckets: list[dict] = []
-    for label, min_days, max_days in CYCLE_BUCKETS:
-        if max_days is None:
-            count = sum(1 for day in values if day >= min_days)
-        else:
-            count = sum(1 for day in values if min_days <= day <= max_days)
-        buckets.append(
-            {
-                "label": label,
-                "count": count,
-            }
-        )
-    return buckets
-
-
-def _average_days(values: list[int]) -> float:
-    if not values:
-        return 0.0
-    return round(sum(values) / len(values), 2)
-
 
 def _safe_float(value) -> float:
     try:
@@ -103,15 +63,12 @@ def _fill_month_zeros(data: list[dict], count: int = 12) -> list[dict]:
     today = date.today()
     months = []
     for i in range(count - 1, -1, -1):
-        yr = today.year - (today.month - 1 - i < 0 and 1 or 0)
-        mn = (today.month - 1 - i) % 12 + 1
-        # simpler: walk back month by month
-        yr2 = today.year
-        mn2 = today.month - i
-        while mn2 <= 0:
-            mn2 += 12
-            yr2 -= 1
-        months.append(f"{yr2:04d}-{mn2:02d}")
+        yr = today.year
+        mn = today.month - i
+        while mn <= 0:
+            mn += 12
+            yr -= 1
+        months.append(f"{yr:04d}-{mn:02d}")
 
     lookup = {row["period"]: row for row in data}
     return [
@@ -285,6 +242,10 @@ async def get_amount_report(
         for r in raw_month_rows
     ]
 
+    # Pre-compute filled monthly rows once; reused for both by_period (when
+    # granularity=='month') and the backward-compat by_month field.
+    filled_month_rows = _fill_month_zeros(norm_month, count=12)
+
     if granularity == "year":
         year_map: dict[str, dict] = {}
         for r in norm_month:
@@ -304,7 +265,7 @@ async def get_amount_report(
             e["total_amount"] += r["total_amount"]
         by_period = _fill_quarter_zeros(list(q_map.values()), count=8)
     else:
-        by_period = _fill_month_zeros(norm_month, count=12)
+        by_period = filled_month_rows
 
     return {
         "granularity": granularity,
@@ -346,7 +307,7 @@ async def get_amount_report(
                 "record_count": int(row.get("record_count") or 0),
                 "total_amount": round(float(row.get("total_amount") or 0), 2),
             }
-            for row in _fill_month_zeros(norm_month, count=12)
+            for row in filled_month_rows
         ],
     }
 
@@ -386,75 +347,109 @@ async def get_operations_report(
         async with db.execute(snapshot_query, params) as cursor:
             snapshot_rows = [dict(row) for row in await cursor.fetchall()]
 
-        query = f"""
+        # Cycle distribution: request → arrival.
+        # Extra date validity and ordering conditions are applied in the outer WHERE so
+        # the inner subquery uses the same {where_clause} pattern as snapshot_query.
+        req_cycle_query = f"""
             SELECT
-                status,
-                payment_status,
-                request_date,
-                arrival_date,
-                distribution_date,
-                quantity,
-                unit_price
+                SUM(CASE WHEN diff <= 3                  THEN 1 ELSE 0 END) AS bucket_0_3,
+                SUM(CASE WHEN diff BETWEEN 4  AND 7      THEN 1 ELSE 0 END) AS bucket_4_7,
+                SUM(CASE WHEN diff BETWEEN 8  AND 14     THEN 1 ELSE 0 END) AS bucket_8_14,
+                SUM(CASE WHEN diff BETWEEN 15 AND 30     THEN 1 ELSE 0 END) AS bucket_15_30,
+                SUM(CASE WHEN diff >= 31                 THEN 1 ELSE 0 END) AS bucket_31_plus,
+                COUNT(*) AS sample_size,
+                ROUND(AVG(CAST(diff AS REAL)), 2) AS average_days
+            FROM (
+                SELECT CAST(julianday(arrival_date) - julianday(request_date) AS INTEGER) AS diff
+                FROM items
+                {where_clause}
+            )
+            WHERE diff >= 0
+        """
+        async with db.execute(req_cycle_query, params) as cursor:
+            req_cycle_row = dict(await cursor.fetchone() or {})
+
+        # Cycle distribution: arrival → distribution
+        dist_cycle_query = f"""
+            SELECT
+                SUM(CASE WHEN diff <= 3                  THEN 1 ELSE 0 END) AS bucket_0_3,
+                SUM(CASE WHEN diff BETWEEN 4  AND 7      THEN 1 ELSE 0 END) AS bucket_4_7,
+                SUM(CASE WHEN diff BETWEEN 8  AND 14     THEN 1 ELSE 0 END) AS bucket_8_14,
+                SUM(CASE WHEN diff BETWEEN 15 AND 30     THEN 1 ELSE 0 END) AS bucket_15_30,
+                SUM(CASE WHEN diff >= 31                 THEN 1 ELSE 0 END) AS bucket_31_plus,
+                COUNT(*) AS sample_size,
+                ROUND(AVG(CAST(diff AS REAL)), 2) AS average_days
+            FROM (
+                SELECT CAST(julianday(distribution_date) - julianday(arrival_date) AS INTEGER) AS diff
+                FROM items
+                {where_clause}
+            )
+            WHERE diff >= 0
+        """
+        async with db.execute(dist_cycle_query, params) as cursor:
+            dist_cycle_row = dict(await cursor.fetchone() or {})
+
+        # Monthly amount trend (last 12 months) — aggregated in SQL.
+        # Extra date validity is handled via HAVING (avoids an intermediate derived WHERE var).
+        # Payment status values use parameterized placeholders (not string interpolation)
+        # to keep the query consistent with the module-level PAID_STATUSES / UNPAID_STATUS.
+        paid_placeholders = ", ".join(["?"] * len(PAID_STATUSES))
+        monthly_trend_query = f"""
+            SELECT
+                SUBSTR(request_date, 1, 7) AS month,
+                COUNT(*) AS record_count,
+                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+                COALESCE(SUM(CASE WHEN payment_status IN ({paid_placeholders})
+                                  THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS paid_amount,
+                COALESCE(SUM(CASE WHEN payment_status = ?
+                                  THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS unpaid_amount
             FROM items
             {where_clause}
+            GROUP BY month
+            HAVING month IS NOT NULL
+               AND LENGTH(month) = 7
+               AND SUBSTR(month, 5, 1) = '-'
+            ORDER BY month ASC
         """
-        async with db.execute(query, params) as cursor:
-            rows = [dict(row) for row in await cursor.fetchall()]
+        monthly_trend_params = params + list(PAID_STATUSES) + [UNPAID_STATUS]
+        async with db.execute(monthly_trend_query, monthly_trend_params) as cursor:
+            monthly_trend_rows = [dict(row) for row in await cursor.fetchall()]
 
-    req_to_arrival_days: list[int] = []
-    arrival_to_dist_days: list[int] = []
-    month_summary: dict[str, dict] = {}
+    def _cycle_buckets_from_row(row: dict) -> tuple[list[dict], int, float]:
+        """Convert a flat cycle-distribution SQL result row into (buckets, sample_size, avg_days).
 
-    for row in rows:
-        request_dt = _parse_iso_date(row.get("request_date"))
-        arrival_dt = _parse_iso_date(row.get("arrival_date"))
-        distribution_dt = _parse_iso_date(row.get("distribution_date"))
+        Args:
+            row: Dict with keys bucket_0_3, bucket_4_7, bucket_8_14, bucket_15_30,
+                 bucket_31_plus, sample_size, average_days from the cycle SQL query.
 
-        if request_dt and arrival_dt:
-            request_to_arrival = (arrival_dt - request_dt).days
-            if request_to_arrival >= 0:
-                req_to_arrival_days.append(request_to_arrival)
-
-        if arrival_dt and distribution_dt:
-            arrival_to_distribution = (distribution_dt - arrival_dt).days
-            if arrival_to_distribution >= 0:
-                arrival_to_dist_days.append(arrival_to_distribution)
-
-        month_key = str(row.get("request_date") or "").strip()[:7]
-        if len(month_key) != 7:
-            continue
-        if month_key[4] != "-":
-            continue
-        amount = _safe_float(row.get("quantity")) * _safe_float(row.get("unit_price"))
-        payment_status = str(row.get("payment_status") or "").strip()
-        if month_key not in month_summary:
-            month_summary[month_key] = {
-                "month": month_key,
-                "total_amount": 0.0,
-                "paid_amount": 0.0,
-                "unpaid_amount": 0.0,
-                "record_count": 0,
+        Returns:
+            (buckets, sample_size, average_days) where buckets is a list of
+            {label, count, ratio} dicts ordered from shortest to longest cycle.
+        """
+        sample_size = _safe_int(row.get("sample_size"))
+        average_days = round(_safe_float(row.get("average_days")), 2)
+        bucket_counts = [
+            ("0-3天",   _safe_int(row.get("bucket_0_3"))),
+            ("4-7天",   _safe_int(row.get("bucket_4_7"))),
+            ("8-14天",  _safe_int(row.get("bucket_8_14"))),
+            ("15-30天", _safe_int(row.get("bucket_15_30"))),
+            ("31天以上", _safe_int(row.get("bucket_31_plus"))),
+        ]
+        buckets = [
+            {
+                "label": label,
+                "count": count,
+                "ratio": round((count / sample_size * 100) if sample_size > 0 else 0.0, 2),
             }
-        month_summary[month_key]["total_amount"] += amount
-        month_summary[month_key]["record_count"] += 1
-        if payment_status in PAID_STATUSES:
-            month_summary[month_key]["paid_amount"] += amount
-        elif payment_status == UNPAID_STATUS:
-            month_summary[month_key]["unpaid_amount"] += amount
+            for label, count in bucket_counts
+        ]
+        return buckets, sample_size, average_days
 
-    trend_rows = sorted(month_summary.values(), key=lambda r: r["month"])[-12:]
+    req_buckets, req_sample, req_avg = _cycle_buckets_from_row(req_cycle_row)
+    dist_buckets, dist_sample, dist_avg = _cycle_buckets_from_row(dist_cycle_row)
 
-    # Build cycle buckets with sample-size denominator (not max-count)
-    req_sample = len(req_to_arrival_days)
-    dist_sample = len(arrival_to_dist_days)
-
-    def _buckets_with_ratio(values: list[int], sample_size: int) -> list[dict]:
-        raw = _bucketize_days(values)
-        for bucket in raw:
-            bucket["ratio"] = round(
-                (bucket["count"] / sample_size * 100) if sample_size > 0 else 0.0, 2
-            )
-        return raw
+    # Keep only last 12 months
+    trend_rows = monthly_trend_rows[-12:]
 
     return {
         # Renamed from 'funnel' to 'status_snapshot' — these are current-state counts
@@ -485,13 +480,13 @@ async def get_operations_report(
         ],
         "cycle_distribution": {
             "request_to_arrival": {
-                "buckets": _buckets_with_ratio(req_to_arrival_days, req_sample),
-                "average_days": _average_days(req_to_arrival_days),
+                "buckets": req_buckets,
+                "average_days": req_avg,
                 "sample_size": req_sample,
             },
             "arrival_to_distribution": {
-                "buckets": _buckets_with_ratio(arrival_to_dist_days, dist_sample),
-                "average_days": _average_days(arrival_to_dist_days),
+                "buckets": dist_buckets,
+                "average_days": dist_avg,
                 "sample_size": dist_sample,
             },
         },

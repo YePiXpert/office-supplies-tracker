@@ -6,8 +6,8 @@ from .constants import (
     ItemStatus,
     PaymentStatus,
 )
-from .audit import count_audit_logs, get_audit_logs
-from .history import count_item_history, get_item_history
+from .audit import count_audit_logs, get_audit_logs, get_audit_logs_page
+from .history import count_item_history, get_item_history, get_item_history_page
 from .security import (
     append_auth_audit_log,
     clear_login_lock_state,
@@ -28,6 +28,7 @@ from .items import (
     count_deleted_items,
     get_departments,
     get_data_quality_report,
+    get_deleted_items_page,
     get_execution_board,
     get_existing_items_by_keys,
     get_handlers,
@@ -92,6 +93,7 @@ __all__ = [
     "delete_item",
     "list_deleted_items",
     "count_deleted_items",
+    "get_deleted_items_page",
     "restore_item",
     "purge_item",
     "rollback_item_to_history",
@@ -104,8 +106,10 @@ __all__ = [
     "normalize_update_payload",
     "get_item_history",
     "count_item_history",
+    "get_item_history_page",
     "get_audit_logs",
     "count_audit_logs",
+    "get_audit_logs_page",
     "get_system_security",
     "is_system_initialized",
     "initialize_system_security",
