@@ -265,7 +265,7 @@ async def list_webdav_backups():
 async def backup_to_webdav():
     """创建本地备份并上传到 WebDAV。"""
     config = _require_webdav_config()
-    local_archive_path = UPLOAD_DIR / f"webdav_backup_{uuid4().hex}.zip"
+    local_archive_path = APP_STATE_DIR / f".webdav_backup_{uuid4().hex}.zip"
     retention = {}
     async with DATA_MUTATION_LOCK:
         try:
@@ -303,7 +303,7 @@ async def restore_from_webdav(request: WebDAVRestoreRequest):
     if not filename:
         raise HTTPException(status_code=400, detail="filename 不能为空")
 
-    archive_path = UPLOAD_DIR / f"restore_webdav_{uuid4().hex}.zip"
+    archive_path = APP_STATE_DIR / f".restore_webdav_{uuid4().hex}.zip"
     result = {}
     async with DATA_MUTATION_LOCK:
         MAINTENANCE_MODE.set()
