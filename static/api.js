@@ -2496,6 +2496,13 @@
                     return filename ? filename.trim() : fallback;
                 },
                 triggerBlobDownload(blob, filename) {
+                    // 桌面模式：通过原生另存为对话框保存
+                    if (window.pywebview?.api?.save_file) {
+                        return this._blobToBase64(blob).then((base64Data) =>
+                            window.pywebview.api.save_file(filename || 'download', base64Data)
+                        );
+                    }
+                    // 浏览器模式：常规 blob 下载
                     const objectUrl = window.URL.createObjectURL(blob);
                     const link = document.createElement('a');
                     link.href = objectUrl;
@@ -2505,6 +2512,18 @@
                     link.click();
                     document.body.removeChild(link);
                     window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+                    return Promise.resolve({ ok: true });
+                },
+                _blobToBase64(blob) {
+                    return new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            const dataUrl = reader.result || '';
+                            resolve(dataUrl.split(',')[1] || '');
+                        };
+                        reader.onerror = () => reject(new Error('读取文件数据失败'));
+                        reader.readAsDataURL(blob);
+                    });
                 },
                 async getBlobErrorDetail(error, fallback = '未知错误') {
                     const detail = error?.response?.data?.detail;
@@ -2545,8 +2564,10 @@
                             response?.headers?.['content-disposition'],
                             'office_supplies_export.xlsx'
                         );
-                        this.triggerBlobDownload(response.data, filename);
-                        this.showToast('Excel 已开始下载', 'success');
+                        const result = await this.triggerBlobDownload(response.data, filename);
+                        if (result?.ok) {
+                            this.showToast(result?.message || 'Excel 已开始下载', 'success');
+                        }
                     } catch (error) {
                         const detail = await this.getBlobErrorDetail(error, '导出失败');
                         this.showToast(`导出 Excel 失败: ${detail}`, 'error');
@@ -2584,8 +2605,10 @@
                             response?.headers?.['content-disposition'],
                             fallbackName
                         );
-                        this.triggerBlobDownload(response.data, filename);
-                        this.showToast('供应商报表已开始下载', 'success');
+                        const result = await this.triggerBlobDownload(response.data, filename);
+                        if (result?.ok) {
+                            this.showToast(result?.message || '供应商报表已开始下载', 'success');
+                        }
                     } catch (error) {
                         const detail = await this.getBlobErrorDetail(error, '导出失败');
                         this.showToast(`导出供应商报表失败: ${detail}`, 'error');
@@ -2707,8 +2730,10 @@
                             response?.headers?.['content-disposition'],
                             'office_supplies_backup.zip'
                         );
-                        this.triggerBlobDownload(response.data, filename);
-                        this.showToast('备份文件已开始下载', 'success');
+                        const result = await this.triggerBlobDownload(response.data, filename);
+                        if (result?.ok) {
+                            this.showToast(result?.message || '备份文件已开始下载', 'success');
+                        }
                     } catch (error) {
                         const detail = await this.getBlobErrorDetail(error, '备份失败');
                         this.showToast(`下载备份失败: ${detail}`, 'error');

@@ -1,4 +1,5 @@
 import atexit
+import base64
 import multiprocessing as mp
 import os
 import signal
@@ -124,6 +125,57 @@ def _run_fastapi_server(host: str, port: int, runtime_dir: str) -> None:
         raise
 
 
+class JsApi:
+    """暴露给前端 window.pywebview.api 的原生桥接方法。"""
+
+    _FILE_TYPE_MAP = {
+        ".zip": ("ZIP 压缩包 (*.zip)",),
+        ".xlsx": ("Excel 文件 (*.xlsx)",),
+    }
+
+    def __init__(self, app: "DesktopApp") -> None:
+        self._app = app
+
+    def save_file(self, filename: str, base64_data: str) -> dict:
+        """接收前端 base64 编码的文件数据，弹出原生另存为对话框并写入磁盘。"""
+        import webview
+
+        try:
+            data = base64.b64decode(base64_data)
+        except Exception:
+            return {"ok": False, "message": "文件数据解码失败"}
+
+        ext = Path(filename).suffix.lower()
+        file_types = self._FILE_TYPE_MAP.get(ext, ("All files (*.*)",))
+
+        window = self._app.window
+        if window is None:
+            return {"ok": False, "message": "窗口未就绪"}
+
+        try:
+            result = window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=filename,
+                file_types=file_types,
+            )
+        except Exception as exc:
+            return {"ok": False, "message": f"无法打开保存对话框: {exc}"}
+
+        if not result:
+            return {"ok": False, "message": "已取消保存"}
+
+        save_path = result[0] if isinstance(result, (tuple, list)) else result
+        if not save_path:
+            return {"ok": False, "message": "已取消保存"}
+
+        try:
+            Path(save_path).write_bytes(data)
+        except OSError as exc:
+            return {"ok": False, "message": f"写入文件失败: {exc}"}
+
+        return {"ok": True, "message": f"已保存到 {save_path}"}
+
+
 class DesktopApp:
     def __init__(self) -> None:
         self.host = HOST
@@ -222,12 +274,16 @@ class DesktopApp:
 
         import webview
 
+        webview.settings["ALLOW_DOWNLOADS"] = True
+
+        js_api = JsApi(self)
         url = f"http://{self.host}:{self.port}/"
         self.window = webview.create_window(
             APP_TITLE,
             url,
             width=WINDOW_WIDTH,
             height=WINDOW_HEIGHT,
+            js_api=js_api,
         )
 
         self.window.events.closing += self._on_window_closing

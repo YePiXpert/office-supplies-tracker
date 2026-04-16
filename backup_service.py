@@ -2,6 +2,7 @@ import os
 import shutil
 import sqlite3
 import stat
+import tempfile
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -156,7 +157,26 @@ def inspect_backup_archive(archive_path: Path) -> dict:
 def _build_archive(target: zipfile.ZipFile) -> None:
     db_path = resolve_db_path()
     if db_path.exists():
-        target.write(db_path, arcname="office_supplies.db")
+        # 使用 SQLite online backup API 创建一致性快照，避免直接复制
+        # 正在使用的数据库文件（可能有 WAL 日志或 Windows 文件锁）。
+        fd, snapshot_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            source_conn = sqlite3.connect(str(db_path))
+            try:
+                snapshot_conn = sqlite3.connect(snapshot_path)
+                try:
+                    source_conn.backup(snapshot_conn)
+                finally:
+                    snapshot_conn.close()
+            finally:
+                source_conn.close()
+            target.write(snapshot_path, arcname="office_supplies.db")
+        finally:
+            try:
+                os.unlink(snapshot_path)
+            except OSError:
+                pass
     if UPLOAD_DIR.exists():
         for file_path in UPLOAD_DIR.rglob("*"):
             if file_path.is_file():

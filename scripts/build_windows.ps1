@@ -100,6 +100,7 @@ try {
     "--add-data", "static;static",
     "--add-data", "alembic;alembic",
     "--add-data", "alembic.ini;.",
+    "--add-data", "VERSION;.",
     "--collect-all", "webview",
     "--collect-all", "google.generativeai",
     "--hidden-import", "db.sqlalchemy_models",
