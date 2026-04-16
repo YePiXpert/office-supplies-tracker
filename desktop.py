@@ -1,5 +1,4 @@
 import atexit
-import base64
 import multiprocessing as mp
 import os
 import signal
@@ -136,26 +135,53 @@ class JsApi:
     def __init__(self, app: "DesktopApp") -> None:
         self._app = app
 
-    def save_file(self, filename: str, base64_data: str) -> dict:
-        """接收前端 base64 编码的文件数据，弹出原生另存为对话框并写入磁盘。"""
+    def _internal_get(self, path: str) -> tuple:
+        """向内部 FastAPI 发 GET 请求，附带有效认证 Cookie，返回 (bytes, headers_dict)。"""
+        import auth_security
+
+        token = auth_security.create_auth_cookie()
+        url = f"http://{self._app.host}:{self._app.port}{path}"
+        req = urllib.request.Request(url)
+        req.add_header("Cookie", f"{auth_security.AUTH_COOKIE_NAME}={token}")
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = resp.read()
+            headers = {k.lower(): v for k, v in resp.headers.items()}
+        return data, headers
+
+    def _parse_filename_from_headers(self, headers: dict, fallback: str) -> str:
+        """从 Content-Disposition 头解析文件名（支持 RFC 5987 编码）。"""
+        import re
+        from urllib.parse import unquote
+
+        cd = headers.get("content-disposition", "")
+        if not cd:
+            return fallback
+        m = re.search(r"filename\*\s*=\s*[Uu][Tt][Ff]-8''([^;]+)", cd)
+        if m:
+            return unquote(m.group(1).strip())
+        m = re.search(r'filename\s*=\s*"([^"]+)"', cd)
+        if m:
+            return m.group(1).strip()
+        m = re.search(r"filename\s*=\s*([^;]+)", cd)
+        if m:
+            return m.group(1).strip()
+        return fallback
+
+    def _save_with_dialog(self, data: bytes, suggested_filename: str) -> dict:
+        """弹出原生另存为对话框并将数据写入用户选择的路径。"""
         import webview
-
-        try:
-            data = base64.b64decode(base64_data)
-        except Exception:
-            return {"ok": False, "message": "文件数据解码失败"}
-
-        ext = Path(filename).suffix.lower()
-        file_types = self._FILE_TYPE_MAP.get(ext, ("All files (*.*)",))
 
         window = self._app.window
         if window is None:
             return {"ok": False, "message": "窗口未就绪"}
 
+        ext = Path(suggested_filename).suffix.lower()
+        file_types = self._FILE_TYPE_MAP.get(ext, ("All files (*.*)",))
+
         try:
             result = window.create_file_dialog(
                 webview.SAVE_DIALOG,
-                save_filename=filename,
+                save_filename=suggested_filename,
                 file_types=file_types,
             )
         except Exception as exc:
@@ -174,6 +200,39 @@ class JsApi:
             return {"ok": False, "message": f"写入文件失败: {exc}"}
 
         return {"ok": True, "message": f"已保存到 {save_path}"}
+
+    def download_backup(self) -> dict:
+        """备份下载：Python 内部 HTTP 获取文件 → 原生另存为对话框。"""
+        try:
+            data, headers = self._internal_get("/api/backup")
+        except Exception as exc:
+            return {"ok": False, "message": f"获取备份失败: {exc}"}
+        filename = self._parse_filename_from_headers(headers, "office_supplies_backup.zip")
+        return self._save_with_dialog(data, filename)
+
+    def download_export(self, query_string: str) -> dict:
+        """台账 Excel 导出：Python 内部 HTTP 获取文件 → 原生另存为对话框。"""
+        path = f"/api/export?{query_string}" if query_string else "/api/export"
+        try:
+            data, headers = self._internal_get(path)
+        except Exception as exc:
+            return {"ok": False, "message": f"获取导出文件失败: {exc}"}
+        filename = self._parse_filename_from_headers(headers, "office_supplies_export.xlsx")
+        return self._save_with_dialog(data, filename)
+
+    def download_supplier_report(self, query_string: str) -> dict:
+        """供应商报表导出：Python 内部 HTTP 获取文件 → 原生另存为对话框。"""
+        path = (
+            f"/api/reports/suppliers/export?{query_string}"
+            if query_string
+            else "/api/reports/suppliers/export"
+        )
+        try:
+            data, headers = self._internal_get(path)
+        except Exception as exc:
+            return {"ok": False, "message": f"获取报表失败: {exc}"}
+        filename = self._parse_filename_from_headers(headers, "supplier_purchase_report.xlsx")
+        return self._save_with_dialog(data, filename)
 
 
 class DesktopApp:
