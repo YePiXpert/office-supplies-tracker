@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from auth_security import (
     AUTH_COOKIE_NAME,
     clear_auth_cookie,
+    init_cookie_secret,
     set_auth_cookie,
     should_use_secure_cookie,
     verify_auth_cookie,
@@ -26,6 +27,10 @@ from routers.imports import router as imports_router
 from routers.items import router as items_router
 from routers.ops import router as ops_router
 from routers.system import router as system_router
+from routers.reports import router as reports_router
+from routers.history import router as history_router
+from routers.audit import router as audit_router
+from security_headers import security_headers_middleware
 
 
 @asynccontextmanager
@@ -34,7 +39,15 @@ async def lifespan(app: FastAPI):
     if os.environ.get("AUTO_MIGRATE", "1") != "0":
         upgrade_database_to_head()
     await init_db()
-    yield
+    init_cookie_secret()
+    try:
+        yield
+    finally:
+        if _FALLBACK_STREAM is not None:
+            try:
+                _FALLBACK_STREAM.close()
+            except Exception:
+                pass
 
 
 app = FastAPI(title="办公用品采购系统", version=APP_VERSION, lifespan=lifespan)
@@ -114,8 +127,13 @@ async def maintenance_mode_guard(request, call_next):
 app.include_router(auth_router)
 app.include_router(system_router)
 app.include_router(items_router)
+app.include_router(reports_router)
 app.include_router(imports_router)
 app.include_router(ops_router)
+app.include_router(history_router)
+app.include_router(audit_router)
+
+app.middleware("http")(security_headers_middleware)
 
 
 _FALLBACK_STREAM = None

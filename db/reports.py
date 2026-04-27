@@ -1,11 +1,9 @@
 from datetime import date
 from typing import Optional
 
-import aiosqlite
-
-from .constants import DB_PATH
 from .filters import build_item_filters
 from .operations import get_procurement_tracker_report
+from .orm import execute_sql, execute_sql_scalar
 
 
 FLOW_STAGES = (
@@ -15,9 +13,9 @@ FLOW_STAGES = (
     ("distributed", "已分发"),
 )
 
-# Payment status values used in SQL aggregation queries
 PAID_STATUSES = ("已付款", "已报销")
 UNPAID_STATUS = "未付款"
+
 
 def _safe_float(value) -> float:
     try:
@@ -44,7 +42,6 @@ def _normalize_year_value(year: Optional[str], month: Optional[str]) -> str:
 
 
 def _month_to_quarter(month_str: str) -> str:
-    """Convert '2024-03' -> '2024-Q1'. Returns '' on invalid input."""
     text = (month_str or "").strip()
     if len(text) < 7 or text[4] != "-":
         return ""
@@ -57,9 +54,6 @@ def _month_to_quarter(month_str: str) -> str:
 
 
 def _fill_month_zeros(data: list[dict], count: int = 12) -> list[dict]:
-    """Return the most-recent `count` months, zero-filling any gaps.
-    Each element in `data` must have a 'period' key (YYYY-MM).
-    """
     today = date.today()
     months = []
     for i in range(count - 1, -1, -1):
@@ -69,7 +63,6 @@ def _fill_month_zeros(data: list[dict], count: int = 12) -> list[dict]:
             mn += 12
             yr -= 1
         months.append(f"{yr:04d}-{mn:02d}")
-
     lookup = {row["period"]: row for row in data}
     return [
         lookup.get(m) or {"period": m, "record_count": 0, "total_amount": 0.0}
@@ -78,9 +71,6 @@ def _fill_month_zeros(data: list[dict], count: int = 12) -> list[dict]:
 
 
 def _fill_quarter_zeros(data: list[dict], count: int = 8) -> list[dict]:
-    """Return the most-recent `count` natural quarters, zero-filling gaps.
-    Each element in `data` must have a 'period' key (YYYY-Qn).
-    """
     today = date.today()
     current_q = (today.month - 1) // 3 + 1
     current_year = today.year
@@ -94,7 +84,6 @@ def _fill_quarter_zeros(data: list[dict], count: int = 8) -> list[dict]:
             q = 4
             y -= 1
     quarters.reverse()
-
     lookup = {row["period"]: row for row in data}
     return [
         lookup.get(q) or {"period": q, "record_count": 0, "total_amount": 0.0}
@@ -103,7 +92,6 @@ def _fill_quarter_zeros(data: list[dict], count: int = 8) -> list[dict]:
 
 
 def _fill_year_zeros(data: list[dict], count: int = 5) -> list[dict]:
-    """Return the most-recent `count` years, zero-filling gaps."""
     current_year = date.today().year
     years = [str(current_year - i) for i in range(count - 1, -1, -1)]
     lookup = {row["period"]: row for row in data}
@@ -114,43 +102,35 @@ def _fill_year_zeros(data: list[dict], count: int = 5) -> list[dict]:
 
 
 async def get_stats_summary() -> dict:
-    """获取统计信息（SQL 聚合）。"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            """
-            SELECT
-                COUNT(*) AS total,
-                SUM(CASE WHEN invoice_issued = 1 THEN 1 ELSE 0 END) AS issued,
-                SUM(CASE WHEN invoice_issued = 1 THEN 0 ELSE 1 END) AS not_issued
-            FROM items
-            WHERE deleted_at IS NULL
-            """
-        ) as cursor:
-            row = await cursor.fetchone()
-            total = int(row[0] if row and row[0] is not None else 0)
-            issued = int(row[1] if row and row[1] is not None else 0)
-            not_issued = int(row[2] if row and row[2] is not None else 0)
+    sql = """
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN invoice_issued = 1 THEN 1 ELSE 0 END) AS issued,
+            SUM(CASE WHEN invoice_issued = 1 THEN 0 ELSE 1 END) AS not_issued
+        FROM items
+        WHERE deleted_at IS NULL
+    """
+    rows = await execute_sql(sql)
+    row = rows[0] if rows else {}
+    total = int(row.get("total") or 0)
+    issued = int(row.get("issued") or 0)
+    not_issued = int(row.get("not_issued") or 0)
 
-        async with db.execute(
-            "SELECT status, COUNT(*) FROM items WHERE deleted_at IS NULL GROUP BY status"
-        ) as cursor:
-            status_rows = await cursor.fetchall()
-            status_count = {str(status): int(count) for status, count in status_rows}
+    status_rows = await execute_sql(
+        "SELECT status, COUNT(*) FROM items WHERE deleted_at IS NULL GROUP BY status"
+    )
+    status_count = {str(r["status"]): int(r["COUNT(*)"]) for r in status_rows}
 
-        async with db.execute(
-            "SELECT payment_status, COUNT(*) FROM items WHERE deleted_at IS NULL GROUP BY payment_status"
-        ) as cursor:
-            payment_rows = await cursor.fetchall()
-            payment_count = {str(status): int(count) for status, count in payment_rows}
+    payment_rows = await execute_sql(
+        "SELECT payment_status, COUNT(*) FROM items WHERE deleted_at IS NULL GROUP BY payment_status"
+    )
+    payment_count = {str(r["payment_status"]): int(r["COUNT(*)"]) for r in payment_rows}
 
     return {
         "total": total,
         "status_count": status_count,
         "payment_count": payment_count,
-        "invoice_count": {
-            "issued": issued,
-            "not_issued": not_issued,
-        },
+        "invoice_count": {"issued": issued, "not_issued": not_issued},
     }
 
 
@@ -161,78 +141,68 @@ async def get_amount_report(
     keyword: Optional[str] = None,
     granularity: str = "month",
 ) -> dict:
-    """金额统计报表，支持 granularity=month|quarter|year。"""
     conditions, params = build_item_filters(
         status=status, department=department, month=month, keyword=keyword
     )
     where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    summary_query = f"""
+        SELECT
+            COUNT(*) AS total_records,
+            COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+            COALESCE(SUM(CASE WHEN unit_price IS NOT NULL THEN quantity * unit_price ELSE 0 END), 0) AS priced_amount,
+            SUM(CASE WHEN unit_price IS NULL THEN 1 ELSE 0 END) AS missing_price_records
+        FROM items
+        {where_clause}
+    """
+    summary_rows = await execute_sql(summary_query, list(params))
+    summary = summary_rows[0] if summary_rows else {}
 
-        summary_query = f"""
-            SELECT
-                COUNT(*) AS total_records,
-                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
-                COALESCE(SUM(CASE WHEN unit_price IS NOT NULL THEN quantity * unit_price ELSE 0 END), 0) AS priced_amount,
-                SUM(CASE WHEN unit_price IS NULL THEN 1 ELSE 0 END) AS missing_price_records
-            FROM items
-            {where_clause}
-        """
-        async with db.execute(summary_query, params) as cursor:
-            row = await cursor.fetchone()
-            summary = dict(row) if row else {}
+    department_query = f"""
+        SELECT
+            department,
+            COUNT(*) AS record_count,
+            COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+            SUM(CASE WHEN unit_price IS NULL THEN 1 ELSE 0 END) AS missing_price_records
+        FROM items
+        {where_clause}
+        GROUP BY department
+        ORDER BY total_amount DESC, record_count DESC
+        LIMIT 30
+    """
+    by_department = await execute_sql(department_query, list(params))
 
-        department_query = f"""
-            SELECT
-                department,
-                COUNT(*) AS record_count,
-                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
-                SUM(CASE WHEN unit_price IS NULL THEN 1 ELSE 0 END) AS missing_price_records
-            FROM items
-            {where_clause}
-            GROUP BY department
-            ORDER BY total_amount DESC, record_count DESC
-            LIMIT 30
-        """
-        async with db.execute(department_query, params) as cursor:
-            by_department = [dict(row) for row in await cursor.fetchall()]
+    status_query = f"""
+        SELECT
+            status,
+            COUNT(*) AS record_count,
+            COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount
+        FROM items
+        {where_clause}
+        GROUP BY status
+        ORDER BY total_amount DESC, record_count DESC
+    """
+    by_status = await execute_sql(status_query, list(params))
 
-        status_query = f"""
-            SELECT
-                status,
-                COUNT(*) AS record_count,
-                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount
-            FROM items
-            {where_clause}
-            GROUP BY status
-            ORDER BY total_amount DESC, record_count DESC
-        """
-        async with db.execute(status_query, params) as cursor:
-            by_status = [dict(row) for row in await cursor.fetchall()]
+    period_conditions = list(conditions)
+    period_params = list(params)
+    period_conditions.append("request_date IS NOT NULL")
+    period_conditions.append("request_date <> ''")
+    period_where = f" WHERE {' AND '.join(period_conditions)}"
 
-        # Period trend — always pull raw month rows then aggregate/fill in Python
-        period_conditions = list(conditions)
-        period_params = list(params)
-        period_conditions.append("request_date IS NOT NULL")
-        period_conditions.append("request_date <> ''")
-        period_where = f" WHERE {' AND '.join(period_conditions)}"
+    month_query = f"""
+        SELECT
+            SUBSTR(request_date, 1, 7) AS period,
+            COUNT(*) AS record_count,
+            COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount
+        FROM items
+        {period_where}
+        GROUP BY period
+        HAVING period IS NOT NULL AND period <> ''
+        ORDER BY period ASC
+    """
+    raw_month_rows = await execute_sql(month_query, period_params)
 
-        month_query = f"""
-            SELECT
-                SUBSTR(request_date, 1, 7) AS period,
-                COUNT(*) AS record_count,
-                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount
-            FROM items
-            {period_where}
-            GROUP BY period
-            HAVING period IS NOT NULL AND period <> ''
-            ORDER BY period ASC
-        """
-        async with db.execute(month_query, period_params) as cursor:
-            raw_month_rows = [dict(row) for row in await cursor.fetchall()]
-
-    # Build normalised period rows
     norm_month = [
         {
             "period": r["period"],
@@ -241,9 +211,6 @@ async def get_amount_report(
         }
         for r in raw_month_rows
     ]
-
-    # Pre-compute filled monthly rows once; reused for both by_period (when
-    # granularity=='month') and the backward-compat by_month field.
     filled_month_rows = _fill_month_zeros(norm_month, count=12)
 
     if granularity == "year":
@@ -300,7 +267,6 @@ async def get_amount_report(
             }
             for row in by_period
         ],
-        # Keep by_month for backward compat (last 12 filled months)
         "by_month": [
             {
                 "month": row.get("period") or "",
@@ -318,114 +284,89 @@ async def get_operations_report(
     month: Optional[str] = None,
     keyword: Optional[str] = None,
 ) -> dict:
-    """状态快照、采购周期与月度金额趋势报表。"""
     conditions, params = build_item_filters(
         status=status, department=department, month=month, keyword=keyword
     )
     where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    today_str = date.today().isoformat()
+    snapshot_query = f"""
+        SELECT
+            status,
+            COUNT(*) AS record_count,
+            COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+            SUM(CASE
+                WHEN status IN ('待采购','待到货','待分发')
+                     AND request_date IS NOT NULL
+                     AND request_date <> ''
+                     AND request_date < date('{today_str}', '-14 days')
+                THEN 1 ELSE 0 END) AS overdue_count
+        FROM items
+        {where_clause}
+        GROUP BY status
+    """
+    snapshot_rows = await execute_sql(snapshot_query, list(params))
 
-        # Status snapshot (count + amount per status, overdue counts)
-        today_str = date.today().isoformat()
-        snapshot_query = f"""
-            SELECT
-                status,
-                COUNT(*) AS record_count,
-                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
-                SUM(CASE
-                    WHEN status IN ('待采购','待到货','待分发')
-                         AND request_date IS NOT NULL
-                         AND request_date <> ''
-                         AND request_date < date('{today_str}', '-14 days')
-                    THEN 1 ELSE 0 END) AS overdue_count
+    req_cycle_query = f"""
+        SELECT
+            SUM(CASE WHEN diff <= 3                  THEN 1 ELSE 0 END) AS bucket_0_3,
+            SUM(CASE WHEN diff BETWEEN 4  AND 7      THEN 1 ELSE 0 END) AS bucket_4_7,
+            SUM(CASE WHEN diff BETWEEN 8  AND 14     THEN 1 ELSE 0 END) AS bucket_8_14,
+            SUM(CASE WHEN diff BETWEEN 15 AND 30     THEN 1 ELSE 0 END) AS bucket_15_30,
+            SUM(CASE WHEN diff >= 31                 THEN 1 ELSE 0 END) AS bucket_31_plus,
+            COUNT(*) AS sample_size,
+            ROUND(AVG(CAST(diff AS REAL)), 2) AS average_days
+        FROM (
+            SELECT CAST(julianday(arrival_date) - julianday(request_date) AS INTEGER) AS diff
             FROM items
             {where_clause}
-            GROUP BY status
-        """
-        async with db.execute(snapshot_query, params) as cursor:
-            snapshot_rows = [dict(row) for row in await cursor.fetchall()]
+        )
+        WHERE diff >= 0
+    """
+    req_cycle_rows = await execute_sql(req_cycle_query, list(params))
+    req_cycle_row = req_cycle_rows[0] if req_cycle_rows else {}
 
-        # Cycle distribution: request → arrival.
-        # Extra date validity and ordering conditions are applied in the outer WHERE so
-        # the inner subquery uses the same {where_clause} pattern as snapshot_query.
-        req_cycle_query = f"""
-            SELECT
-                SUM(CASE WHEN diff <= 3                  THEN 1 ELSE 0 END) AS bucket_0_3,
-                SUM(CASE WHEN diff BETWEEN 4  AND 7      THEN 1 ELSE 0 END) AS bucket_4_7,
-                SUM(CASE WHEN diff BETWEEN 8  AND 14     THEN 1 ELSE 0 END) AS bucket_8_14,
-                SUM(CASE WHEN diff BETWEEN 15 AND 30     THEN 1 ELSE 0 END) AS bucket_15_30,
-                SUM(CASE WHEN diff >= 31                 THEN 1 ELSE 0 END) AS bucket_31_plus,
-                COUNT(*) AS sample_size,
-                ROUND(AVG(CAST(diff AS REAL)), 2) AS average_days
-            FROM (
-                SELECT CAST(julianday(arrival_date) - julianday(request_date) AS INTEGER) AS diff
-                FROM items
-                {where_clause}
-            )
-            WHERE diff >= 0
-        """
-        async with db.execute(req_cycle_query, params) as cursor:
-            req_cycle_row = dict(await cursor.fetchone() or {})
-
-        # Cycle distribution: arrival → distribution
-        dist_cycle_query = f"""
-            SELECT
-                SUM(CASE WHEN diff <= 3                  THEN 1 ELSE 0 END) AS bucket_0_3,
-                SUM(CASE WHEN diff BETWEEN 4  AND 7      THEN 1 ELSE 0 END) AS bucket_4_7,
-                SUM(CASE WHEN diff BETWEEN 8  AND 14     THEN 1 ELSE 0 END) AS bucket_8_14,
-                SUM(CASE WHEN diff BETWEEN 15 AND 30     THEN 1 ELSE 0 END) AS bucket_15_30,
-                SUM(CASE WHEN diff >= 31                 THEN 1 ELSE 0 END) AS bucket_31_plus,
-                COUNT(*) AS sample_size,
-                ROUND(AVG(CAST(diff AS REAL)), 2) AS average_days
-            FROM (
-                SELECT CAST(julianday(distribution_date) - julianday(arrival_date) AS INTEGER) AS diff
-                FROM items
-                {where_clause}
-            )
-            WHERE diff >= 0
-        """
-        async with db.execute(dist_cycle_query, params) as cursor:
-            dist_cycle_row = dict(await cursor.fetchone() or {})
-
-        # Monthly amount trend (last 12 months) — aggregated in SQL.
-        # Extra date validity is handled via HAVING (avoids an intermediate derived WHERE var).
-        # Payment status values use parameterized placeholders (not string interpolation)
-        # to keep the query consistent with the module-level PAID_STATUSES / UNPAID_STATUS.
-        paid_placeholders = ", ".join(["?"] * len(PAID_STATUSES))
-        monthly_trend_query = f"""
-            SELECT
-                SUBSTR(request_date, 1, 7) AS month,
-                COUNT(*) AS record_count,
-                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
-                COALESCE(SUM(CASE WHEN payment_status IN ({paid_placeholders})
-                                  THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS paid_amount,
-                COALESCE(SUM(CASE WHEN payment_status = ?
-                                  THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS unpaid_amount
+    dist_cycle_query = f"""
+        SELECT
+            SUM(CASE WHEN diff <= 3                  THEN 1 ELSE 0 END) AS bucket_0_3,
+            SUM(CASE WHEN diff BETWEEN 4  AND 7      THEN 1 ELSE 0 END) AS bucket_4_7,
+            SUM(CASE WHEN diff BETWEEN 8  AND 14     THEN 1 ELSE 0 END) AS bucket_8_14,
+            SUM(CASE WHEN diff BETWEEN 15 AND 30     THEN 1 ELSE 0 END) AS bucket_15_30,
+            SUM(CASE WHEN diff >= 31                 THEN 1 ELSE 0 END) AS bucket_31_plus,
+            COUNT(*) AS sample_size,
+            ROUND(AVG(CAST(diff AS REAL)), 2) AS average_days
+        FROM (
+            SELECT CAST(julianday(distribution_date) - julianday(arrival_date) AS INTEGER) AS diff
             FROM items
             {where_clause}
-            GROUP BY month
-            HAVING month IS NOT NULL
-               AND LENGTH(month) = 7
-               AND SUBSTR(month, 5, 1) = '-'
-            ORDER BY month ASC
-        """
-        monthly_trend_params = params + list(PAID_STATUSES) + [UNPAID_STATUS]
-        async with db.execute(monthly_trend_query, monthly_trend_params) as cursor:
-            monthly_trend_rows = [dict(row) for row in await cursor.fetchall()]
+        )
+        WHERE diff >= 0
+    """
+    dist_cycle_rows = await execute_sql(dist_cycle_query, list(params))
+    dist_cycle_row = dist_cycle_rows[0] if dist_cycle_rows else {}
+
+    paid_placeholders = ", ".join(["?"] * len(PAID_STATUSES))
+    monthly_trend_query = f"""
+        SELECT
+            SUBSTR(request_date, 1, 7) AS month,
+            COUNT(*) AS record_count,
+            COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+            COALESCE(SUM(CASE WHEN payment_status IN ({paid_placeholders})
+                              THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS paid_amount,
+            COALESCE(SUM(CASE WHEN payment_status = ?
+                              THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS unpaid_amount
+        FROM items
+        {where_clause}
+        GROUP BY month
+        HAVING month IS NOT NULL
+           AND LENGTH(month) = 7
+           AND SUBSTR(month, 5, 1) = '-'
+        ORDER BY month ASC
+    """
+    monthly_trend_params = list(params) + list(PAID_STATUSES) + [UNPAID_STATUS]
+    monthly_trend_rows = await execute_sql(monthly_trend_query, monthly_trend_params)
 
     def _cycle_buckets_from_row(row: dict) -> tuple[list[dict], int, float]:
-        """Convert a flat cycle-distribution SQL result row into (buckets, sample_size, avg_days).
-
-        Args:
-            row: Dict with keys bucket_0_3, bucket_4_7, bucket_8_14, bucket_15_30,
-                 bucket_31_plus, sample_size, average_days from the cycle SQL query.
-
-        Returns:
-            (buckets, sample_size, average_days) where buckets is a list of
-            {label, count, ratio} dicts ordered from shortest to longest cycle.
-        """
         sample_size = _safe_int(row.get("sample_size"))
         average_days = round(_safe_float(row.get("average_days")), 2)
         bucket_counts = [
@@ -447,12 +388,9 @@ async def get_operations_report(
 
     req_buckets, req_sample, req_avg = _cycle_buckets_from_row(req_cycle_row)
     dist_buckets, dist_sample, dist_avg = _cycle_buckets_from_row(dist_cycle_row)
-
-    # Keep only last 12 months
     trend_rows = monthly_trend_rows[-12:]
 
     return {
-        # Renamed from 'funnel' to 'status_snapshot' — these are current-state counts
         "status_snapshot": [
             {
                 "status": row.get("status") or "",
@@ -462,7 +400,6 @@ async def get_operations_report(
             }
             for row in snapshot_rows
         ],
-        # Keep 'funnel' alias so existing frontend code doesn't break immediately
         "funnel": [
             {
                 "key": key,
@@ -512,7 +449,6 @@ async def get_supplier_report(
     supplier_id: Optional[int] = None,
     granularity: str = "month",
 ) -> dict:
-    """供应商采购分析报表，支持 granularity=month|quarter|year。"""
     selected_year = _normalize_year_value(year, month)
     summary_conditions, summary_params = build_item_filters(
         status=status, department=department, month=month, keyword=keyword
@@ -544,111 +480,100 @@ async def get_supplier_report(
         yearly_params.append(int(supplier_id))
     yearly_where = f" WHERE {' AND '.join(yearly_conditions)}" if yearly_conditions else ""
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    summary_query = f"""
+        SELECT
+            COUNT(*) AS total_records,
+            COUNT(DISTINCT CASE WHEN supplier_id IS NOT NULL THEN supplier_id END) AS supplier_count,
+            SUM(CASE WHEN supplier_id IS NOT NULL THEN 1 ELSE 0 END) AS assigned_records,
+            SUM(CASE WHEN supplier_id IS NULL THEN 1 ELSE 0 END) AS unassigned_records,
+            COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+            COALESCE(SUM(CASE WHEN supplier_id IS NOT NULL THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS assigned_amount,
+            COALESCE(SUM(CASE WHEN supplier_id IS NULL THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS unassigned_amount
+        FROM items
+        {summary_where}
+    """
+    summary_rows = await execute_sql(summary_query, list(summary_params))
+    summary_row = summary_rows[0] if summary_rows else {}
 
-        summary_query = f"""
-            SELECT
-                COUNT(*) AS total_records,
-                COUNT(DISTINCT CASE WHEN supplier_id IS NOT NULL THEN supplier_id END) AS supplier_count,
-                SUM(CASE WHEN supplier_id IS NOT NULL THEN 1 ELSE 0 END) AS assigned_records,
-                SUM(CASE WHEN supplier_id IS NULL THEN 1 ELSE 0 END) AS unassigned_records,
-                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
-                COALESCE(SUM(CASE WHEN supplier_id IS NOT NULL THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS assigned_amount,
-                COALESCE(SUM(CASE WHEN supplier_id IS NULL THEN quantity * COALESCE(unit_price, 0) ELSE 0 END), 0) AS unassigned_amount
-            FROM items
-            {summary_where}
-        """
-        async with db.execute(summary_query, summary_params) as cursor:
-            summary_row = dict(await cursor.fetchone() or {})
+    top_suppliers_query = f"""
+        SELECT
+            supplier_id,
+            COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
+            COUNT(*) AS record_count,
+            COUNT(DISTINCT item_name) AS item_count,
+            COALESCE(SUM(quantity), 0) AS total_quantity,
+            COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+            MAX(request_date) AS latest_request_date
+        FROM items
+        {summary_where}
+        GROUP BY supplier_id, supplier_name
+        ORDER BY total_amount DESC, record_count DESC, supplier_name COLLATE NOCASE ASC
+        LIMIT 12
+    """
+    top_supplier_rows = await execute_sql(top_suppliers_query, list(summary_params))
 
-        top_suppliers_query = f"""
-            SELECT
-                supplier_id,
-                COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
-                COUNT(*) AS record_count,
-                COUNT(DISTINCT item_name) AS item_count,
-                COALESCE(SUM(quantity), 0) AS total_quantity,
-                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
-                MAX(request_date) AS latest_request_date
-            FROM items
-            {summary_where}
-            GROUP BY supplier_id, supplier_name
-            ORDER BY total_amount DESC, record_count DESC, supplier_name COLLATE NOCASE ASC
-            LIMIT 12
-        """
-        async with db.execute(top_suppliers_query, summary_params) as cursor:
-            top_supplier_rows = [dict(row) for row in await cursor.fetchall()]
+    monthly_trend_query = f"""
+        SELECT
+            SUBSTR(request_date, 1, 7) AS month,
+            supplier_id,
+            COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
+            COUNT(*) AS record_count,
+            COALESCE(SUM(quantity), 0) AS total_quantity,
+            COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount
+        FROM items
+        {trend_where}
+        GROUP BY month, supplier_id, supplier_name
+        HAVING month IS NOT NULL AND month <> ''
+        ORDER BY month ASC, total_amount DESC, supplier_name COLLATE NOCASE ASC
+    """
+    monthly_trend_rows = await execute_sql(monthly_trend_query, list(trend_params))
 
-        # Monthly trend for selected year (used for month/quarter granularity)
-        monthly_trend_query = f"""
-            SELECT
-                SUBSTR(request_date, 1, 7) AS month,
-                supplier_id,
-                COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
-                COUNT(*) AS record_count,
-                COALESCE(SUM(quantity), 0) AS total_quantity,
-                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount
-            FROM items
-            {trend_where}
-            GROUP BY month, supplier_id, supplier_name
-            HAVING month IS NOT NULL AND month <> ''
-            ORDER BY month ASC, total_amount DESC, supplier_name COLLATE NOCASE ASC
-        """
-        async with db.execute(monthly_trend_query, trend_params) as cursor:
-            monthly_trend_rows = [dict(row) for row in await cursor.fetchall()]
+    yearly_summary_query = f"""
+        SELECT
+            SUBSTR(request_date, 1, 4) AS year,
+            supplier_id,
+            COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
+            COUNT(*) AS record_count,
+            COUNT(DISTINCT item_name) AS item_count,
+            COALESCE(SUM(quantity), 0) AS total_quantity,
+            COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount
+        FROM items
+        {yearly_where}
+        GROUP BY year, supplier_id, supplier_name
+        HAVING year IS NOT NULL AND year <> ''
+        ORDER BY year DESC, total_amount DESC, supplier_name COLLATE NOCASE ASC
+    """
+    yearly_summary_rows = await execute_sql(yearly_summary_query, list(yearly_params))
 
-        # Yearly summary — direct GROUP BY year, no LIMIT truncation
-        yearly_summary_query = f"""
-            SELECT
-                SUBSTR(request_date, 1, 4) AS year,
-                supplier_id,
-                COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
-                COUNT(*) AS record_count,
-                COUNT(DISTINCT item_name) AS item_count,
-                COALESCE(SUM(quantity), 0) AS total_quantity,
-                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount
-            FROM items
-            {yearly_where}
-            GROUP BY year, supplier_id, supplier_name
-            HAVING year IS NOT NULL AND year <> ''
-            ORDER BY year DESC, total_amount DESC, supplier_name COLLATE NOCASE ASC
-        """
-        async with db.execute(yearly_summary_query, yearly_params) as cursor:
-            yearly_summary_rows = [dict(row) for row in await cursor.fetchall()]
+    supplier_item_query = f"""
+        SELECT
+            supplier_id,
+            COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
+            item_name,
+            COUNT(*) AS record_count,
+            COALESCE(SUM(quantity), 0) AS total_quantity,
+            COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
+            MAX(request_date) AS latest_request_date
+        FROM items
+        {summary_where}
+        GROUP BY supplier_id, supplier_name, item_name
+        ORDER BY total_amount DESC, record_count DESC, item_name COLLATE NOCASE ASC
+        LIMIT 80
+    """
+    supplier_item_rows = await execute_sql(supplier_item_query, list(summary_params))
 
-        supplier_item_query = f"""
-            SELECT
-                supplier_id,
-                COALESCE(supplier_name_snapshot, '未归属供应商') AS supplier_name,
-                item_name,
-                COUNT(*) AS record_count,
-                COALESCE(SUM(quantity), 0) AS total_quantity,
-                COALESCE(SUM(quantity * COALESCE(unit_price, 0)), 0) AS total_amount,
-                MAX(request_date) AS latest_request_date
-            FROM items
-            {summary_where}
-            GROUP BY supplier_id, supplier_name, item_name
-            ORDER BY total_amount DESC, record_count DESC, item_name COLLATE NOCASE ASC
-            LIMIT 80
-        """
-        async with db.execute(supplier_item_query, summary_params) as cursor:
-            supplier_item_rows = [dict(row) for row in await cursor.fetchall()]
+    unassigned_where = f"{summary_where} {'AND' if summary_where else 'WHERE'} supplier_id IS NULL"
+    unassigned_query = f"""
+        SELECT
+            id, serial_number, request_date, department, handler, item_name,
+            quantity, unit_price, status
+        FROM items
+        {unassigned_where}
+        ORDER BY request_date DESC, id DESC
+        LIMIT 50
+    """
+    unassigned_rows = await execute_sql(unassigned_query, list(summary_params))
 
-        unassigned_query = f"""
-            SELECT
-                id, serial_number, request_date, department, handler, item_name,
-                quantity, unit_price, status
-            FROM items
-            {summary_where}
-            {"AND" if summary_where else "WHERE"} supplier_id IS NULL
-            ORDER BY request_date DESC, id DESC
-            LIMIT 50
-        """
-        async with db.execute(unassigned_query, summary_params) as cursor:
-            unassigned_rows = [dict(row) for row in await cursor.fetchall()]
-
-    # Build quarterly trend from monthly rows
     quarterly_trend_map: dict[tuple, dict] = {}
     for r in monthly_trend_rows:
         qk = _month_to_quarter(r["month"])
@@ -657,17 +582,7 @@ async def get_supplier_report(
         sid = _safe_int(r.get("supplier_id")) or None
         sname = r.get("supplier_name") or "未归属供应商"
         key = (qk, sid, sname)
-        e = quarterly_trend_map.setdefault(
-            key,
-            {
-                "quarter": qk,
-                "supplier_id": sid,
-                "supplier_name": sname,
-                "record_count": 0,
-                "total_quantity": 0.0,
-                "total_amount": 0.0,
-            },
-        )
+        e = quarterly_trend_map.setdefault(key, {"quarter": qk, "supplier_id": sid, "supplier_name": sname, "record_count": 0, "total_quantity": 0.0, "total_amount": 0.0})
         e["record_count"] += _safe_int(r.get("record_count"))
         e["total_quantity"] += _safe_float(r.get("total_quantity"))
         e["total_amount"] += _safe_float(r.get("total_amount"))

@@ -10,7 +10,7 @@ APP_VERSION_FALLBACK = "0.0.0"
 
 def load_app_version() -> str:
     try:
-        version = VERSION_FILE.read_text(encoding="utf-8").strip()
+        version = VERSION_FILE.read_text(encoding="utf-8", errors="replace").strip()
     except OSError:
         return APP_VERSION_FALLBACK
     return version or APP_VERSION_FALLBACK

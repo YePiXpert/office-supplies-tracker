@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import aiosqlite
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy.exc import IntegrityError as SAIntegrityError
+from sqlalchemy.exc import IntegrityError as SAIntegrityError
 
 from api_utils import safe_unlink, save_upload_file_with_limit
 from db.operations import (
@@ -56,8 +57,8 @@ async def operations_center():
 @router.post("/suppliers")
 async def create_supplier_endpoint(request: SupplierCreateRequest):
     try:
-        supplier_id = await create_supplier(request.model_dump())
-    except aiosqlite.IntegrityError:
+        supplier_id =         await create_supplier(request.model_dump())
+    except SAIntegrityError:
         raise HTTPException(status_code=409, detail="供应商名称已存在")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -70,7 +71,7 @@ async def update_supplier_endpoint(supplier_id: int, request: SupplierUpdateRequ
         raise HTTPException(status_code=400, detail="Invalid supplier id")
     try:
         found = await update_supplier(supplier_id, request.model_dump())
-    except aiosqlite.IntegrityError:
+    except SAIntegrityError:
         raise HTTPException(status_code=409, detail="供应商名称已存在")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

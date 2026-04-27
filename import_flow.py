@@ -126,7 +126,9 @@ def safe_quantity(value) -> float:
     """数量兜底，避免异常值导致合并失败。"""
     if isinstance(value, (int, float)):
         quantity = float(value)
-        return quantity if quantity > 0 else 1.0
+        if quantity <= 0:
+            raise ValueError("quantity 必须 > 0")
+        return quantity
 
     raw = normalize_text(value)
     if raw:
@@ -135,15 +137,19 @@ def safe_quantity(value) -> float:
         if match:
             try:
                 quantity = float(match.group(1))
-                return quantity if quantity > 0 else 1.0
+                if quantity <= 0:
+                    raise ValueError("quantity 必须 > 0")
+                return quantity
             except (TypeError, ValueError):
                 pass
 
     try:
         quantity = float(value)
-        return quantity if quantity > 0 else 1.0
+        if quantity <= 0:
+            raise ValueError("quantity 必须 > 0")
+        return quantity
     except (TypeError, ValueError):
-        return 1.0
+        raise ValueError("quantity 必须为数字且 > 0")
 
 
 def safe_unit_price(value) -> Optional[float]:

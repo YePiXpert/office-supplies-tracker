@@ -1,16 +1,20 @@
 import json
 import asyncio
+import secrets
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from itsdangerous import URLSafeSerializer
+from itsdangerous.exc import BadData
 from starlette.concurrency import run_in_threadpool
 
 from api_utils import safe_unlink, save_upload_file_with_limit
 from app_metadata import APP_VERSION
 from app_locks import DATA_MUTATION_LOCK, MAINTENANCE_MODE
 from app_runtime import APP_STATE_DIR, STATIC_DIR, UPLOAD_DIR
+from auth_security import _load_or_create_cookie_secret
 from backup_service import (
     MAX_BACKUP_TOTAL_SIZE,
     build_backup_archive,
@@ -34,8 +38,30 @@ from webdav_service import (
     test_connection,
 )
 
-router = APIRouter()
+router = APIRouter()  # 无 prefix: 此 router 同时注册 / 主页和 /api/* 端点
 WEBDAV_CONFIG_PATH = APP_STATE_DIR / ".webdav_config.json"
+_WEBDAV_ENCRYPTION_SALT = "webdav-password"
+
+
+def _get_webdav_encryptor() -> URLSafeSerializer:
+    return URLSafeSerializer(
+        _load_or_create_cookie_secret(), salt=_WEBDAV_ENCRYPTION_SALT
+    )
+
+
+def _encrypt_webdav_password(raw_password: str) -> str:
+    if not raw_password:
+        return ""
+    return _get_webdav_encryptor().dumps(raw_password)
+
+
+def _decrypt_webdav_password(encrypted: str) -> str:
+    if not encrypted:
+        return ""
+    try:
+        return _get_webdav_encryptor().loads(encrypted)
+    except (BadData, TypeError, UnicodeDecodeError):
+        raise ValueError("WebDAV 密码无法解密，请重新配置 WebDAV 密码")
 
 
 def _validate_backup_filename(filename: str) -> str:
@@ -70,8 +96,12 @@ async def _save_backup_upload(file: UploadFile, prefix: str) -> Path:
 
 
 def _run_init_db_sync() -> None:
-    """在线程池中执行 DB 初始化/迁移。"""
-    asyncio.run(init_db())
+    """在线程池中执行 DB 初始化/迁移，避免 asyncio.run() 嵌套冲突。"""
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(init_db())
+    finally:
+        loop.close()
 
 
 def _load_webdav_config() -> dict:
@@ -86,10 +116,15 @@ def _load_webdav_config() -> dict:
             keep_backups = int(data.get("keep_backups") or 0)
         except (TypeError, ValueError):
             keep_backups = 0
+        encrypted_pw = str(data.get("password") or "")
+        try:
+            decrypted_pw = _decrypt_webdav_password(encrypted_pw)
+        except ValueError:
+            decrypted_pw = ""
         config = {
             "base_url": str(data.get("base_url") or "").strip(),
             "username": str(data.get("username") or "").strip(),
-            "password": str(data.get("password") or ""),
+            "password": decrypted_pw,
             "remote_dir": str(data.get("remote_dir") or "").strip(),
             "keep_backups": keep_backups,
         }
@@ -104,8 +139,11 @@ def _load_webdav_config() -> dict:
 
 
 def _save_webdav_config(config: dict) -> None:
+    safe_config = dict(config)
+    if safe_config.get("password"):
+        safe_config["password"] = _encrypt_webdav_password(str(safe_config["password"]))
     WEBDAV_CONFIG_PATH.write_text(
-        json.dumps(config, ensure_ascii=False, indent=2),
+        json.dumps(safe_config, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     try:

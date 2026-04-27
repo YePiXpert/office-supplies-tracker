@@ -12,6 +12,9 @@ from time_utils import beijing_filename_timestamp
 ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".jfif"}
 MAX_DOCUMENT_UPLOAD_BYTES = 30 * 1024 * 1024  # 30MB
 STREAM_CHUNK_SIZE = 1024 * 1024
+MIN_PAGE = 1
+MAX_PAGE_SIZE = 200
+DEFAULT_PAGE_SIZE = 20
 
 
 def normalize_month(month: Optional[str]) -> Optional[str]:
@@ -85,3 +88,26 @@ def save_upload_file_with_limit(
                 raise HTTPException(status_code=413, detail=f"{file_label}过大，最大支持 {limit_mb}MB")
             buffer.write(chunk)
     return written
+
+
+def normalize_item_filters(
+    status: Optional[str],
+    department: Optional[str],
+    month: Optional[str],
+    keyword: Optional[str],
+) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    """统一的物品列表筛选参数校验与归一化。"""
+    return (
+        normalize_text_filter(status),
+        normalize_text_filter(department),
+        normalize_month(month),
+        normalize_text_filter(keyword),
+    )
+
+
+def validate_pagination(page: int, page_size: int) -> None:
+    """统一的翻页参数校验。"""
+    if page < MIN_PAGE:
+        raise HTTPException(status_code=400, detail="page 必须 >= 1")
+    if page_size < 1 or page_size > MAX_PAGE_SIZE:
+        raise HTTPException(status_code=400, detail="page_size 必须在 1-200 之间")

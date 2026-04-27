@@ -8,11 +8,10 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-import aiosqlite
-
 from app_runtime import UPLOAD_DIR
 from .constants import DB_PATH, ItemStatus
 from .filters import build_item_filters
+from .orm import AsyncSessionLocal, execute_sql, execute_sql_scalar, execute_write_sql
 
 REIMBURSEMENT_STATUS_VALUES = ("pending", "submitted", "reimbursed")
 DEFAULT_REIMBURSEMENT_STATUS = "pending"
@@ -89,18 +88,10 @@ def _normalize_optional_nonnegative_int(value: Any, *, field: str) -> int | None
 
 def _normalize_supplier_payload(payload: dict) -> dict:
     return {
-        "name": _normalize_required_text(
-            payload.get("name"), field="name", max_length=200
-        ),
-        "contact_name": _normalize_optional_text(
-            payload.get("contact_name"), max_length=200
-        ),
-        "contact_phone": _normalize_optional_text(
-            payload.get("contact_phone"), max_length=80
-        ),
-        "contact_email": _normalize_optional_text(
-            payload.get("contact_email"), max_length=200
-        ),
+        "name": _normalize_required_text(payload.get("name"), field="name", max_length=200),
+        "contact_name": _normalize_optional_text(payload.get("contact_name"), max_length=200),
+        "contact_phone": _normalize_optional_text(payload.get("contact_phone"), max_length=80),
+        "contact_email": _normalize_optional_text(payload.get("contact_email"), max_length=200),
         "notes": _normalize_optional_text(payload.get("notes"), max_length=500),
         "is_active": 1 if bool(payload.get("is_active", True)) else 0,
     }
@@ -108,86 +99,49 @@ def _normalize_supplier_payload(payload: dict) -> dict:
 
 def _normalize_price_payload(payload: dict) -> dict:
     return {
-        "item_name": _normalize_required_text(
-            payload.get("item_name"), field="item_name", max_length=200
-        ),
-        "supplier_id": _normalize_optional_positive_int(
-            payload.get("supplier_id"), field="supplier_id"
-        ),
-        "unit_price": _normalize_nonnegative_number(
-            payload.get("unit_price"), field="unit_price"
-        ),
-        "purchase_link": _normalize_optional_text(
-            payload.get("purchase_link"), max_length=2000
-        ),
-        "last_purchase_date": _normalize_optional_date(
-            payload.get("last_purchase_date")
-        ),
-        "last_serial_number": _normalize_optional_text(
-            payload.get("last_serial_number"), max_length=120
-        ),
-        "lead_time_days": _normalize_optional_nonnegative_int(
-            payload.get("lead_time_days"), field="lead_time_days"
-        ),
+        "item_name": _normalize_required_text(payload.get("item_name"), field="item_name", max_length=200),
+        "supplier_id": _normalize_optional_positive_int(payload.get("supplier_id"), field="supplier_id"),
+        "unit_price": _normalize_nonnegative_number(payload.get("unit_price"), field="unit_price"),
+        "purchase_link": _normalize_optional_text(payload.get("purchase_link"), max_length=2000),
+        "last_purchase_date": _normalize_optional_date(payload.get("last_purchase_date")),
+        "last_serial_number": _normalize_optional_text(payload.get("last_serial_number"), max_length=120),
+        "lead_time_days": _normalize_optional_nonnegative_int(payload.get("lead_time_days"), field="lead_time_days"),
     }
 
 
 def _normalize_inventory_payload(payload: dict) -> dict:
     return {
-        "item_name": _normalize_required_text(
-            payload.get("item_name"), field="item_name", max_length=200
-        ),
-        "current_stock": _normalize_nonnegative_number(
-            payload.get("current_stock"), field="current_stock"
-        ),
-        "low_stock_threshold": _normalize_nonnegative_number(
-            payload.get("low_stock_threshold"), field="low_stock_threshold"
-        ),
+        "item_name": _normalize_required_text(payload.get("item_name"), field="item_name", max_length=200),
+        "current_stock": _normalize_nonnegative_number(payload.get("current_stock"), field="current_stock"),
+        "low_stock_threshold": _normalize_nonnegative_number(payload.get("low_stock_threshold"), field="low_stock_threshold"),
         "unit": _normalize_optional_text(payload.get("unit"), max_length=40),
-        "preferred_supplier_id": _normalize_optional_positive_int(
-            payload.get("preferred_supplier_id"),
-            field="preferred_supplier_id",
-        ),
-        "reorder_quantity": _normalize_nonnegative_number(
-            payload.get("reorder_quantity", 0), field="reorder_quantity"
-        ),
+        "preferred_supplier_id": _normalize_optional_positive_int(payload.get("preferred_supplier_id"), field="preferred_supplier_id"),
+        "reorder_quantity": _normalize_nonnegative_number(payload.get("reorder_quantity", 0), field="reorder_quantity"),
         "notes": _normalize_optional_text(payload.get("notes"), max_length=500),
     }
 
 
 def _normalize_invoice_payload(payload: dict) -> dict:
-    status = (
-        str(payload.get("reimbursement_status") or DEFAULT_REIMBURSEMENT_STATUS)
-        .strip()
-        .lower()
-    )
-    if status not in REIMBURSEMENT_STATUS_VALUES:
+    status_val = str(payload.get("reimbursement_status") or DEFAULT_REIMBURSEMENT_STATUS).strip().lower()
+    if status_val not in REIMBURSEMENT_STATUS_VALUES:
         raise ValueError("invalid reimbursement_status")
     return {
-        "reimbursement_status": status,
-        "reimbursement_date": _normalize_optional_date(
-            payload.get("reimbursement_date")
-        ),
-        "invoice_number": _normalize_optional_text(
-            payload.get("invoice_number"), max_length=120
-        ),
+        "reimbursement_status": status_val,
+        "reimbursement_date": _normalize_optional_date(payload.get("reimbursement_date")),
+        "invoice_number": _normalize_optional_text(payload.get("invoice_number"), max_length=120),
         "note": _normalize_optional_text(payload.get("note"), max_length=500),
     }
 
 
 def _normalize_purchase_order_payload(payload: dict) -> dict:
-    status = str(payload.get("status") or DEFAULT_PURCHASE_ORDER_STATUS).strip().lower()
-    if status not in PURCHASE_ORDER_STATUS_VALUES:
+    status_val = str(payload.get("status") or DEFAULT_PURCHASE_ORDER_STATUS).strip().lower()
+    if status_val not in PURCHASE_ORDER_STATUS_VALUES:
         raise ValueError("invalid purchase order status")
     return {
-        "supplier_id": _normalize_optional_positive_int(
-            payload.get("supplier_id"), field="supplier_id"
-        ),
+        "supplier_id": _normalize_optional_positive_int(payload.get("supplier_id"), field="supplier_id"),
         "ordered_date": _normalize_optional_date(payload.get("ordered_date")),
-        "expected_arrival_date": _normalize_optional_date(
-            payload.get("expected_arrival_date")
-        ),
-        "status": status,
+        "expected_arrival_date": _normalize_optional_date(payload.get("expected_arrival_date")),
+        "status": status_val,
         "note": _normalize_optional_text(payload.get("note"), max_length=500),
     }
 
@@ -196,11 +150,7 @@ def _normalize_purchase_receipt_payload(payload: dict) -> dict:
     received_quantity = payload.get("received_quantity")
     return {
         "received_date": _normalize_optional_date(payload.get("received_date")),
-        "received_quantity": None
-        if received_quantity in ("", None)
-        else _normalize_nonnegative_number(
-            received_quantity, field="received_quantity"
-        ),
+        "received_quantity": None if received_quantity in ("", None) else _normalize_nonnegative_number(received_quantity, field="received_quantity"),
         "note": _normalize_optional_text(payload.get("note"), max_length=500),
     }
 
@@ -260,32 +210,24 @@ def _make_where_clause(
     return where_clause, params
 
 
-async def _fetch_supplier_row(
-    db: aiosqlite.Connection, supplier_id: int
-) -> dict | None:
-    db.row_factory = aiosqlite.Row
-    async with db.execute(
-        "SELECT id, name FROM suppliers WHERE id = ? LIMIT 1",
-        (supplier_id,),
-    ) as cursor:
-        row = await cursor.fetchone()
-    return dict(row) if row is not None else None
+async def _fetch_supplier_row(supplier_id: int) -> dict | None:
+    rows = await execute_sql(
+        "SELECT id, name FROM suppliers WHERE id = ? LIMIT 1", [supplier_id]
+    )
+    return rows[0] if rows else None
 
 
-async def _ensure_supplier_exists(
-    db: aiosqlite.Connection, supplier_id: int | None, *, field: str
-) -> dict | None:
+async def _ensure_supplier_exists(supplier_id: int | None, *, field: str) -> dict | None:
     if supplier_id is None:
         return None
-    supplier = await _fetch_supplier_row(db, supplier_id)
+    supplier = await _fetch_supplier_row(supplier_id)
     if supplier is None:
         raise ValueError(f"{field} does not exist")
     return supplier
 
 
-async def _get_item_row(db: aiosqlite.Connection, item_id: int) -> dict | None:
-    db.row_factory = aiosqlite.Row
-    async with db.execute(
+async def _get_item_row(item_id: int) -> dict | None:
+    rows = await execute_sql(
         """
         SELECT id, serial_number, department, handler, request_date, item_name, quantity,
                supplier_id, supplier_name_snapshot, status, arrival_date
@@ -293,202 +235,128 @@ async def _get_item_row(db: aiosqlite.Connection, item_id: int) -> dict | None:
         WHERE id = ? AND deleted_at IS NULL
         LIMIT 1
         """,
-        (item_id,),
-    ) as cursor:
-        row = await cursor.fetchone()
-    return dict(row) if row is not None else None
+        [item_id],
+    )
+    return rows[0] if rows else None
 
 
 async def list_suppliers(limit: int = 50) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """
-            SELECT id, name, contact_name, contact_phone, contact_email, notes, is_active, created_at, updated_at
-            FROM suppliers
-            ORDER BY is_active DESC, name COLLATE NOCASE ASC
-            LIMIT ?
-            """,
-            (limit,),
-        ) as cursor:
-            return [dict(row) for row in await cursor.fetchall()]
+    return await execute_sql(
+        """
+        SELECT id, name, contact_name, contact_phone, contact_email, notes, is_active, created_at, updated_at
+        FROM suppliers
+        ORDER BY is_active DESC, name COLLATE NOCASE ASC
+        LIMIT ?
+        """,
+        [limit],
+    )
 
 
 async def create_supplier(payload: dict) -> int:
     normalized = _normalize_supplier_payload(payload)
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            """
-            INSERT INTO suppliers (name, contact_name, contact_phone, contact_email, notes, is_active, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            (
-                normalized["name"],
-                normalized["contact_name"],
-                normalized["contact_phone"],
-                normalized["contact_email"],
-                normalized["notes"],
-                normalized["is_active"],
-            ),
-        )
-        await db.commit()
-        return int(cursor.lastrowid)
+    return await execute_write_sql(
+        """
+        INSERT INTO suppliers (name, contact_name, contact_phone, contact_email, notes, is_active, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        [normalized["name"], normalized["contact_name"], normalized["contact_phone"], normalized["contact_email"], normalized["notes"], normalized["is_active"]],
+    )
 
 
 async def update_supplier(supplier_id: int, payload: dict) -> bool:
     normalized = _normalize_supplier_payload(payload)
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            """
-            UPDATE suppliers
-            SET name = ?, contact_name = ?, contact_phone = ?, contact_email = ?,
-                notes = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (
-                normalized["name"],
-                normalized["contact_name"],
-                normalized["contact_phone"],
-                normalized["contact_email"],
-                normalized["notes"],
-                normalized["is_active"],
-                supplier_id,
-            ),
-        )
-        await db.commit()
-        return cursor.rowcount > 0
+    affected = await execute_write_sql(
+        """
+        UPDATE suppliers
+        SET name = ?, contact_name = ?, contact_phone = ?, contact_email = ?,
+            notes = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        [normalized["name"], normalized["contact_name"], normalized["contact_phone"], normalized["contact_email"], normalized["notes"], normalized["is_active"], supplier_id],
+    )
+    return affected > 0
 
 
 async def delete_supplier(supplier_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            "DELETE FROM suppliers WHERE id = ?", (supplier_id,)
-        )
-        await db.commit()
-        return cursor.rowcount > 0
+    affected = await execute_write_sql("DELETE FROM suppliers WHERE id = ?", [supplier_id])
+    return affected > 0
 
 
 async def list_price_records(limit: int = 50) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """
-            SELECT pr.id, pr.item_name, pr.unit_price, pr.purchase_link, pr.last_purchase_date,
-                   pr.last_serial_number, pr.lead_time_days, pr.created_at, pr.updated_at,
-                   s.id AS supplier_id, s.name AS supplier_name
-            FROM supplier_price_records pr
-            LEFT JOIN suppliers s ON s.id = pr.supplier_id
-            ORDER BY COALESCE(pr.last_purchase_date, '') DESC, pr.updated_at DESC, pr.id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ) as cursor:
-            return [dict(row) for row in await cursor.fetchall()]
+    return await execute_sql(
+        """
+        SELECT pr.id, pr.item_name, pr.unit_price, pr.purchase_link, pr.last_purchase_date,
+               pr.last_serial_number, pr.lead_time_days, pr.created_at, pr.updated_at,
+               s.id AS supplier_id, s.name AS supplier_name
+        FROM supplier_price_records pr
+        LEFT JOIN suppliers s ON s.id = pr.supplier_id
+        ORDER BY COALESCE(pr.last_purchase_date, '') DESC, pr.updated_at DESC, pr.id DESC
+        LIMIT ?
+        """,
+        [limit],
+    )
 
 
 async def create_price_record(payload: dict) -> int:
     normalized = _normalize_price_payload(payload)
-    async with aiosqlite.connect(DB_PATH) as db:
-        await _ensure_supplier_exists(
-            db, normalized["supplier_id"], field="supplier_id"
+    await _ensure_supplier_exists(normalized["supplier_id"], field="supplier_id")
+    return await execute_write_sql(
+        """
+        INSERT INTO supplier_price_records (
+            item_name, supplier_id, unit_price, purchase_link, last_purchase_date, last_serial_number, lead_time_days, updated_at
         )
-        cursor = await db.execute(
-            """
-            INSERT INTO supplier_price_records (
-                item_name, supplier_id, unit_price, purchase_link, last_purchase_date, last_serial_number, lead_time_days, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            (
-                normalized["item_name"],
-                normalized["supplier_id"],
-                normalized["unit_price"],
-                normalized["purchase_link"],
-                normalized["last_purchase_date"],
-                normalized["last_serial_number"],
-                normalized["lead_time_days"],
-            ),
-        )
-        await db.commit()
-        return int(cursor.lastrowid)
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        [normalized["item_name"], normalized["supplier_id"], normalized["unit_price"], normalized["purchase_link"], normalized["last_purchase_date"], normalized["last_serial_number"], normalized["lead_time_days"]],
+    )
 
 
 async def list_inventory_profiles(limit: int = 50) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """
-            SELECT ip.id, ip.item_name, ip.current_stock, ip.low_stock_threshold, ip.unit,
-                   ip.reorder_quantity, ip.notes, ip.updated_at, ip.created_at,
-                   s.id AS preferred_supplier_id, s.name AS preferred_supplier_name
-            FROM inventory_profiles ip
-            LEFT JOIN suppliers s ON s.id = ip.preferred_supplier_id
-            ORDER BY (ip.current_stock <= ip.low_stock_threshold) DESC, ip.updated_at DESC, ip.id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ) as cursor:
-            rows = [dict(row) for row in await cursor.fetchall()]
+    rows = await execute_sql(
+        """
+        SELECT ip.id, ip.item_name, ip.current_stock, ip.low_stock_threshold, ip.unit,
+               ip.reorder_quantity, ip.notes, ip.updated_at, ip.created_at,
+               s.id AS preferred_supplier_id, s.name AS preferred_supplier_name
+        FROM inventory_profiles ip
+        LEFT JOIN suppliers s ON s.id = ip.preferred_supplier_id
+        ORDER BY (ip.current_stock <= ip.low_stock_threshold) DESC, ip.updated_at DESC, ip.id DESC
+        LIMIT ?
+        """,
+        [limit],
+    )
     for row in rows:
-        current_stock = _safe_float(row.get("current_stock"))
+        current_stock_val = _safe_float(row.get("current_stock"))
         threshold = _safe_float(row.get("low_stock_threshold"))
-        row["is_low_stock"] = current_stock <= threshold
-        row["shortage"] = round(max(0.0, threshold - current_stock), 2)
+        row["is_low_stock"] = current_stock_val <= threshold
+        row["shortage"] = round(max(0.0, threshold - current_stock_val), 2)
     return rows
 
 
 async def upsert_inventory_profile(payload: dict) -> int:
     normalized = _normalize_inventory_payload(payload)
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        await _ensure_supplier_exists(
-            db, normalized["preferred_supplier_id"], field="preferred_supplier_id"
-        )
-        async with db.execute(
-            "SELECT id FROM inventory_profiles WHERE item_name = ? LIMIT 1",
-            (normalized["item_name"],),
-        ) as cursor:
-            existing = await cursor.fetchone()
-        if existing:
-            profile_id = int(existing["id"])
-            await db.execute(
-                """
-                UPDATE inventory_profiles
-                SET current_stock = ?, low_stock_threshold = ?, unit = ?, preferred_supplier_id = ?,
-                    reorder_quantity = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (
-                    normalized["current_stock"],
-                    normalized["low_stock_threshold"],
-                    normalized["unit"],
-                    normalized["preferred_supplier_id"],
-                    normalized["reorder_quantity"],
-                    normalized["notes"],
-                    profile_id,
-                ),
-            )
-            await db.commit()
-            return profile_id
-        cursor = await db.execute(
+    await _ensure_supplier_exists(normalized["preferred_supplier_id"], field="preferred_supplier_id")
+    existing = await execute_sql("SELECT id FROM inventory_profiles WHERE item_name = ? LIMIT 1", [normalized["item_name"]])
+    if existing:
+        profile_id = int(existing[0]["id"])
+        await execute_write_sql(
             """
-            INSERT INTO inventory_profiles (
-                item_name, current_stock, low_stock_threshold, unit, preferred_supplier_id, reorder_quantity, notes, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            UPDATE inventory_profiles
+            SET current_stock = ?, low_stock_threshold = ?, unit = ?, preferred_supplier_id = ?,
+                reorder_quantity = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
             """,
-            (
-                normalized["item_name"],
-                normalized["current_stock"],
-                normalized["low_stock_threshold"],
-                normalized["unit"],
-                normalized["preferred_supplier_id"],
-                normalized["reorder_quantity"],
-                normalized["notes"],
-            ),
+            [normalized["current_stock"], normalized["low_stock_threshold"], normalized["unit"], normalized["preferred_supplier_id"], normalized["reorder_quantity"], normalized["notes"], profile_id],
         )
-        await db.commit()
-        return int(cursor.lastrowid)
+        return profile_id
+    return await execute_write_sql(
+        """
+        INSERT INTO inventory_profiles (
+            item_name, current_stock, low_stock_threshold, unit, preferred_supplier_id, reorder_quantity, notes, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        [normalized["item_name"], normalized["current_stock"], normalized["low_stock_threshold"], normalized["unit"], normalized["preferred_supplier_id"], normalized["reorder_quantity"], normalized["notes"]],
+    )
 
 
 def create_import_task_run_sync(
@@ -501,26 +369,9 @@ def create_import_task_run_sync(
             INSERT OR REPLACE INTO import_task_runs (
                 task_id, file_name, engine, protocol, status, item_count, error_detail, created_at, updated_at, completed_at
             )
-            VALUES (
-                ?, ?, ?, ?, ?,
-                COALESCE((SELECT item_count FROM import_task_runs WHERE task_id = ?), 0),
-                COALESCE((SELECT error_detail FROM import_task_runs WHERE task_id = ?), NULL),
-                COALESCE((SELECT created_at FROM import_task_runs WHERE task_id = ?), CURRENT_TIMESTAMP),
-                CURRENT_TIMESTAMP,
-                CASE WHEN ? IN ('completed', 'failed') THEN CURRENT_TIMESTAMP ELSE NULL END
-            )
+            VALUES (?, ?, ?, ?, ?, COALESCE((SELECT item_count FROM import_task_runs WHERE task_id = ?), 0), COALESCE((SELECT error_detail FROM import_task_runs WHERE task_id = ?), NULL), COALESCE((SELECT created_at FROM import_task_runs WHERE task_id = ?), CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, CASE WHEN ? IN ('completed', 'failed') THEN CURRENT_TIMESTAMP ELSE NULL END)
             """,
-            (
-                task_id,
-                Path(file_name or "").name,
-                engine,
-                protocol,
-                normalized_status,
-                task_id,
-                task_id,
-                task_id,
-                normalized_status,
-            ),
+            (task_id, Path(file_name or "").name, engine, protocol, normalized_status, task_id, task_id, task_id, normalized_status),
         )
         db.commit()
 
@@ -533,348 +384,192 @@ def update_import_task_run_sync(
         db.execute(
             """
             UPDATE import_task_runs
-            SET status = ?,
-                item_count = ?,
-                error_detail = ?,
-                updated_at = CURRENT_TIMESTAMP,
+            SET status = ?, item_count = ?, error_detail = ?, updated_at = CURRENT_TIMESTAMP,
                 completed_at = CASE WHEN ? IN ('completed', 'failed') THEN CURRENT_TIMESTAMP ELSE completed_at END
             WHERE task_id = ?
             """,
-            (
-                normalized_status,
-                max(0, int(item_count or 0)),
-                error_detail,
-                normalized_status,
-                task_id,
-            ),
+            (normalized_status, max(0, int(item_count or 0)), error_detail, normalized_status, task_id),
         )
         db.commit()
 
 
 async def list_import_task_runs(limit: int = 30) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """
-            SELECT task_id, file_name, engine, protocol, status, item_count, error_detail, created_at, updated_at, completed_at
-            FROM import_task_runs
-            ORDER BY created_at DESC, task_id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ) as cursor:
-            return [dict(row) for row in await cursor.fetchall()]
+    return await execute_sql(
+        """
+        SELECT task_id, file_name, engine, protocol, status, item_count, error_detail, created_at, updated_at, completed_at
+        FROM import_task_runs
+        ORDER BY created_at DESC, task_id DESC
+        LIMIT ?
+        """,
+        [limit],
+    )
 
 
 async def upsert_invoice_record(item_id: int, payload: dict) -> int:
     normalized = _normalize_invoice_payload(payload)
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT 1 FROM items WHERE id = ? AND deleted_at IS NULL LIMIT 1",
-            (item_id,),
-        ) as cursor:
-            item_row = await cursor.fetchone()
-        if item_row is None:
-            raise ValueError("item does not exist")
-        async with db.execute(
-            "SELECT id FROM invoice_records WHERE item_id = ? LIMIT 1", (item_id,)
-        ) as cursor:
-            existing = await cursor.fetchone()
-        if existing:
-            record_id = int(existing["id"])
-            await db.execute(
-                """
-                UPDATE invoice_records
-                SET reimbursement_status = ?, reimbursement_date = ?, invoice_number = ?, note = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (
-                    normalized["reimbursement_status"],
-                    normalized["reimbursement_date"],
-                    normalized["invoice_number"],
-                    normalized["note"],
-                    record_id,
-                ),
-            )
-            await db.commit()
-            return record_id
-        cursor = await db.execute(
+    item_check = await execute_sql("SELECT 1 FROM items WHERE id = ? AND deleted_at IS NULL LIMIT 1", [item_id])
+    if not item_check:
+        raise ValueError("item does not exist")
+    existing = await execute_sql("SELECT id FROM invoice_records WHERE item_id = ? LIMIT 1", [item_id])
+    if existing:
+        record_id = int(existing[0]["id"])
+        await execute_write_sql(
             """
-            INSERT INTO invoice_records (
-                item_id, reimbursement_status, reimbursement_date, invoice_number, note, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            UPDATE invoice_records
+            SET reimbursement_status = ?, reimbursement_date = ?, invoice_number = ?, note = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
             """,
-            (
-                item_id,
-                normalized["reimbursement_status"],
-                normalized["reimbursement_date"],
-                normalized["invoice_number"],
-                normalized["note"],
-            ),
+            [normalized["reimbursement_status"], normalized["reimbursement_date"], normalized["invoice_number"], normalized["note"], record_id],
         )
-        await db.commit()
-        return int(cursor.lastrowid)
+        return record_id
+    return await execute_write_sql(
+        """
+        INSERT INTO invoice_records (item_id, reimbursement_status, reimbursement_date, invoice_number, note, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        [item_id, normalized["reimbursement_status"], normalized["reimbursement_date"], normalized["invoice_number"], normalized["note"]],
+    )
 
 
 async def create_invoice_attachment(
     *, item_id: int, file_name: str, stored_name: str, mime_type: str, file_size: int
 ) -> int:
     record_id = await upsert_invoice_record(item_id, {})
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            """
-            INSERT INTO invoice_attachments (
-                invoice_record_id, file_name, stored_name, mime_type, file_size
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (record_id, file_name, stored_name, mime_type, file_size),
-        )
-        await db.commit()
-        return int(cursor.lastrowid)
+    return await execute_write_sql(
+        """
+        INSERT INTO invoice_attachments (invoice_record_id, file_name, stored_name, mime_type, file_size)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        [record_id, file_name, stored_name, mime_type, file_size],
+    )
 
 
 async def delete_invoice_attachment(attachment_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT id, stored_name FROM invoice_attachments WHERE id = ? LIMIT 1",
-            (attachment_id,),
-        ) as cursor:
-            row = await cursor.fetchone()
-        if row is None:
-            return None
-        await db.execute(
-            "DELETE FROM invoice_attachments WHERE id = ?", (attachment_id,)
-        )
-        await db.commit()
-        return dict(row)
+    rows = await execute_sql("SELECT id, stored_name FROM invoice_attachments WHERE id = ? LIMIT 1", [attachment_id])
+    if not rows:
+        return None
+    await execute_write_sql("DELETE FROM invoice_attachments WHERE id = ?", [attachment_id])
+    return rows[0]
 
 
 async def get_invoice_attachment(attachment_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """
-            SELECT ia.id, ia.stored_name, ia.file_name, ia.mime_type
-            FROM invoice_attachments ia
-            JOIN invoice_records ir ON ir.id = ia.invoice_record_id
-            JOIN items i ON i.id = ir.item_id
-            WHERE ia.id = ? AND i.deleted_at IS NULL
-            LIMIT 1
-            """,
-            (attachment_id,),
-        ) as cursor:
-            row = await cursor.fetchone()
-    return dict(row) if row is not None else None
+    rows = await execute_sql(
+        """
+        SELECT ia.id, ia.stored_name, ia.file_name, ia.mime_type
+        FROM invoice_attachments ia
+        JOIN invoice_records ir ON ir.id = ia.invoice_record_id
+        JOIN items i ON i.id = ir.item_id
+        WHERE ia.id = ? AND i.deleted_at IS NULL
+        LIMIT 1
+        """,
+        [attachment_id],
+    )
+    return rows[0] if rows else None
 
 
 async def upsert_purchase_order(item_id: int, payload: dict) -> int:
     normalized = _normalize_purchase_order_payload(payload)
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        item = await _get_item_row(db, item_id)
-        if item is None:
-            raise ValueError("item does not exist")
-
-        supplier = await _ensure_supplier_exists(
-            db, normalized["supplier_id"], field="supplier_id"
-        )
-        async with db.execute(
+    item = await _get_item_row(item_id)
+    if item is None:
+        raise ValueError("item does not exist")
+    supplier = await _ensure_supplier_exists(normalized["supplier_id"], field="supplier_id")
+    existing = await execute_sql("SELECT id FROM purchase_orders WHERE item_id = ? LIMIT 1", [item_id])
+    if existing:
+        purchase_order_id = int(existing[0]["id"])
+        await execute_write_sql(
             """
-            SELECT id
-            FROM purchase_orders
-            WHERE item_id = ?
-            LIMIT 1
+            UPDATE purchase_orders
+            SET supplier_id = ?, ordered_date = ?, expected_arrival_date = ?, status = ?, note = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
             """,
-            (item_id,),
-        ) as cursor:
-            existing = await cursor.fetchone()
-
-        if existing:
-            purchase_order_id = int(existing["id"])
-            await db.execute(
-                """
-                UPDATE purchase_orders
-                SET supplier_id = ?, ordered_date = ?, expected_arrival_date = ?, status = ?, note = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (
-                    normalized["supplier_id"],
-                    normalized["ordered_date"],
-                    normalized["expected_arrival_date"],
-                    normalized["status"],
-                    normalized["note"],
-                    purchase_order_id,
-                ),
-            )
-        else:
-            cursor = await db.execute(
-                """
-                INSERT INTO purchase_orders (
-                    item_id, supplier_id, ordered_date, expected_arrival_date, status, note, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """,
-                (
-                    item_id,
-                    normalized["supplier_id"],
-                    normalized["ordered_date"],
-                    normalized["expected_arrival_date"],
-                    normalized["status"],
-                    normalized["note"],
-                ),
-            )
-            purchase_order_id = int(cursor.lastrowid)
-
-        if supplier is not None:
-            await db.execute(
-                """
-                UPDATE items
-                SET supplier_id = ?, supplier_name_snapshot = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (
-                    int(supplier["id"]),
-                    str(supplier["name"] or "").strip() or None,
-                    item_id,
-                ),
-            )
-
-        if normalized["status"] == "ordered":
-            await db.execute(
-                """
-                UPDATE items
-                SET status = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND deleted_at IS NULL
-                """,
-                (ItemStatus.PENDING_ARRIVAL.value, item_id),
-            )
-        elif normalized["status"] in {"draft", "cancelled"}:
-            await db.execute(
-                """
-                UPDATE items
-                SET status = CASE
-                        WHEN status = ? THEN ?
-                        ELSE status
-                    END,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND deleted_at IS NULL
-                """,
-                (
-                    ItemStatus.PENDING_ARRIVAL.value,
-                    ItemStatus.PENDING.value,
-                    item_id,
-                ),
-            )
-
-        await db.commit()
-        return purchase_order_id
+            [normalized["supplier_id"], normalized["ordered_date"], normalized["expected_arrival_date"], normalized["status"], normalized["note"], purchase_order_id],
+        )
+    else:
+        purchase_order_id = await execute_write_sql(
+            """
+            INSERT INTO purchase_orders (item_id, supplier_id, ordered_date, expected_arrival_date, status, note, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            [item_id, normalized["supplier_id"], normalized["ordered_date"], normalized["expected_arrival_date"], normalized["status"], normalized["note"]],
+        )
+    if supplier is not None:
+        await execute_write_sql(
+            "UPDATE items SET supplier_id = ?, supplier_name_snapshot = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            [int(supplier["id"]), str(supplier["name"] or "").strip() or None, item_id],
+        )
+    if normalized["status"] == "ordered":
+        await execute_write_sql(
+            "UPDATE items SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL",
+            [ItemStatus.PENDING_ARRIVAL.value, item_id],
+        )
+    elif normalized["status"] in {"draft", "cancelled"}:
+        await execute_write_sql(
+            """
+            UPDATE items
+            SET status = CASE WHEN status = ? THEN ? ELSE status END, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND deleted_at IS NULL
+            """,
+            [ItemStatus.PENDING_ARRIVAL.value, ItemStatus.PENDING.value, item_id],
+        )
+    return purchase_order_id
 
 
 async def upsert_purchase_receipt(purchase_order_id: int, payload: dict) -> int:
     normalized = _normalize_purchase_receipt_payload(payload)
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    order_rows = await execute_sql(
+        """
+        SELECT po.id, po.item_id, i.quantity, i.status AS item_status, i.arrival_date
+        FROM purchase_orders po
+        JOIN items i ON i.id = po.item_id
+        WHERE po.id = ? AND i.deleted_at IS NULL
+        LIMIT 1
+        """,
+        [purchase_order_id],
+    )
+    if not order_rows:
+        raise ValueError("purchase order does not exist")
+    order_row = order_rows[0]
+    received_quantity_val = normalized["received_quantity"]
+    if received_quantity_val is None:
+        received_quantity_val = _safe_float(order_row["quantity"])
+    existing = await execute_sql("SELECT id FROM purchase_receipts WHERE purchase_order_id = ? LIMIT 1", [purchase_order_id])
+    if existing:
+        receipt_id = int(existing[0]["id"])
+        await execute_write_sql(
             """
-            SELECT po.id, po.item_id, i.quantity, i.status AS item_status, i.arrival_date
-            FROM purchase_orders po
-            JOIN items i ON i.id = po.item_id
-            WHERE po.id = ? AND i.deleted_at IS NULL
-            LIMIT 1
-            """,
-            (purchase_order_id,),
-        ) as cursor:
-            order_row = await cursor.fetchone()
-        if order_row is None:
-            raise ValueError("purchase order does not exist")
-
-        received_quantity = normalized["received_quantity"]
-        if received_quantity is None:
-            received_quantity = _safe_float(order_row["quantity"])
-
-        async with db.execute(
-            "SELECT id FROM purchase_receipts WHERE purchase_order_id = ? LIMIT 1",
-            (purchase_order_id,),
-        ) as cursor:
-            existing = await cursor.fetchone()
-
-        if existing:
-            receipt_id = int(existing["id"])
-            await db.execute(
-                """
-                UPDATE purchase_receipts
-                SET received_date = ?, received_quantity = ?, note = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (
-                    normalized["received_date"],
-                    received_quantity,
-                    normalized["note"],
-                    receipt_id,
-                ),
-            )
-        else:
-            cursor = await db.execute(
-                """
-                INSERT INTO purchase_receipts (
-                    purchase_order_id, received_date, received_quantity, note, updated_at
-                )
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """,
-                (
-                    purchase_order_id,
-                    normalized["received_date"],
-                    received_quantity,
-                    normalized["note"],
-                ),
-            )
-            receipt_id = int(cursor.lastrowid)
-
-        await db.execute(
-            """
-            UPDATE purchase_orders
-            SET status = 'received', updated_at = CURRENT_TIMESTAMP
+            UPDATE purchase_receipts
+            SET received_date = ?, received_quantity = ?, note = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (purchase_order_id,),
+            [normalized["received_date"], received_quantity_val, normalized["note"], receipt_id],
         )
-
-        item_status = str(order_row["item_status"] or "")
-        next_status = (
-            item_status
-            if item_status == ItemStatus.DISTRIBUTED.value
-            else ItemStatus.PENDING_DISTRIBUTION.value
-        )
-        arrival_date = (
-            normalized["received_date"] or str(order_row["arrival_date"] or "") or None
-        )
-        await db.execute(
+    else:
+        receipt_id = await execute_write_sql(
             """
-            UPDATE items
-            SET status = ?, arrival_date = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND deleted_at IS NULL
+            INSERT INTO purchase_receipts (purchase_order_id, received_date, received_quantity, note, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
-            (
-                next_status,
-                arrival_date,
-                int(order_row["item_id"]),
-            ),
+            [purchase_order_id, normalized["received_date"], received_quantity_val, normalized["note"]],
         )
-        await db.commit()
-        return receipt_id
+    await execute_write_sql(
+        "UPDATE purchase_orders SET status = 'received', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [purchase_order_id],
+    )
+    item_status = str(order_row["item_status"] or "")
+    next_status = item_status if item_status == ItemStatus.DISTRIBUTED.value else ItemStatus.PENDING_DISTRIBUTION.value
+    arrival_date_val = normalized["received_date"] or str(order_row["arrival_date"] or "") or None
+    await execute_write_sql(
+        "UPDATE items SET status = ?, arrival_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL",
+        [next_status, arrival_date_val, int(order_row["item_id"])],
+    )
+    return receipt_id
 
 
-async def _fetch_price_memory(
-    db: aiosqlite.Connection, item_names: set[str]
-) -> dict[str, list[dict]]:
+async def _fetch_price_memory(item_names: set[str]) -> dict[str, list[dict]]:
     if not item_names:
         return {}
     placeholders = ", ".join("?" for _ in item_names)
-    async with db.execute(
+    rows = await execute_sql(
         f"""
         SELECT pr.id, pr.item_name, pr.unit_price, pr.purchase_link, pr.last_purchase_date,
                pr.last_serial_number, pr.lead_time_days, pr.updated_at,
@@ -885,29 +580,24 @@ async def _fetch_price_memory(
         ORDER BY COALESCE(pr.last_purchase_date, '') DESC, pr.updated_at DESC, pr.id DESC
         """,
         list(item_names),
-    ) as cursor:
-        rows = [dict(row) for row in await cursor.fetchall()]
+    )
     grouped: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
         grouped[str(row.get("item_name") or "")].append(row)
     return grouped
 
 
-async def _fetch_open_order_counts_by_item_name(
-    db: aiosqlite.Connection,
-) -> dict[str, int]:
-    async with db.execute(
+async def _fetch_open_order_counts_by_item_name() -> dict[str, int]:
+    rows = await execute_sql(
         """
         SELECT i.item_name, COUNT(1) AS open_order_count
         FROM purchase_orders po
         JOIN items i ON i.id = po.item_id
-        WHERE i.deleted_at IS NULL
-          AND po.status IN ('draft', 'ordered')
+        WHERE i.deleted_at IS NULL AND po.status IN ('draft', 'ordered')
         GROUP BY i.item_name
         """
-    ) as cursor:
-        rows = await cursor.fetchall()
-    return {str(item_name or ""): int(count or 0) for item_name, count in rows}
+    )
+    return {str(item_name or ""): int(count or 0) for item_name, count in (rows or [])}
 
 
 def _pick_supplier_recommendation(
@@ -922,78 +612,31 @@ def _pick_supplier_recommendation(
     price_rows = list(price_memory.get(item_name, []))
     preferred_row = None
     if preferred_supplier_id:
-        preferred_row = next(
-            (
-                row
-                for row in price_rows
-                if _safe_int(row.get("supplier_id")) == int(preferred_supplier_id)
-            ),
-            None,
-        )
+        preferred_row = next((row for row in price_rows if _safe_int(row.get("supplier_id")) == int(preferred_supplier_id)), None)
     selected_row = preferred_row
     if selected_row is None and price_rows:
         selected_row = sorted(
             price_rows,
-            key=lambda row: (
-                _safe_float(row.get("unit_price")),
-                _safe_int(row.get("lead_time_days"))
-                if row.get("lead_time_days") is not None
-                else 10**9,
-                str(row.get("last_purchase_date") or ""),
-            ),
+            key=lambda row: (_safe_float(row.get("unit_price")), _safe_int(row.get("lead_time_days")) if row.get("lead_time_days") is not None else 10**9, str(row.get("last_purchase_date") or "")),
         )[0]
     latest_row = price_rows[0] if price_rows else None
-
-    threshold = (
-        _safe_float(inventory_profile.get("low_stock_threshold"))
-        if inventory_profile
-        else 0.0
-    )
-    current_stock = (
-        _safe_float(inventory_profile.get("current_stock"))
-        if inventory_profile
-        else 0.0
-    )
-    shortage = max(0.0, threshold - current_stock)
-    reorder_quantity = (
-        _safe_float(inventory_profile.get("reorder_quantity"))
-        if inventory_profile
-        else 0.0
-    )
-    recommended_quantity = max(
-        requested_quantity,
-        reorder_quantity if reorder_quantity > 0 else shortage or requested_quantity,
-    )
-
-    selected_price = (
-        _safe_float(selected_row.get("unit_price")) if selected_row else 0.0
-    )
+    threshold = _safe_float(inventory_profile.get("low_stock_threshold")) if inventory_profile else 0.0
+    current_stock_val = _safe_float(inventory_profile.get("current_stock")) if inventory_profile else 0.0
+    shortage = max(0.0, threshold - current_stock_val)
+    reorder_quantity = _safe_float(inventory_profile.get("reorder_quantity")) if inventory_profile else 0.0
+    recommended_quantity = max(requested_quantity, reorder_quantity if reorder_quantity > 0 else shortage or requested_quantity)
+    selected_price = _safe_float(selected_row.get("unit_price")) if selected_row else 0.0
     latest_price = _safe_float(latest_row.get("unit_price")) if latest_row else 0.0
-    selected_supplier_id = (
-        _safe_int(selected_row.get("supplier_id")) if selected_row else None
-    )
+    selected_supplier_id = _safe_int(selected_row.get("supplier_id")) if selected_row else None
     return {
         "item_name": item_name,
         "recommended_supplier_id": selected_supplier_id or preferred_supplier_id,
-        "recommended_supplier_name": (
-            selected_row.get("supplier_name") if selected_row else None
-        )
-        or (
-            inventory_profile.get("preferred_supplier_name")
-            if inventory_profile
-            else None
-        ),
+        "recommended_supplier_name": (selected_row.get("supplier_name") if selected_row else None) or (inventory_profile.get("preferred_supplier_name") if inventory_profile else None),
         "recommended_unit_price": selected_price or None,
-        "recommended_lead_time_days": (
-            _safe_int(selected_row.get("lead_time_days"))
-            if selected_row and selected_row.get("lead_time_days") is not None
-            else None
-        ),
+        "recommended_lead_time_days": _safe_int(selected_row.get("lead_time_days")) if selected_row and selected_row.get("lead_time_days") is not None else None,
         "recommended_quantity": round(recommended_quantity, 2),
         "shortage": round(shortage, 2),
-        "recent_price_delta": round(selected_price - latest_price, 2)
-        if selected_row and latest_row
-        else 0.0,
+        "recent_price_delta": round(selected_price - latest_price, 2) if selected_row and latest_row else 0.0,
         "price_record_count": len(price_rows),
         "has_open_order": open_order_count > 0,
         "open_order_count": open_order_count,
@@ -1009,49 +652,27 @@ async def _list_purchase_queue(
     keyword: str | None = None,
 ) -> list[dict]:
     where_clause, params = _make_where_clause(
-        status=status,
-        department=department,
-        month=month,
-        keyword=keyword,
-        extra_conditions=[
-            "(po.id IS NULL OR po.status IN ('draft', 'cancelled') OR items.status = ?)"
-        ],
+        status=status, department=department, month=month, keyword=keyword,
+        extra_conditions=["(po.id IS NULL OR po.status IN ('draft', 'cancelled') OR items.status = ?)"],
     )
     params.append(ItemStatus.PENDING.value)
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            f"""
-            SELECT items.id AS item_id,
-                   items.serial_number,
-                   items.department,
-                   items.handler,
-                   items.request_date,
-                   items.item_name,
-                   items.quantity,
-                   items.unit_price,
-                   items.purchase_link,
-                   items.supplier_id AS item_supplier_id,
-                   items.supplier_name_snapshot AS item_supplier_name,
-                   items.status AS item_status,
-                   po.id AS purchase_order_id,
-                   COALESCE(po.status, 'draft') AS purchase_status,
-                   po.supplier_id,
-                   s.name AS supplier_name,
-                   po.ordered_date,
-                   po.expected_arrival_date,
-                   po.note AS purchase_note
-            FROM items
-            LEFT JOIN purchase_orders po ON po.item_id = items.id
-            LEFT JOIN suppliers s ON s.id = po.supplier_id
-            {where_clause}
-            ORDER BY items.request_date ASC, items.id ASC
-            LIMIT ?
-            """,
-            [*params, limit],
-        ) as cursor:
-            rows = [dict(row) for row in await cursor.fetchall()]
-    return rows
+    return await execute_sql(
+        f"""
+        SELECT items.id AS item_id, items.serial_number, items.department, items.handler, items.request_date,
+               items.item_name, items.quantity, items.unit_price, items.purchase_link,
+               items.supplier_id AS item_supplier_id, items.supplier_name_snapshot AS item_supplier_name,
+               items.status AS item_status, po.id AS purchase_order_id,
+               COALESCE(po.status, 'draft') AS purchase_status, po.supplier_id,
+               s.name AS supplier_name, po.ordered_date, po.expected_arrival_date, po.note AS purchase_note
+        FROM items
+        LEFT JOIN purchase_orders po ON po.item_id = items.id
+        LEFT JOIN suppliers s ON s.id = po.supplier_id
+        {where_clause}
+        ORDER BY items.request_date ASC, items.id ASC
+        LIMIT ?
+        """,
+        list(params) + [limit],
+    )
 
 
 async def _list_receipt_queue(
@@ -1063,46 +684,26 @@ async def _list_receipt_queue(
     keyword: str | None = None,
 ) -> list[dict]:
     where_clause, params = _make_where_clause(
-        status=status,
-        department=department,
-        month=month,
-        keyword=keyword,
+        status=status, department=department, month=month, keyword=keyword,
         extra_conditions=["po.status = 'ordered'"],
     )
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            f"""
-            SELECT items.id AS item_id,
-                   items.serial_number,
-                   items.department,
-                   items.handler,
-                   items.request_date,
-                   items.item_name,
-                   items.quantity,
-                   items.status AS item_status,
-                   po.id AS purchase_order_id,
-                   po.supplier_id,
-                   s.name AS supplier_name,
-                   po.ordered_date,
-                   po.expected_arrival_date,
-                   po.note AS purchase_note,
-                   pr.id AS purchase_receipt_id,
-                   pr.received_date,
-                   pr.received_quantity,
-                   pr.note AS receipt_note
-            FROM items
-            JOIN purchase_orders po ON po.item_id = items.id
-            LEFT JOIN suppliers s ON s.id = po.supplier_id
-            LEFT JOIN purchase_receipts pr ON pr.purchase_order_id = po.id
-            {where_clause}
-            ORDER BY COALESCE(po.expected_arrival_date, po.ordered_date, items.request_date) ASC, po.id ASC
-            LIMIT ?
-            """,
-            [*params, limit],
-        ) as cursor:
-            rows = [dict(row) for row in await cursor.fetchall()]
-    return rows
+    return await execute_sql(
+        f"""
+        SELECT items.id AS item_id, items.serial_number, items.department, items.handler, items.request_date,
+               items.item_name, items.quantity, items.status AS item_status,
+               po.id AS purchase_order_id, po.supplier_id, s.name AS supplier_name,
+               po.ordered_date, po.expected_arrival_date, po.note AS purchase_note,
+               pr.id AS purchase_receipt_id, pr.received_date, pr.received_quantity, pr.note AS receipt_note
+        FROM items
+        JOIN purchase_orders po ON po.item_id = items.id
+        LEFT JOIN suppliers s ON s.id = po.supplier_id
+        LEFT JOIN purchase_receipts pr ON pr.purchase_order_id = po.id
+        {where_clause}
+        ORDER BY COALESCE(po.expected_arrival_date, po.ordered_date, items.request_date) ASC, po.id ASC
+        LIMIT ?
+        """,
+        list(params) + [limit],
+    )
 
 
 async def _list_inventory_profiles_for_recommendations(
@@ -1113,28 +714,25 @@ async def _list_inventory_profiles_for_recommendations(
     if keyword:
         conditions.append("item_name LIKE ?")
         params.append(f"%{str(keyword).strip()}%")
-    where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            f"""
-            SELECT ip.id, ip.item_name, ip.current_stock, ip.low_stock_threshold, ip.unit,
-                   ip.reorder_quantity, ip.notes, ip.updated_at, ip.created_at,
-                   s.id AS preferred_supplier_id, s.name AS preferred_supplier_name
-            FROM inventory_profiles ip
-            LEFT JOIN suppliers s ON s.id = ip.preferred_supplier_id
-            {where_clause}
-            ORDER BY (ip.current_stock <= ip.low_stock_threshold) DESC, ip.updated_at DESC, ip.id DESC
-            LIMIT ?
-            """,
-            [*params, limit],
-        ) as cursor:
-            rows = [dict(row) for row in await cursor.fetchall()]
+    where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+    rows = await execute_sql(
+        f"""
+        SELECT ip.id, ip.item_name, ip.current_stock, ip.low_stock_threshold, ip.unit,
+               ip.reorder_quantity, ip.notes, ip.updated_at, ip.created_at,
+               s.id AS preferred_supplier_id, s.name AS preferred_supplier_name
+        FROM inventory_profiles ip
+        LEFT JOIN suppliers s ON s.id = ip.preferred_supplier_id
+        {where}
+        ORDER BY (ip.current_stock <= ip.low_stock_threshold) DESC, ip.updated_at DESC, ip.id DESC
+        LIMIT ?
+        """,
+        params + [limit],
+    )
     for row in rows:
-        current_stock = _safe_float(row.get("current_stock"))
+        current_stock_val = _safe_float(row.get("current_stock"))
         threshold = _safe_float(row.get("low_stock_threshold"))
-        row["is_low_stock"] = current_stock <= threshold
-        row["shortage"] = round(max(0.0, threshold - current_stock), 2)
+        row["is_low_stock"] = current_stock_val <= threshold
+        row["shortage"] = round(max(0.0, threshold - current_stock_val), 2)
     return rows
 
 
@@ -1147,99 +745,59 @@ async def _list_invoice_queue(
     keyword: str | None = None,
 ) -> list[dict]:
     where_clause, params = _make_where_clause(
-        status=status,
-        department=department,
-        month=month,
-        keyword=keyword,
+        status=status, department=department, month=month, keyword=keyword,
         extra_conditions=["(items.invoice_issued = 1 OR ir.id IS NOT NULL)"],
     )
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
+    rows = await execute_sql(
+        f"""
+        SELECT items.id AS item_id, items.serial_number, items.department, items.handler, items.request_date,
+               items.item_name, items.invoice_issued, items.payment_status,
+               ir.id AS invoice_record_id, COALESCE(ir.reimbursement_status, 'pending') AS reimbursement_status,
+               ir.reimbursement_date, ir.invoice_number, ir.note, COUNT(ia.id) AS attachment_count
+        FROM items
+        LEFT JOIN invoice_records ir ON ir.item_id = items.id
+        LEFT JOIN invoice_attachments ia ON ia.invoice_record_id = ir.id
+        {where_clause}
+        GROUP BY items.id, items.serial_number, items.department, items.handler, items.request_date,
+                 items.item_name, items.invoice_issued, items.payment_status,
+                 ir.id, ir.reimbursement_status, ir.reimbursement_date, ir.invoice_number, ir.note
+        ORDER BY items.request_date DESC, items.id DESC
+        LIMIT ?
+        """,
+        list(params) + [limit],
+    )
+    invoice_record_ids = [int(row["invoice_record_id"]) for row in rows if row.get("invoice_record_id")]
+    attachments_by_record: dict[int, list[dict]] = defaultdict(list)
+    if invoice_record_ids:
+        placeholders = ", ".join("?" for _ in invoice_record_ids)
+        attach_rows = await execute_sql(
             f"""
-            SELECT items.id AS item_id,
-                   items.serial_number,
-                   items.department,
-                   items.handler,
-                   items.request_date,
-                   items.item_name,
-                   items.invoice_issued,
-                   items.payment_status,
-                   ir.id AS invoice_record_id,
-                   COALESCE(ir.reimbursement_status, 'pending') AS reimbursement_status,
-                   ir.reimbursement_date,
-                   ir.invoice_number,
-                   ir.note,
-                   COUNT(ia.id) AS attachment_count
-            FROM items
-            LEFT JOIN invoice_records ir ON ir.item_id = items.id
-            LEFT JOIN invoice_attachments ia ON ia.invoice_record_id = ir.id
-            {where_clause}
-            GROUP BY
-                items.id, items.serial_number, items.department, items.handler, items.request_date, items.item_name,
-                items.invoice_issued, items.payment_status,
-                ir.id, ir.reimbursement_status, ir.reimbursement_date, ir.invoice_number, ir.note
-            ORDER BY items.request_date DESC, items.id DESC
-            LIMIT ?
+            SELECT id, invoice_record_id, file_name, stored_name, mime_type, file_size, created_at
+            FROM invoice_attachments
+            WHERE invoice_record_id IN ({placeholders})
+            ORDER BY created_at DESC, id DESC
             """,
-            [*params, limit],
-        ) as cursor:
-            rows = [dict(row) for row in await cursor.fetchall()]
-
-        invoice_record_ids = [
-            int(row["invoice_record_id"])
-            for row in rows
-            if row.get("invoice_record_id")
-        ]
-        attachments_by_record: dict[int, list[dict]] = defaultdict(list)
-        if invoice_record_ids:
-            placeholders = ", ".join("?" for _ in invoice_record_ids)
-            async with db.execute(
-                f"""
-                SELECT id, invoice_record_id, file_name, stored_name, mime_type, file_size, created_at
-                FROM invoice_attachments
-                WHERE invoice_record_id IN ({placeholders})
-                ORDER BY created_at DESC, id DESC
-                """,
-                invoice_record_ids,
-            ) as cursor:
-                for row in await cursor.fetchall():
-                    record = dict(row)
-                    record["download_url"] = (
-                        f"/api/ops/invoice-attachments/{record['id']}/download"
-                    )
-                    attachments_by_record[int(record["invoice_record_id"])].append(
-                        record
-                    )
-
+            invoice_record_ids,
+        )
+        for record in attach_rows:
+            record["download_url"] = f"/api/ops/invoice-attachments/{record['id']}/download"
+            attachments_by_record[int(record["invoice_record_id"])].append(record)
     for row in rows:
         record_id = row.get("invoice_record_id")
-        row["attachments"] = (
-            attachments_by_record.get(int(record_id), []) if record_id else []
-        )
+        row["attachments"] = attachments_by_record.get(int(record_id), []) if record_id else []
     return rows
 
 
 def _build_replenishment_actions(recommendations: list[dict]) -> list[dict]:
     actions: list[dict] = []
     for row in recommendations:
-        actions.append(
-            {
-                "bucket": "inventory",
-                "category": "inventory",
-                "queue_status": "reorder_needed",
-                "severity": "warning" if not row.get("has_open_order") else "notice",
-                "title": "Low stock warning",
-                "detail": (
-                    f"{row.get('item_name') or 'Unknown item'} stock {row.get('current_stock')} "
-                    f"below threshold {row.get('low_stock_threshold')}; suggested {row.get('recommended_quantity')}"
-                ),
-                "related_item_id": None,
-                "purchase_order_id": None,
-                "due_date": None,
-                "note": row.get("notes"),
-            }
-        )
+        actions.append({
+            "bucket": "inventory", "category": "inventory", "queue_status": "reorder_needed",
+            "severity": "warning" if not row.get("has_open_order") else "notice",
+            "title": "Low stock warning",
+            "detail": f"{row.get('item_name') or 'Unknown item'} stock {row.get('current_stock')} below threshold {row.get('low_stock_threshold')}; suggested {row.get('recommended_quantity')}",
+            "related_item_id": None, "purchase_order_id": None, "due_date": None, "note": row.get("notes"),
+        })
     return actions
 
 
@@ -1247,22 +805,15 @@ def _build_purchase_actions(purchase_queue: list[dict]) -> list[dict]:
     actions: list[dict] = []
     for row in purchase_queue:
         request_age_days = _days_since(row.get("request_date")) or 0
-        actions.append(
-            {
-                "bucket": "purchase",
-                "category": "purchase",
-                "queue_status": "needs_order",
-                "severity": "critical" if request_age_days > 7 else "warning",
-                "title": "Purchase overdue"
-                if request_age_days > 7
-                else "Purchase follow-up",
-                "detail": f"{row.get('item_name') or 'Unknown item'} has waited {request_age_days} days for ordering",
-                "related_item_id": _safe_int(row.get("item_id")) or None,
-                "purchase_order_id": _safe_int(row.get("purchase_order_id")) or None,
-                "due_date": row.get("expected_arrival_date"),
-                "note": row.get("purchase_note"),
-            }
-        )
+        actions.append({
+            "bucket": "purchase", "category": "purchase", "queue_status": "needs_order",
+            "severity": "critical" if request_age_days > 7 else "warning",
+            "title": "Purchase overdue" if request_age_days > 7 else "Purchase follow-up",
+            "detail": f"{row.get('item_name') or 'Unknown item'} has waited {request_age_days} days for ordering",
+            "related_item_id": _safe_int(row.get("item_id")) or None,
+            "purchase_order_id": _safe_int(row.get("purchase_order_id")) or None,
+            "due_date": row.get("expected_arrival_date"), "note": row.get("purchase_note"),
+        })
     return actions
 
 
@@ -1272,52 +823,31 @@ def _build_receipt_actions(receipt_queue: list[dict]) -> list[dict]:
         due_delta = _days_until(row.get("expected_arrival_date"))
         days_since_order = _days_since(row.get("ordered_date")) or 0
         overdue_days = abs(due_delta) if due_delta is not None and due_delta < 0 else 0
-        actions.append(
-            {
-                "bucket": "receipt",
-                "category": "receipt",
-                "queue_status": "waiting_receipt",
-                "severity": "critical" if overdue_days > 0 else "warning",
-                "title": "Arrival overdue" if overdue_days > 0 else "Receipt follow-up",
-                "detail": (
-                    f"{row.get('item_name') or 'Unknown item'} "
-                    f"{'is overdue for arrival' if overdue_days > 0 else f'has waited {days_since_order} days for receipt'}"
-                ),
-                "related_item_id": _safe_int(row.get("item_id")) or None,
-                "purchase_order_id": _safe_int(row.get("purchase_order_id")) or None,
-                "due_date": row.get("expected_arrival_date"),
-                "note": row.get("purchase_note"),
-            }
-        )
+        actions.append({
+            "bucket": "receipt", "category": "receipt", "queue_status": "waiting_receipt",
+            "severity": "critical" if overdue_days > 0 else "warning",
+            "title": "Arrival overdue" if overdue_days > 0 else "Receipt follow-up",
+            "detail": f"{row.get('item_name') or 'Unknown item'} {'is overdue for arrival' if overdue_days > 0 else f'has waited {days_since_order} days for receipt'}",
+            "related_item_id": _safe_int(row.get("item_id")) or None,
+            "purchase_order_id": _safe_int(row.get("purchase_order_id")) or None,
+            "due_date": row.get("expected_arrival_date"), "note": row.get("purchase_note"),
+        })
     return actions
 
 
 def _build_import_actions(import_tasks: list[dict]) -> list[dict]:
     actions: list[dict] = []
     for row in import_tasks:
-        status = str(row.get("status") or "")
-        if status == "completed":
+        status_val = str(row.get("status") or "")
+        if status_val == "completed":
             continue
-        actions.append(
-            {
-                "bucket": "import",
-                "category": "import",
-                "queue_status": status or "pending",
-                "severity": "critical" if status == "failed" else "notice",
-                "title": "Import task failed"
-                if status == "failed"
-                else "Import task running",
-                "detail": str(
-                    row.get("error_detail")
-                    or row.get("file_name")
-                    or "Unknown import task"
-                ),
-                "related_item_id": None,
-                "purchase_order_id": None,
-                "due_date": None,
-                "note": row.get("error_detail"),
-            }
-        )
+        actions.append({
+            "bucket": "import", "category": "import", "queue_status": status_val or "pending",
+            "severity": "critical" if status_val == "failed" else "notice",
+            "title": "Import task failed" if status_val == "failed" else "Import task running",
+            "detail": str(row.get("error_detail") or row.get("file_name") or "Unknown import task"),
+            "related_item_id": None, "purchase_order_id": None, "due_date": None, "note": row.get("error_detail"),
+        })
     return actions
 
 
@@ -1327,35 +857,21 @@ def _build_invoice_actions(invoice_queue: list[dict]) -> list[dict]:
         if row.get("reimbursement_status") == "reimbursed":
             continue
         waiting_days = _days_since(row.get("request_date")) or 0
-        actions.append(
-            {
-                "bucket": "invoice",
-                "category": "invoice",
-                "queue_status": str(row.get("reimbursement_status") or "pending"),
-                "severity": "warning" if waiting_days > 14 else "notice",
-                "title": "Reimbursement pending",
-                "detail": (
-                    f"{row.get('item_name') or 'Unknown item'} reimbursement is still {row.get('reimbursement_status') or 'pending'}"
-                ),
-                "related_item_id": _safe_int(row.get("item_id")) or None,
-                "purchase_order_id": None,
-                "due_date": row.get("reimbursement_date"),
-                "note": row.get("note"),
-            }
-        )
+        actions.append({
+            "bucket": "invoice", "category": "invoice",
+            "queue_status": str(row.get("reimbursement_status") or "pending"),
+            "severity": "warning" if waiting_days > 14 else "notice",
+            "title": "Reimbursement pending",
+            "detail": f"{row.get('item_name') or 'Unknown item'} reimbursement is still {row.get('reimbursement_status') or 'pending'}",
+            "related_item_id": _safe_int(row.get("item_id")) or None,
+            "purchase_order_id": None, "due_date": row.get("reimbursement_date"), "note": row.get("note"),
+        })
     return actions
 
 
 def _sort_actions(rows: list[dict]) -> list[dict]:
     severity_order = {"critical": 0, "warning": 1, "notice": 2}
-    return sorted(
-        rows,
-        key=lambda row: (
-            severity_order.get(str(row.get("severity") or ""), 9),
-            str(row.get("due_date") or ""),
-            str(row.get("title") or ""),
-        ),
-    )
+    return sorted(rows, key=lambda row: (severity_order.get(str(row.get("severity") or ""), 9), str(row.get("due_date") or ""), str(row.get("title") or "")))
 
 
 async def get_procurement_tracker_report(
@@ -1368,324 +884,119 @@ async def get_procurement_tracker_report(
     import_tasks: list[dict] | None = None,
     invoice_queue: list[dict] | None = None,
 ) -> dict:
-    purchase_queue = await _list_purchase_queue(
-        limit=limit,
-        status=status,
-        department=department,
-        month=month,
-        keyword=keyword,
-    )
-    receipt_queue = await _list_receipt_queue(
-        limit=limit,
-        status=status,
-        department=department,
-        month=month,
-        keyword=keyword,
-    )
+    purchase_queue = await _list_purchase_queue(limit=limit, status=status, department=department, month=month, keyword=keyword)
+    receipt_queue = await _list_receipt_queue(limit=limit, status=status, department=department, month=month, keyword=keyword)
     if invoice_queue is None:
-        invoice_queue = await _list_invoice_queue(
-            limit=limit,
-            status=status,
-            department=department,
-            month=month,
-            keyword=keyword,
-        )
-    replenishment_profiles = await _list_inventory_profiles_for_recommendations(
-        limit=limit, keyword=keyword
+        invoice_queue = await _list_invoice_queue(limit=limit, status=status, department=department, month=month, keyword=keyword)
+    replenishment_profiles = await _list_inventory_profiles_for_recommendations(limit=limit, keyword=keyword)
+    item_names = {str(row.get("item_name") or "") for row in [*purchase_queue, *receipt_queue, *replenishment_profiles] if str(row.get("item_name") or "").strip()}
+    price_memory = await _fetch_price_memory(item_names)
+    open_order_counts = await _fetch_open_order_counts_by_item_name()
+    lead_time_rows = await execute_sql(
+        """
+        SELECT pr.item_name, pr.unit_price, pr.lead_time_days, pr.last_purchase_date,
+               s.id AS supplier_id, s.name AS supplier_name
+        FROM supplier_price_records pr
+        LEFT JOIN suppliers s ON s.id = pr.supplier_id
+        WHERE pr.lead_time_days IS NOT NULL
+        ORDER BY COALESCE(pr.last_purchase_date, '') DESC, pr.updated_at DESC, pr.id DESC
+        LIMIT ?
+        """,
+        [max(limit * 3, 24)],
     )
-
-    item_names = {
-        str(row.get("item_name") or "")
-        for row in [*purchase_queue, *receipt_queue, *replenishment_profiles]
-        if str(row.get("item_name") or "").strip()
-    }
-
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        price_memory = await _fetch_price_memory(db, item_names)
-        open_order_counts = await _fetch_open_order_counts_by_item_name(db)
-        async with db.execute(
-            """
-            SELECT pr.item_name,
-                   pr.unit_price,
-                   pr.lead_time_days,
-                   pr.last_purchase_date,
-                   s.id AS supplier_id,
-                   s.name AS supplier_name
-            FROM supplier_price_records pr
-            LEFT JOIN suppliers s ON s.id = pr.supplier_id
-            WHERE pr.lead_time_days IS NOT NULL
-            ORDER BY COALESCE(pr.last_purchase_date, '') DESC, pr.updated_at DESC, pr.id DESC
-            LIMIT ?
-            """,
-            (max(limit * 3, 24),),
-        ) as cursor:
-            lead_time_rows = [dict(row) for row in await cursor.fetchall()]
-
-    inventory_by_name = {
-        str(row.get("item_name") or ""): row
-        for row in replenishment_profiles
-        if str(row.get("item_name") or "").strip()
-    }
-
+    inventory_by_name = {str(row.get("item_name") or ""): row for row in replenishment_profiles if str(row.get("item_name") or "").strip()}
     for row in purchase_queue:
         item_name = str(row.get("item_name") or "")
         inventory_profile = inventory_by_name.get(item_name)
-        preferred_supplier_id = (
-            _safe_int(row.get("supplier_id"))
-            or _safe_int(row.get("item_supplier_id"))
-            or (
-                _safe_int(inventory_profile.get("preferred_supplier_id"))
-                if inventory_profile
-                else 0
-            )
-        )
-        recommendation = _pick_supplier_recommendation(
-            item_name=item_name,
-            preferred_supplier_id=preferred_supplier_id or None,
-            requested_quantity=_safe_float(row.get("quantity")) or 1.0,
-            inventory_profile=inventory_profile,
-            price_memory=price_memory,
-            open_order_count=open_order_counts.get(item_name, 0),
-        )
+        preferred_supplier_id = _safe_int(row.get("supplier_id")) or _safe_int(row.get("item_supplier_id")) or (_safe_int(inventory_profile.get("preferred_supplier_id")) if inventory_profile else 0)
+        recommendation = _pick_supplier_recommendation(item_name=item_name, preferred_supplier_id=preferred_supplier_id or None, requested_quantity=_safe_float(row.get("quantity")) or 1.0, inventory_profile=inventory_profile, price_memory=price_memory, open_order_count=open_order_counts.get(item_name, 0))
         row.update(recommendation)
         row["request_age_days"] = _days_since(row.get("request_date")) or 0
-
     for row in receipt_queue:
         item_name = str(row.get("item_name") or "")
         inventory_profile = inventory_by_name.get(item_name)
-        preferred_supplier_id = _safe_int(row.get("supplier_id")) or (
-            _safe_int(inventory_profile.get("preferred_supplier_id"))
-            if inventory_profile
-            else 0
-        )
-        recommendation = _pick_supplier_recommendation(
-            item_name=item_name,
-            preferred_supplier_id=preferred_supplier_id or None,
-            requested_quantity=_safe_float(row.get("quantity")) or 1.0,
-            inventory_profile=inventory_profile,
-            price_memory=price_memory,
-            open_order_count=open_order_counts.get(item_name, 0),
-        )
+        preferred_supplier_id = _safe_int(row.get("supplier_id")) or (_safe_int(inventory_profile.get("preferred_supplier_id")) if inventory_profile else 0)
+        recommendation = _pick_supplier_recommendation(item_name=item_name, preferred_supplier_id=preferred_supplier_id or None, requested_quantity=_safe_float(row.get("quantity")) or 1.0, inventory_profile=inventory_profile, price_memory=price_memory, open_order_count=open_order_counts.get(item_name, 0))
         row.update(recommendation)
         row["days_since_order"] = _days_since(row.get("ordered_date")) or 0
         due_delta = _days_until(row.get("expected_arrival_date"))
-        row["overdue_days"] = (
-            abs(due_delta) if due_delta is not None and due_delta < 0 else 0
-        )
-
+        row["overdue_days"] = abs(due_delta) if due_delta is not None and due_delta < 0 else 0
     replenishment_recommendations: list[dict] = []
     for row in replenishment_profiles:
         if not row.get("is_low_stock"):
             continue
         item_name = str(row.get("item_name") or "")
-        recommendation = _pick_supplier_recommendation(
-            item_name=item_name,
-            preferred_supplier_id=_safe_int(row.get("preferred_supplier_id")) or None,
-            requested_quantity=0.0,
-            inventory_profile=row,
-            price_memory=price_memory,
-            open_order_count=open_order_counts.get(item_name, 0),
-        )
+        recommendation = _pick_supplier_recommendation(item_name=item_name, preferred_supplier_id=_safe_int(row.get("preferred_supplier_id")) or None, requested_quantity=0.0, inventory_profile=row, price_memory=price_memory, open_order_count=open_order_counts.get(item_name, 0))
         replenishment_recommendations.append({**row, **recommendation})
-
     inventory_actions = _build_replenishment_actions(replenishment_recommendations)
     purchase_actions = _build_purchase_actions(purchase_queue)
     receipt_actions = _build_receipt_actions(receipt_queue)
     import_actions = _build_import_actions(import_tasks or [])
     invoice_actions = _build_invoice_actions(invoice_queue)
-    all_actions = _sort_actions(
-        [
-            *inventory_actions,
-            *purchase_actions,
-            *receipt_actions,
-            *import_actions,
-            *invoice_actions,
-        ]
-    )
-
+    all_actions = _sort_actions([*inventory_actions, *purchase_actions, *receipt_actions, *import_actions, *invoice_actions])
     lead_time_groups: dict[tuple[int | None, str, str], dict[str, Any]] = {}
     for row in lead_time_rows:
         item_name = str(row.get("item_name") or "")
         supplier_name = str(row.get("supplier_name") or "Unknown supplier")
-        supplier_id = _safe_int(row.get("supplier_id")) or None
-        key = (supplier_id, supplier_name, item_name)
+        supplier_id_val = _safe_int(row.get("supplier_id")) or None
+        key = (supplier_id_val, supplier_name, item_name)
         group = lead_time_groups.get(key)
-        lead_time_days = row.get("lead_time_days")
+        lead_time_days_val = row.get("lead_time_days")
         if group is None:
             group = {
-                "supplier_id": supplier_id,
-                "supplier_name": supplier_name,
+                "supplier_id": supplier_id_val, "supplier_name": supplier_name,
                 "item_name": item_name,
                 "latest_unit_price": _safe_float(row.get("unit_price")) or None,
                 "latest_purchase_date": row.get("last_purchase_date") or "",
-                "latest_lead_time_days": _safe_int(lead_time_days)
-                if lead_time_days is not None
-                else None,
-                "price_record_count": 0,
-                "_lead_time_values": [],
+                "latest_lead_time_days": _safe_int(lead_time_days_val) if lead_time_days_val is not None else None,
+                "price_record_count": 0, "_lead_time_values": [],
             }
             lead_time_groups[key] = group
-        if lead_time_days is not None:
-            group["_lead_time_values"].append(_safe_int(lead_time_days))
+        if lead_time_days_val is not None:
+            group["_lead_time_values"].append(_safe_int(lead_time_days_val))
         group["price_record_count"] += 1
-
     supplier_lead_time_trend = []
     for group in lead_time_groups.values():
         values = group.pop("_lead_time_values", [])
-        group["average_lead_time_days"] = (
-            round(sum(values) / len(values), 2) if values else None
-        )
+        group["average_lead_time_days"] = round(sum(values) / len(values), 2) if values else None
         supplier_lead_time_trend.append(group)
-    supplier_lead_time_trend.sort(
-        key=lambda row: (
-            row.get("average_lead_time_days")
-            if row.get("average_lead_time_days") is not None
-            else 10**9,
-            str(row.get("supplier_name") or ""),
-            str(row.get("item_name") or ""),
-        )
-    )
-
-    pending_invoice_count = sum(
-        1 for row in invoice_queue if row.get("reimbursement_status") != "reimbursed"
-    )
-    overdue_receipt_count = sum(
-        1 for row in receipt_queue if _safe_int(row.get("overdue_days")) > 0
-    )
-
+    supplier_lead_time_trend.sort(key=lambda row: (row.get("average_lead_time_days") if row.get("average_lead_time_days") is not None else 10**9, str(row.get("supplier_name") or ""), str(row.get("item_name") or "")))
+    pending_invoice_count = sum(1 for row in invoice_queue if row.get("reimbursement_status") != "reimbursed")
+    overdue_receipt_count = sum(1 for row in receipt_queue if _safe_int(row.get("overdue_days")) > 0)
     return {
         "summary": {
-            "to_order_count": len(purchase_queue),
-            "waiting_receipt_count": len(receipt_queue),
-            "pending_invoice_count": pending_invoice_count,
-            "replenishment_count": len(replenishment_recommendations),
-            "action_queue_count": len(all_actions),
-            "overdue_receipt_count": overdue_receipt_count,
+            "to_order_count": len(purchase_queue), "waiting_receipt_count": len(receipt_queue),
+            "pending_invoice_count": pending_invoice_count, "replenishment_count": len(replenishment_recommendations),
+            "action_queue_count": len(all_actions), "overdue_receipt_count": overdue_receipt_count,
         },
-        "purchase_queue": purchase_queue,
-        "receipt_queue": receipt_queue,
-        "invoice_queue": [
-            row
-            for row in invoice_queue
-            if row.get("reimbursement_status") != "reimbursed"
-        ][:limit],
+        "purchase_queue": purchase_queue, "receipt_queue": receipt_queue,
+        "invoice_queue": [row for row in invoice_queue if row.get("reimbursement_status") != "reimbursed"][:limit],
         "replenishment_recommendations": replenishment_recommendations,
         "action_queues": {
-            "inventory": inventory_actions,
-            "purchase": purchase_actions,
-            "receipt": receipt_actions,
-            "import": import_actions,
-            "invoice": invoice_actions,
-            "all": all_actions[:limit],
+            "inventory": inventory_actions, "purchase": purchase_actions, "receipt": receipt_actions,
+            "import": import_actions, "invoice": invoice_actions, "all": all_actions[:limit],
         },
         "supplier_lead_time_trend": supplier_lead_time_trend[:limit],
     }
 
 
-async def get_operations_center_snapshot() -> dict:
-    # First wave: 6 independent queries run concurrently
-    (
-        suppliers,
-        price_records,
-        inventory_profiles,
-        import_tasks,
-        invoice_queue,
-        overdue_items,
-    ) = await asyncio.gather(
-        list_suppliers(limit=20),
-        list_price_records(limit=20),
-        list_inventory_profiles(limit=20),
-        list_import_task_runs(limit=20),
-        _list_invoice_queue(limit=20),
-        _get_overdue_items_for_notifications(),
-    )
-
-    # Second wave: tracker + summary can now run concurrently
-    tracker, summary = await asyncio.gather(
-        get_procurement_tracker_report(
-            limit=20,
-            import_tasks=import_tasks,
-            invoice_queue=invoice_queue,
-        ),
-        _get_operations_summary_counts(),
-    )
-
-    notifications = _build_notifications(
-        inventory_profiles=inventory_profiles,
-        import_tasks=import_tasks,
-        invoice_queue=invoice_queue,
-        overdue_items=overdue_items,
-    )
-    summary.update(
-        {
-            "open_purchase_count": tracker["summary"]["to_order_count"],
-            "pending_receipt_count": tracker["summary"]["waiting_receipt_count"],
-            "replenishment_recommendation_count": tracker["summary"][
-                "replenishment_count"
-            ],
-            "action_queue_count": tracker["summary"]["action_queue_count"],
-            "notification_count": len(notifications),
-        }
-    )
-    return {
-        "summary": summary,
-        "suppliers": suppliers,
-        "price_records": price_records,
-        "inventory_profiles": inventory_profiles,
-        "import_tasks": import_tasks,
-        "purchase_queue": tracker["purchase_queue"],
-        "receipt_queue": tracker["receipt_queue"],
-        "replenishment_recommendations": tracker["replenishment_recommendations"],
-        "action_queues": tracker["action_queues"],
-        "supplier_lead_time_trend": tracker["supplier_lead_time_trend"],
-        "invoice_queue": invoice_queue,
-        "notifications": notifications[:20],
-    }
-
-
 async def _get_operations_summary_counts() -> dict:
-    async with aiosqlite.connect(DB_PATH) as db:
-        counts = {
-            "supplier_count": await _fetch_single_int(
-                db, "SELECT COUNT(1) FROM suppliers"
-            ),
-            "price_record_count": await _fetch_single_int(
-                db, "SELECT COUNT(1) FROM supplier_price_records"
-            ),
-            "inventory_profile_count": await _fetch_single_int(
-                db, "SELECT COUNT(1) FROM inventory_profiles"
-            ),
-            "low_stock_count": await _fetch_single_int(
-                db,
-                "SELECT COUNT(1) FROM inventory_profiles WHERE current_stock <= low_stock_threshold",
-            ),
-            "import_task_count": await _fetch_single_int(
-                db, "SELECT COUNT(1) FROM import_task_runs"
-            ),
-            "failed_import_count": await _fetch_single_int(
-                db,
-                "SELECT COUNT(1) FROM import_task_runs WHERE status = 'failed'",
-            ),
-            "pending_reimbursement_count": await _fetch_single_int(
-                db,
-                """
-                SELECT COUNT(1)
-                FROM items i
-                LEFT JOIN invoice_records ir ON ir.item_id = i.id
-                WHERE i.deleted_at IS NULL
-                  AND (i.invoice_issued = 1 OR ir.id IS NOT NULL)
-                  AND COALESCE(ir.reimbursement_status, 'pending') != 'reimbursed'
-                """,
-            ),
-        }
-    return counts
-
-
-async def _fetch_single_int(db: aiosqlite.Connection, query: str) -> int:
-    async with db.execute(query) as cursor:
-        row = await cursor.fetchone()
-    return int((row[0] if row else 0) or 0)
+    return {
+        "supplier_count": int(await execute_sql_scalar("SELECT COUNT(1) FROM suppliers")),
+        "price_record_count": int(await execute_sql_scalar("SELECT COUNT(1) FROM supplier_price_records")),
+        "inventory_profile_count": int(await execute_sql_scalar("SELECT COUNT(1) FROM inventory_profiles")),
+        "low_stock_count": int(await execute_sql_scalar("SELECT COUNT(1) FROM inventory_profiles WHERE current_stock <= low_stock_threshold")),
+        "import_task_count": int(await execute_sql_scalar("SELECT COUNT(1) FROM import_task_runs")),
+        "failed_import_count": int(await execute_sql_scalar("SELECT COUNT(1) FROM import_task_runs WHERE status = 'failed'")),
+        "pending_reimbursement_count": int(await execute_sql_scalar(
+            """
+            SELECT COUNT(1) FROM items i
+            LEFT JOIN invoice_records ir ON ir.item_id = i.id
+            WHERE i.deleted_at IS NULL AND (i.invoice_issued = 1 OR ir.id IS NOT NULL)
+              AND COALESCE(ir.reimbursement_status, 'pending') != 'reimbursed'
+            """
+        )),
+    }
 
 
 def _build_notifications(
@@ -1698,76 +1009,42 @@ def _build_notifications(
     notifications: list[dict] = []
     for profile in inventory_profiles:
         if profile.get("is_low_stock"):
-            notifications.append(
-                {
-                    "category": "inventory",
-                    "severity": "warning",
-                    "title": "Low stock warning",
-                    "detail": (
-                        f"{profile.get('item_name') or 'Unknown item'} stock is "
-                        f"{profile.get('current_stock')} {profile.get('unit') or ''}, "
-                        f"threshold {profile.get('low_stock_threshold')}"
-                    ).strip(),
-                    "related_item_id": None,
-                }
-            )
+            notifications.append({
+                "category": "inventory", "severity": "warning", "title": "Low stock warning",
+                "detail": f"{profile.get('item_name') or 'Unknown item'} stock is {profile.get('current_stock')} {profile.get('unit') or ''}, threshold {profile.get('low_stock_threshold')}".strip(),
+                "related_item_id": None,
+            })
     for task in import_tasks:
         if task.get("status") == "failed":
-            notifications.append(
-                {
-                    "category": "import",
-                    "severity": "warning",
-                    "title": "Import task failed",
-                    "detail": str(
-                        task.get("error_detail")
-                        or task.get("file_name")
-                        or "Unknown import task"
-                    ),
-                    "related_item_id": None,
-                }
-            )
+            notifications.append({
+                "category": "import", "severity": "warning", "title": "Import task failed",
+                "detail": str(task.get("error_detail") or task.get("file_name") or "Unknown import task"),
+                "related_item_id": None,
+            })
     for row in invoice_queue:
         if row.get("reimbursement_status") != "reimbursed":
-            notifications.append(
-                {
-                    "category": "invoice",
-                    "severity": "notice",
-                    "title": "Reimbursement pending",
-                    "detail": f"{row.get('item_name') or 'Unknown item'} reimbursement is still {row.get('reimbursement_status')}",
-                    "related_item_id": int(row.get("item_id") or 0) or None,
-                }
-            )
+            notifications.append({
+                "category": "invoice", "severity": "notice", "title": "Reimbursement pending",
+                "detail": f"{row.get('item_name') or 'Unknown item'} reimbursement is still {row.get('reimbursement_status')}",
+                "related_item_id": int(row.get("item_id") or 0) or None,
+            })
     notifications.extend(_build_overdue_notifications_from_rows(overdue_items))
     severity_order = {"critical": 0, "warning": 1, "notice": 2}
-    notifications.sort(
-        key=lambda row: (
-            severity_order.get(row["severity"], 9),
-            row["category"],
-            row["title"],
-        )
-    )
+    notifications.sort(key=lambda row: (severity_order.get(row["severity"], 9), row["category"], row["title"]))
     return notifications
 
 
 async def _get_overdue_items_for_notifications() -> list[dict]:
-    """只查询3种超期相关状态，以异步方式替代全表同步扫描。"""
-    relevant_statuses = (
-        ItemStatus.PENDING.value,
-        ItemStatus.PENDING_ARRIVAL.value,
-        ItemStatus.PENDING_DISTRIBUTION.value,
-    )
+    relevant_statuses = (ItemStatus.PENDING.value, ItemStatus.PENDING_ARRIVAL.value, ItemStatus.PENDING_DISTRIBUTION.value)
     placeholders = ", ".join("?" for _ in relevant_statuses)
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            f"""
-            SELECT id, item_name, request_date, arrival_date, status
-            FROM items
-            WHERE deleted_at IS NULL AND status IN ({placeholders})
-            """,
-            relevant_statuses,
-        ) as cursor:
-            return [dict(row) for row in await cursor.fetchall()]
+    return await execute_sql(
+        f"""
+        SELECT id, item_name, request_date, arrival_date, status
+        FROM items
+        WHERE deleted_at IS NULL AND status IN ({placeholders})
+        """,
+        list(relevant_statuses),
+    )
 
 
 def _build_overdue_notifications_from_rows(rows: list[dict]) -> list[dict]:
@@ -1775,49 +1052,42 @@ def _build_overdue_notifications_from_rows(rows: list[dict]) -> list[dict]:
     for row in rows:
         item_id = int(row["id"])
         item_name = str(row["item_name"] or "Unknown item")
-        status = str(row["status"] or "")
+        status_val = str(row["status"] or "")
         request_days = _days_since(row["request_date"])
         arrival_days = _days_since(row["arrival_date"])
-        if (
-            status == ItemStatus.PENDING.value
-            and request_days is not None
-            and request_days > 7
-        ):
-            notifications.append(
-                {
-                    "category": "overdue",
-                    "severity": "critical",
-                    "title": "Purchase overdue",
-                    "detail": f"{item_name} has stayed in pending purchase for {request_days} days",
-                    "related_item_id": item_id,
-                }
-            )
-        elif (
-            status == ItemStatus.PENDING_ARRIVAL.value
-            and request_days is not None
-            and request_days > 14
-        ):
-            notifications.append(
-                {
-                    "category": "overdue",
-                    "severity": "critical",
-                    "title": "Arrival overdue",
-                    "detail": f"{item_name} has waited {request_days} days since request date",
-                    "related_item_id": item_id,
-                }
-            )
-        elif (
-            status == ItemStatus.PENDING_DISTRIBUTION.value
-            and arrival_days is not None
-            and arrival_days > 3
-        ):
-            notifications.append(
-                {
-                    "category": "overdue",
-                    "severity": "critical",
-                    "title": "Distribution overdue",
-                    "detail": f"{item_name} has waited {arrival_days} days since arrival",
-                    "related_item_id": item_id,
-                }
-            )
+        if status_val == ItemStatus.PENDING.value and request_days is not None and request_days > 7:
+            notifications.append({"category": "overdue", "severity": "critical", "title": "Purchase overdue", "detail": f"{item_name} has stayed in pending purchase for {request_days} days", "related_item_id": item_id})
+        elif status_val == ItemStatus.PENDING_ARRIVAL.value and request_days is not None and request_days > 14:
+            notifications.append({"category": "overdue", "severity": "critical", "title": "Arrival overdue", "detail": f"{item_name} has waited {request_days} days since request date", "related_item_id": item_id})
+        elif status_val == ItemStatus.PENDING_DISTRIBUTION.value and arrival_days is not None and arrival_days > 3:
+            notifications.append({"category": "overdue", "severity": "critical", "title": "Distribution overdue", "detail": f"{item_name} has waited {arrival_days} days since arrival", "related_item_id": item_id})
     return notifications
+
+
+async def get_operations_center_snapshot() -> dict:
+    suppliers, price_records, inventory_profiles, import_tasks, invoice_queue, overdue_items = await asyncio.gather(
+        list_suppliers(limit=20), list_price_records(limit=20),
+        list_inventory_profiles(limit=20), list_import_task_runs(limit=20),
+        _list_invoice_queue(limit=20), _get_overdue_items_for_notifications(),
+    )
+    tracker, summary = await asyncio.gather(
+        get_procurement_tracker_report(limit=20, import_tasks=import_tasks, invoice_queue=invoice_queue),
+        _get_operations_summary_counts(),
+    )
+    notifications = _build_notifications(inventory_profiles=inventory_profiles, import_tasks=import_tasks, invoice_queue=invoice_queue, overdue_items=overdue_items)
+    summary.update({
+        "open_purchase_count": tracker["summary"]["to_order_count"],
+        "pending_receipt_count": tracker["summary"]["waiting_receipt_count"],
+        "replenishment_recommendation_count": tracker["summary"]["replenishment_count"],
+        "action_queue_count": tracker["summary"]["action_queue_count"],
+        "notification_count": len(notifications),
+    })
+    return {
+        "summary": summary, "suppliers": suppliers, "price_records": price_records,
+        "inventory_profiles": inventory_profiles, "import_tasks": import_tasks,
+        "purchase_queue": tracker["purchase_queue"], "receipt_queue": tracker["receipt_queue"],
+        "replenishment_recommendations": tracker["replenishment_recommendations"],
+        "action_queues": tracker["action_queues"],
+        "supplier_lead_time_trend": tracker["supplier_lead_time_trend"],
+        "invoice_queue": invoice_queue, "notifications": notifications[:20],
+    }

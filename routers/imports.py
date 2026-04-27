@@ -2,7 +2,6 @@ from pathlib import Path
 import re
 from uuid import uuid4
 
-import aiosqlite
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from sqlalchemy.exc import IntegrityError as SAIntegrityError
 
@@ -93,7 +92,7 @@ async def _confirm_import_with_lock(
         raise
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except (aiosqlite.IntegrityError, SAIntegrityError) as exc:
+    except SAIntegrityError as exc:
         if "UNIQUE constraint failed" in str(exc):
             raise HTTPException(
                 status_code=409,

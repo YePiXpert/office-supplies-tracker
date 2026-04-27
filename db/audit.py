@@ -1,9 +1,9 @@
 import json
 from typing import Optional
 
-import aiosqlite
+from sqlalchemy import text
 
-from .constants import DB_PATH
+from .orm import AsyncSessionLocal
 
 
 def _safe_json_loads(value):
@@ -24,10 +24,10 @@ async def get_audit_logs(
     page_size: int = 20,
 ) -> list[dict]:
     conditions = []
-    params = []
+    params: dict = {}
     if record_id is not None:
-        conditions.append("record_id = ?")
-        params.append(int(record_id))
+        conditions.append("record_id = :record_id")
+        params["record_id"] = int(record_id)
 
     query = "SELECT log_id, record_id, action, changed_fields, operator_ip, created_at FROM audit_logs"
     if conditions:
@@ -36,20 +36,20 @@ async def get_audit_logs(
         query += " ORDER BY created_at ASC, log_id ASC"
     else:
         query += " ORDER BY created_at DESC, log_id DESC"
-    query += " LIMIT ? OFFSET ?"
-    params.extend([page_size, max(0, (page - 1) * page_size)])
+    query += " LIMIT :limit OFFSET :offset"
+    params["limit"] = page_size
+    params["offset"] = max(0, (page - 1) * page_size)
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(query, params) as cursor:
-            rows = await cursor.fetchall()
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(text(query), params)
+        rows = result.mappings().all()
 
-    result = []
+    records = []
     for row in rows:
         entry = dict(row)
         entry["changed_fields"] = _safe_json_loads(entry.get("changed_fields"))
-        result.append(entry)
-    return result
+        records.append(entry)
+    return records
 
 
 async def get_audit_logs_page(
@@ -57,12 +57,11 @@ async def get_audit_logs_page(
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict], int]:
-    """字段级审计日志分页查询，同一连接内返回 (items, total)。"""
     conditions = []
-    params = []
+    params: dict = {}
     if record_id is not None:
-        conditions.append("record_id = ?")
-        params.append(int(record_id))
+        conditions.append("record_id = :record_id")
+        params["record_id"] = int(record_id)
 
     base_where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     order = (
@@ -75,40 +74,38 @@ async def get_audit_logs_page(
         " FROM audit_logs"
         + base_where
         + order
-        + " LIMIT ? OFFSET ?"
+        + " LIMIT :limit OFFSET :offset"
     )
     count_query = "SELECT COUNT(*) FROM audit_logs" + base_where
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            data_query, params + [page_size, max(0, (page - 1) * page_size)]
-        ) as cursor:
-            rows = await cursor.fetchall()
-        async with db.execute(count_query, params) as cursor:
-            count_row = await cursor.fetchone()
-            total = int(count_row[0] if count_row else 0)
+    data_params = {**params, "limit": page_size, "offset": max(0, (page - 1) * page_size)}
 
-    result = []
+    async with AsyncSessionLocal() as session:
+        data_result = await session.execute(text(data_query), data_params)
+        rows = data_result.mappings().all()
+
+        count_result = await session.execute(text(count_query), params)
+        total = int(count_result.scalar_one())
+
+    records = []
     for row in rows:
         entry = dict(row)
         entry["changed_fields"] = _safe_json_loads(entry.get("changed_fields"))
-        result.append(entry)
-    return result, total
+        records.append(entry)
+    return records, total
 
 
 async def count_audit_logs(record_id: Optional[int] = None) -> int:
     conditions = []
-    params = []
+    params: dict = {}
     if record_id is not None:
-        conditions.append("record_id = ?")
-        params.append(int(record_id))
+        conditions.append("record_id = :record_id")
+        params["record_id"] = int(record_id)
 
     query = "SELECT COUNT(*) FROM audit_logs"
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(query, params) as cursor:
-            row = await cursor.fetchone()
-            return int(row[0] if row else 0)
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(text(query), params)
+        return int(result.scalar_one())

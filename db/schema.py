@@ -1,4 +1,4 @@
-import aiosqlite
+import aiosqlite  # 裸 aiosqlite 用于 DDL/PRAGMA 操作，这些操作在 SQLAlchemy ORM 中很不方便
 
 from .constants import DB_PATH
 

@@ -263,6 +263,7 @@ def restore_from_archive(
                 "restored_upload_files": restored_upload_files,
             }
         except Exception:
+            # 恢复过程中任何意外错误都需要回滚到快照，因此故意宽捕获
             safe_unlink(temp_db_target)
             if snapshot_db.exists():
                 os.replace(snapshot_db, db_path)

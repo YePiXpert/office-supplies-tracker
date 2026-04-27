@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BOOLEAN, JSON, REAL, INTEGER, TEXT, TIMESTAMP
+from sqlalchemy import BOOLEAN, JSON, REAL, INTEGER, TEXT, TIMESTAMP, ForeignKey
 from sqlalchemy import Column, Index, UniqueConstraint, event, inspect, text
 from sqlalchemy.orm import declarative_base
 
@@ -10,6 +10,33 @@ from .audit_context import get_current_operator_ip
 
 
 Base = declarative_base()
+
+
+class SystemSecurity(Base):
+    __tablename__ = "system_security"
+
+    id = Column(INTEGER, primary_key=True)
+    password_hash = Column(TEXT, nullable=False)
+    recovery_code_hash = Column(TEXT, nullable=False)
+    failed_attempts = Column(INTEGER, nullable=False, server_default=text("0"))
+    locked_until = Column(TIMESTAMP)
+
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+    __table_args__ = (
+        Index("idx_suppliers_name", "name"),
+    )
+
+    id = Column(INTEGER, primary_key=True, autoincrement=True)
+    name = Column(TEXT, nullable=False, unique=True)
+    contact_name = Column(TEXT)
+    contact_phone = Column(TEXT)
+    contact_email = Column(TEXT)
+    notes = Column(TEXT)
+    is_active = Column(BOOLEAN, nullable=False, server_default=text("1"))
+    created_at = Column(TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"))
 
 
 class Item(Base):
@@ -35,7 +62,7 @@ class Item(Base):
     quantity = Column(REAL, nullable=False)
     purchase_link = Column(TEXT)
     unit_price = Column(REAL)
-    supplier_id = Column(INTEGER)
+    supplier_id = Column(INTEGER, ForeignKey("suppliers.id", ondelete="SET NULL"))
     supplier_name_snapshot = Column(TEXT)
     status = Column(TEXT, nullable=False, server_default=text("'待采购'"))
     invoice_issued = Column(BOOLEAN, server_default=text("0"))

@@ -24,6 +24,14 @@ _RECOVERY_ALPHABET = string.ascii_uppercase + string.digits
 _serializer: Optional[URLSafeTimedSerializer] = None
 
 
+def init_cookie_secret() -> None:
+    """在应用启动时预加载 cookie secret 并初始化 serializer。
+
+    应在 FastAPI lifespan 启动阶段调用，确保所有 worker 使用相同 secret。
+    """
+    _get_serializer()
+
+
 def _resolve_secure_cookie_override() -> Optional[bool]:
     raw = os.environ.get("OFFICE_AUTH_COOKIE_SECURE", "").strip().lower()
     if raw in {"", "auto"}:

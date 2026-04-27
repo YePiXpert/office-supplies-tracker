@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Optional
 from urllib.parse import urlparse
 
-import aiosqlite
 from sqlalchemy import select, text, tuple_
 
 from .constants import (
@@ -468,26 +467,23 @@ async def get_items(
     page: Optional[int] = None,
     page_size: Optional[int] = None,
 ) -> list[dict]:
-    """获取所有物品列表。"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        query = "SELECT * FROM items"
-        conditions, params = build_item_filters(
-            status=status, department=department, month=month, keyword=keyword
-        )
+    conditions, params = build_item_filters(
+        status=status, department=department, month=month, keyword=keyword
+    )
+    where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+    query = "SELECT * FROM items" + where_clause + " ORDER BY created_at DESC, id DESC"
+    named_params = {f"p{i}": v for i, v in enumerate(params)}
 
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY created_at DESC, id DESC"
+    if page is not None and page_size is not None:
+        offset = max(0, (page - 1) * page_size)
+        query += " LIMIT :limit OFFSET :offset"
+        named_params["limit"] = page_size
+        named_params["offset"] = offset
 
-        if page is not None and page_size is not None:
-            offset = max(0, (page - 1) * page_size)
-            query += " LIMIT ? OFFSET ?"
-            params.extend([page_size, offset])
-
-        async with db.execute(query, params) as cursor:
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(text(query), named_params)
+        rows = result.mappings().all()
+        return [dict(row) for row in rows]
 
 
 async def stream_items(
@@ -496,19 +492,18 @@ async def stream_items(
     month: Optional[str] = None,
     keyword: Optional[str] = None,
 ):
-    """以异步生成器方式逐行产出物品记录，避免全量加载至内存。"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        query = "SELECT * FROM items"
-        conditions, params = build_item_filters(
-            status=status, department=department, month=month, keyword=keyword
+    conditions, params = build_item_filters(
+        status=status, department=department, month=month, keyword=keyword
+    )
+    where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+    query = "SELECT * FROM items" + where_clause + " ORDER BY created_at DESC, id DESC"
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text(query), {f"p{i}": v for i, v in enumerate(params)}
         )
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY created_at DESC, id DESC"
-        async with db.execute(query, params) as cursor:
-            async for row in cursor:
-                yield dict(row)
+        for row in result.mappings():
+            yield dict(row)
 
 
 async def get_execution_board(
@@ -517,25 +512,25 @@ async def get_execution_board(
     keyword: Optional[str] = None,
     limit_per_status: int = 80,
 ) -> dict:
-    """获取采购执行看板（按状态分栏）。"""
     columns = []
     total = 0
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
 
-        # 一次 GROUP BY 查询取代 3 次独立 COUNT(*)
-        count_conditions, count_params = build_item_filters(
-            department=department, month=month, keyword=keyword
-        )
-        status_values = [status for _, status in EXECUTION_BOARD_COLUMNS]
-        placeholders = ", ".join("?" for _ in status_values)
-        base_conditions = list(count_conditions) + [f"status IN ({placeholders})"]
-        count_query = (
-            "SELECT status, COUNT(*) FROM items"
-            " WHERE " + " AND ".join(base_conditions) + " GROUP BY status"
-        )
-        async with db.execute(count_query, [*count_params, *status_values]) as cursor:
-            counts_by_status = {row[0]: int(row[1]) for row in await cursor.fetchall()}
+    count_conditions, count_params = build_item_filters(
+        department=department, month=month, keyword=keyword
+    )
+    status_values = [status for _, status in EXECUTION_BOARD_COLUMNS]
+    placeholders = ", ".join(f":sv{i}" for i in range(len(status_values)))
+    base_conditions = list(count_conditions) + [f"status IN ({placeholders})"]
+    count_query = (
+        "SELECT status, COUNT(*) FROM items"
+        " WHERE " + " AND ".join(base_conditions) + " GROUP BY status"
+    )
+    count_named: dict = {f"p{i}": v for i, v in enumerate(count_params)}
+    count_named.update({f"sv{i}": v for i, v in enumerate(status_values)})
+
+    async with AsyncSessionLocal() as session:
+        count_result = await session.execute(text(count_query), count_named)
+        counts_by_status = {row[0]: int(row[1]) for row in count_result.fetchall()}
 
         for key, status in EXECUTION_BOARD_COLUMNS:
             conditions, params = build_item_filters(
@@ -544,6 +539,8 @@ async def get_execution_board(
                 month=month,
                 keyword=keyword,
             )
+            named = {f"p{i}": v for i, v in enumerate(params)}
+            named["limit"] = limit_per_status
 
             list_query = (
                 "SELECT id, serial_number, department, handler, request_date,"
@@ -554,27 +551,21 @@ async def get_execution_board(
             )
             if conditions:
                 list_query += " WHERE " + " AND ".join(conditions)
-            list_query += " ORDER BY created_at DESC, id DESC LIMIT ?"
-            async with db.execute(list_query, [*params, limit_per_status]) as cursor:
-                items = [dict(record) for record in await cursor.fetchall()]
+            list_query += " ORDER BY created_at DESC, id DESC LIMIT :limit"
+            list_result = await session.execute(text(list_query), named)
+            items = [dict(row) for row in list_result.mappings().all()]
 
             count = counts_by_status.get(status, 0)
-            columns.append(
-                {
-                    "key": key,
-                    "status": status,
-                    "label": status,
-                    "count": count,
-                    "items": items,
-                }
-            )
+            columns.append({
+                "key": key,
+                "status": status,
+                "label": status,
+                "count": count,
+                "items": items,
+            })
             total += count
 
-    return {
-        "columns": columns,
-        "total": total,
-        "limit_per_status": limit_per_status,
-    }
+    return {"columns": columns, "total": total, "limit_per_status": limit_per_status}
 
 
 async def count_items(
@@ -583,17 +574,18 @@ async def count_items(
     month: Optional[str] = None,
     keyword: Optional[str] = None,
 ) -> int:
-    """获取筛选后的记录总数。"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        query = "SELECT COUNT(*) FROM items"
-        conditions, params = build_item_filters(
-            status=status, department=department, month=month, keyword=keyword
+    conditions, params = build_item_filters(
+        status=status, department=department, month=month, keyword=keyword
+    )
+    query = "SELECT COUNT(*) FROM items"
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text(query), {f"p{i}": v for i, v in enumerate(params)}
         )
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        async with db.execute(query, params) as cursor:
-            row = await cursor.fetchone()
-            return int(row[0] if row else 0)
+        return int(result.scalar_one())
 
 
 async def get_items_page(
@@ -604,41 +596,43 @@ async def get_items_page(
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict], int]:
-    """在同一个 DB 连接内完成 COUNT + SELECT，返回 (items, total) 元组。"""
     conditions, params = build_item_filters(
         status=status, department=department, month=month, keyword=keyword
     )
     where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+    offset = max(0, (page - 1) * page_size)
 
     count_query = f"SELECT COUNT(*) FROM items{where_clause}"
-    offset = max(0, (page - 1) * page_size)
     list_query = (
         f"SELECT * FROM items{where_clause}"
-        " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
+        " ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset"
     )
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(count_query, params) as cursor:
-            row = await cursor.fetchone()
-            total = int(row[0] if row else 0)
+    async with AsyncSessionLocal() as session:
+        count_result = await session.execute(
+            text(count_query), {f"p{i}": v for i, v in enumerate(params)}
+        )
+        total = int(count_result.scalar_one())
 
-        async with db.execute(list_query, [*params, page_size, offset]) as cursor:
-            items = [dict(row) for row in await cursor.fetchall()]
+        list_params: dict = {f"p{i}": v for i, v in enumerate(params)}
+        list_params["limit"] = page_size
+        list_params["offset"] = offset
+        list_result = await session.execute(text(list_query), list_params)
+        items = [dict(row) for row in list_result.mappings().all()]
 
     return items, total
 
 
 async def get_item(item_id: int) -> Optional[dict]:
-    """获取单个物品详情。"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM items WHERE id = ? AND deleted_at IS NULL",
-            (item_id,),
-        ) as cursor:
-            row = await cursor.fetchone()
-            return dict(row) if row else None
+    async with AsyncSessionLocal() as session:
+        item = (
+            await session.execute(
+                select(Item).where(Item.id == item_id, Item.deleted_at.is_(None)).limit(1)
+            )
+        ).scalar_one_or_none()
+        if not item:
+            return None
+        return {column: getattr(item, column, None) for column in ITEM_COLUMNS}
 
 
 async def create_item(item: dict) -> int:
@@ -826,37 +820,37 @@ async def batch_create_items(items: list[dict]) -> list[int]:
 async def get_existing_items_by_keys(
     keys: list[tuple[str, str, str]],
 ) -> dict[tuple[str, str, str], dict]:
-    """按 (serial_number, item_name, handler) 批量查询已存在记录。"""
     unique_keys = list(dict.fromkeys(keys))
     if not unique_keys:
         return {}
 
     results: dict[tuple[str, str, str], dict] = {}
     chunk_size = 200
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with AsyncSessionLocal() as session:
         for start in range(0, len(unique_keys), chunk_size):
             chunk = unique_keys[start : start + chunk_size]
-            placeholders = ", ".join(["(?, ?, ?)"] * len(chunk))
-            params = []
-            for serial_number, item_name, handler in chunk:
-                params.extend([serial_number, item_name, handler])
+            placeholders = ", ".join(
+                f"(:sn{i}, :in{i}, :hn{i})" for i in range(len(chunk))
+            )
+            named_params: dict = {}
+            for i, (serial_number, item_name, handler) in enumerate(chunk):
+                named_params[f"sn{i}"] = serial_number
+                named_params[f"in{i}"] = item_name
+                named_params[f"hn{i}"] = handler
             query = (
                 "SELECT * FROM items "
                 f"WHERE (serial_number, item_name, handler) IN ({placeholders}) "
                 "AND deleted_at IS NULL"
             )
-            async with db.execute(query, params) as cursor:
-                rows = await cursor.fetchall()
-                for row in rows:
-                    record = dict(row)
-                    key = (
-                        str(record.get("serial_number") or "").strip(),
-                        str(record.get("item_name") or "").strip(),
-                        str(record.get("handler") or "").strip(),
-                    )
-                    results[key] = record
-
+            result = await session.execute(text(query), named_params)
+            for row in result.mappings():
+                record = dict(row)
+                key = (
+                    str(record.get("serial_number") or "").strip(),
+                    str(record.get("item_name") or "").strip(),
+                    str(record.get("handler") or "").strip(),
+                )
+                results[key] = record
     return results
 
 
@@ -975,26 +969,24 @@ async def get_deleted_items_page(
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict], int]:
-    """回收站分页查询，同一连接内返回 (items, total)。"""
     conditions, params = build_item_filters(keyword=keyword, only_deleted=True)
     base_where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     data_query = (
         "SELECT * FROM items"
         + base_where
-        + " ORDER BY deleted_at DESC, id DESC LIMIT ? OFFSET ?"
+        + " ORDER BY deleted_at DESC, id DESC LIMIT :limit OFFSET :offset"
     )
     count_query = "SELECT COUNT(*) FROM items" + base_where
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            data_query, params + [page_size, max(0, (page - 1) * page_size)]
-        ) as cursor:
-            rows = await cursor.fetchall()
-            items = [dict(row) for row in rows]
-        async with db.execute(count_query, params) as cursor:
-            count_row = await cursor.fetchone()
-            total = int(count_row[0] if count_row else 0)
+    async with AsyncSessionLocal() as session:
+        named_params: dict = {f"p{i}": v for i, v in enumerate(params)}
+        data_result = await session.execute(
+            text(data_query),
+            {**named_params, "limit": page_size, "offset": max(0, (page - 1) * page_size)},
+        )
+        items = [dict(row) for row in data_result.mappings().all()]
+        count_result = await session.execute(text(count_query), named_params)
+        total = int(count_result.scalar_one())
     return items, total
 
 
@@ -1007,14 +999,16 @@ async def list_deleted_items(
     query = "SELECT * FROM items"
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
-    query += " ORDER BY deleted_at DESC, id DESC LIMIT ? OFFSET ?"
-    params.extend([page_size, max(0, (page - 1) * page_size)])
+    query += " ORDER BY deleted_at DESC, id DESC LIMIT :limit OFFSET :offset"
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(query, params) as cursor:
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text(query),
+            {
+                f"p{i}": v for i, v in enumerate(params)
+            } | {"limit": page_size, "offset": max(0, (page - 1) * page_size)},
+        )
+        return [dict(row) for row in result.mappings().all()]
 
 
 async def count_deleted_items(keyword: Optional[str] = None) -> int:
@@ -1022,10 +1016,11 @@ async def count_deleted_items(keyword: Optional[str] = None) -> int:
     query = "SELECT COUNT(*) FROM items"
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(query, params) as cursor:
-            row = await cursor.fetchone()
-            return int(row[0] if row else 0)
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text(query), {f"p{i}": v for i, v in enumerate(params)}
+        )
+        return int(result.scalar_one())
 
 
 async def restore_item(item_id: int) -> bool:
@@ -1125,34 +1120,36 @@ async def rollback_item_to_history(item_id: int, history_id: int) -> bool:
 
 async def get_data_quality_report(limit: int = 200) -> dict:
     max_rows = max(1, min(int(limit), 1000))
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    async with AsyncSessionLocal() as session:
+        rows_result = await session.execute(
+            text(
+                """
+                SELECT id, serial_number, department, handler, request_date, item_name,
+                       quantity, purchase_link, unit_price, supplier_id, supplier_name_snapshot, status
+                FROM items
+                WHERE deleted_at IS NULL
+                ORDER BY updated_at DESC, id DESC
+                LIMIT :limit
+                """
+            ),
+            {"limit": max_rows},
+        )
+        rows = [dict(row) for row in rows_result.mappings().all()]
 
-        async with db.execute(
-            """
-            SELECT id, serial_number, department, handler, request_date, item_name,
-                   quantity, purchase_link, unit_price, supplier_id, supplier_name_snapshot, status
-            FROM items
-            WHERE deleted_at IS NULL
-            ORDER BY updated_at DESC, id DESC
-            LIMIT ?
-            """,
-            (max_rows,),
-        ) as cursor:
-            rows = [dict(row) for row in await cursor.fetchall()]
-
-        async with db.execute(
-            """
-            SELECT serial_number, item_name, handler, COUNT(*) AS duplicate_count
-            FROM items
-            WHERE deleted_at IS NULL
-            GROUP BY serial_number, item_name, handler
-            HAVING COUNT(*) > 1
-            ORDER BY duplicate_count DESC
-            LIMIT 50
-            """
-        ) as cursor:
-            duplicates = [dict(row) for row in await cursor.fetchall()]
+        dup_result = await session.execute(
+            text(
+                """
+                SELECT serial_number, item_name, handler, COUNT(*) AS duplicate_count
+                FROM items
+                WHERE deleted_at IS NULL
+                GROUP BY serial_number, item_name, handler
+                HAVING COUNT(*) > 1
+                ORDER BY duplicate_count DESC
+                LIMIT 50
+                """
+            )
+        )
+        duplicates = [dict(row) for row in dup_result.mappings().all()]
 
     issues: list[dict] = []
     for row in rows:
@@ -1179,14 +1176,12 @@ async def get_data_quality_report(limit: int = 200) -> dict:
         if request_date and not DATE_CANONICAL_PATTERN.fullmatch(request_date):
             row_issues.append("invalid_request_date_format")
         if row_issues:
-            issues.append(
-                {
-                    "id": int(row.get("id") or 0),
-                    "serial_number": row.get("serial_number") or "",
-                    "item_name": row.get("item_name") or "",
-                    "issues": row_issues,
-                }
-            )
+            issues.append({
+                "id": int(row.get("id") or 0),
+                "serial_number": row.get("serial_number") or "",
+                "item_name": row.get("item_name") or "",
+                "issues": row_issues,
+            })
 
     summary: dict[str, int] = {}
     for issue in issues:
@@ -1204,36 +1199,28 @@ async def get_data_quality_report(limit: int = 200) -> dict:
 
 
 async def get_serial_numbers() -> list[str]:
-    """获取所有流水号（用于自动补全）。"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT DISTINCT serial_number FROM items WHERE deleted_at IS NULL ORDER BY serial_number DESC"
-        ) as cursor:
-            rows = await cursor.fetchall()
-            return [row[0] for row in rows]
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text(
+                "SELECT DISTINCT serial_number FROM items WHERE deleted_at IS NULL ORDER BY serial_number DESC"
+            )
+        )
+        return [row[0] for row in result.fetchall()]
 
 
 async def get_departments() -> list[str]:
-    """获取所有部门（用于自动补全）。
-
-    策略（Option B）：返回 items 表中所有历史部门名称，包含已软删除记录。
-    部门名称完全由导入时解析器自动写入，不使用硬编码列表。
-    选择历史包含策略的理由：台账筛选器需要能回溯已删除单据的部门，
-    确保用户不会因为部门下的所有单据被删除后该部门从筛选项消失而丢失上下文。
-    """
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT DISTINCT department FROM items ORDER BY department"
-        ) as cursor:
-            rows = await cursor.fetchall()
-    return [row[0] for row in rows if row[0]]
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text("SELECT DISTINCT department FROM items ORDER BY department")
+        )
+        return [row[0] for row in result.fetchall() if row[0]]
 
 
 async def get_handlers() -> list[str]:
-    """获取所有经办人（用于自动补全）。"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT DISTINCT handler FROM items WHERE deleted_at IS NULL ORDER BY handler"
-        ) as cursor:
-            rows = await cursor.fetchall()
-            return [row[0] for row in rows]
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text(
+                "SELECT DISTINCT handler FROM items WHERE deleted_at IS NULL ORDER BY handler"
+            )
+        )
+        return [row[0] for row in result.fetchall()]
