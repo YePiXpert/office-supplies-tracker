@@ -597,7 +597,7 @@ async def _fetch_open_order_counts_by_item_name() -> dict[str, int]:
         GROUP BY i.item_name
         """
     )
-    return {str(item_name or ""): int(count or 0) for item_name, count in (rows or [])}
+    return {str(row["item_name"] or ""): int(row["open_order_count"] or 0) for row in rows}
 
 
 def _pick_supplier_recommendation(
