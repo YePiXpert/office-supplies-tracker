@@ -470,6 +470,32 @@
                     const seconds = total % 60;
                     return `${minutes}:${String(seconds).padStart(2, '0')}`;
                 },
+                executionBoardColumns() {
+                    return Array.isArray(this.executionBoard?.columns)
+                        ? this.executionBoard.columns
+                        : [];
+                },
+                executionBoardOpenTotal() {
+                    return this.executionBoardColumns.reduce(
+                        (sum, column) => sum + (Number(column?.count) || 0),
+                        0
+                    );
+                },
+                executionBoardShownTotal() {
+                    return this.executionBoardColumns.reduce((sum, column) => {
+                        const rows = Array.isArray(column?.items) ? column.items : [];
+                        return sum + rows.length;
+                    }, 0);
+                },
+                executionBoardCompletionRatio() {
+                    const total = Number(this.stats?.total) || 0;
+                    if (total <= 0) return 0;
+                    const done = Number(this.stats?.statusCount?.['已分发']) || 0;
+                    return Math.max(0, Math.min(100, (done / total) * 100));
+                },
+                executionBoardFilterActive() {
+                    return Boolean(this.boardKeyword || this.boardDepartment || this.boardMonth);
+                },
                 reportDepartmentRows() {
                     const rows = Array.isArray(this.amountReport?.byDepartment)
                         ? this.amountReport.byDepartment
@@ -539,6 +565,18 @@
                     return {
                         background: `conic-gradient(${segments.join(', ')})`,
                     };
+                },
+                reportPricedAmountRatio() {
+                    const totalAmount = Number(this.amountReport?.summary?.totalAmount) || 0;
+                    if (totalAmount <= 0) return 0;
+                    const pricedAmount = Number(this.amountReport?.summary?.pricedAmount) || 0;
+                    return Math.max(0, Math.min(100, (pricedAmount / totalAmount) * 100));
+                },
+                reportMissingPriceRatio() {
+                    const totalRecords = Number(this.amountReport?.summary?.totalRecords) || 0;
+                    if (totalRecords <= 0) return 0;
+                    const missingRecords = Number(this.amountReport?.summary?.missingPriceRecords) || 0;
+                    return Math.max(0, Math.min(100, (missingRecords / totalRecords) * 100));
                 },
                 reportPeriodRows() {
                     const rows = Array.isArray(this.amountReport?.byPeriod)

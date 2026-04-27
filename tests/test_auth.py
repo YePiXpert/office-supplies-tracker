@@ -1,4 +1,5 @@
 import pytest
+import auth_security
 from auth_security import (
     AUTH_COOKIE_MAX_AGE_SECONDS,
     create_auth_cookie,
@@ -65,6 +66,28 @@ class TestAuthCookie:
         token = create_auth_cookie("admin")
         payload = verify_auth_cookie(token, max_age_seconds=-1)
         assert payload is None
+
+    def test_cookie_secret_created_exclusively(self, monkeypatch, tmp_path):
+        secret_path = tmp_path / ".auth_cookie_secret"
+        monkeypatch.setattr(auth_security, "AUTH_COOKIE_SECRET_PATH", secret_path)
+        monkeypatch.setattr(auth_security.secrets, "token_urlsafe", lambda length: "created-secret")
+
+        assert auth_security._load_or_create_cookie_secret() == "created-secret"
+        assert secret_path.read_text(encoding="utf-8") == "created-secret"
+
+    def test_cookie_secret_race_uses_existing_winner(self, monkeypatch, tmp_path):
+        secret_path = tmp_path / ".auth_cookie_secret"
+        monkeypatch.setattr(auth_security, "AUTH_COOKIE_SECRET_PATH", secret_path)
+        monkeypatch.setattr(auth_security.secrets, "token_urlsafe", lambda length: "losing-secret")
+
+        def create_winner_then_fail(*_args, **_kwargs):
+            secret_path.write_text("winner-secret", encoding="utf-8")
+            raise FileExistsError
+
+        monkeypatch.setattr(auth_security.os, "open", create_winner_then_fail)
+
+        assert auth_security._load_or_create_cookie_secret() == "winner-secret"
+        assert secret_path.read_text(encoding="utf-8") == "winner-secret"
 
 
 class TestResponseCookieHelpers:

@@ -799,6 +799,31 @@
                     }
                     return value ? String(value) : fallback;
                 },
+                daysSinceDateText(value) {
+                    const normalized = this.normalizeDateText(value);
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+                        return null;
+                    }
+                    const today = this.normalizeDateText(this.todayDateText());
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+                        return null;
+                    }
+                    const toUtcDay = (text) => {
+                        const [year, month, day] = text.split('-').map((part) => Number(part));
+                        return Date.UTC(year, month - 1, day);
+                    };
+                    const diff = Math.floor((toUtcDay(today) - toUtcDay(normalized)) / 86400000);
+                    return Number.isFinite(diff) ? Math.max(0, diff) : null;
+                },
+                executionCardAgeText(item, column) {
+                    const key = column?.key || '';
+                    const anchorDate = key === 'pending_distribution'
+                        ? (item?.arrival_date || item?.request_date)
+                        : item?.request_date;
+                    const days = this.daysSinceDateText(anchorDate);
+                    if (days === null) return '时长 -';
+                    return days === 0 ? '今日进入' : `已停留 ${days} 天`;
+                },
                 async updateExecutionItem(item, patch, successMessage = '状态已更新') {
                     if (!item?.id) return false;
                     const ok = await this.updateItem(item.id, patch);

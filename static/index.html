@@ -326,7 +326,46 @@
                 </section>
 
                 <section v-else-if="currentView === 'execution'" class="view-pane h-full min-h-0 flex flex-col gap-4">
-                                        <div class="flex-1 min-h-0 overflow-auto pr-1">
+                    <div class="execution-hero shrink-0">
+                        <div class="min-w-0">
+                            <div class="execution-eyebrow">Execution Board</div>
+                            <h2 class="execution-title">采购执行看板</h2>
+                            <p class="execution-description">聚焦待采购、待到货、待分发三段队列，支持筛选、拖拽流转和关键日期闭环。</p>
+                        </div>
+                        <div class="execution-kpi-grid">
+                            <div class="execution-kpi-card">
+                                <div class="execution-kpi-label">当前待办</div>
+                                <div class="execution-kpi-value">{{ executionBoardOpenTotal }}</div>
+                                <div class="execution-kpi-meta">三段执行队列合计</div>
+                            </div>
+                            <div class="execution-kpi-card">
+                                <div class="execution-kpi-label">本页展示</div>
+                                <div class="execution-kpi-value">{{ executionBoardShownTotal }}</div>
+                                <div class="execution-kpi-meta">受筛选与列上限影响</div>
+                            </div>
+                            <div class="execution-kpi-card">
+                                <div class="execution-kpi-label">已分发率</div>
+                                <div class="execution-kpi-value">{{ executionBoardCompletionRatio.toFixed(0) }}%</div>
+                                <div class="execution-kpi-meter"><span :style="{ width: `${executionBoardCompletionRatio.toFixed(2)}%` }"></span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="execution-filter-bar shrink-0">
+                        <label class="execution-filter-search">
+                            <svg class="execution-filter-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                            <input v-model="boardKeyword" @keyup.enter="applyExecutionFilter" class="execution-filter-control execution-filter-control-search" placeholder="搜索物品、编号、经办人或采购链接">
+                        </label>
+                        <select v-model="boardDepartment" @change="applyExecutionFilter" class="execution-filter-control">
+                            <option value="">全部部门</option>
+                            <option v-for="department in departments" :key="`board-dep-${department}`" :value="department">{{ department }}</option>
+                        </select>
+                        <input type="month" v-model="boardMonth" @change="applyExecutionFilter" class="execution-filter-control">
+                        <button @click="applyExecutionFilter" :disabled="executionLoading" class="execution-filter-button execution-filter-primary">刷新看板</button>
+                        <button @click="clearExecutionFilter" :disabled="executionLoading || !executionBoardFilterActive" class="execution-filter-button">清除筛选</button>
+                    </div>
+
+                    <div class="flex-1 min-h-0 overflow-auto pr-1">
                         <div v-if="executionLoading" class="h-full min-h-[360px] flex flex-col items-center justify-center text-slate-500">
                             <svg class="w-6 h-6 animate-spin text-blue-600" viewBox="0 0 24 24" fill="none">
                                 <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" class="opacity-25"></circle>
@@ -336,29 +375,40 @@
                         </div>
                         <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-h-full">
                             <div
-                                v-for="column in executionBoard.columns"
+                                v-for="(column, columnIdx) in executionBoardColumns"
                                 :key="column.key"
                                 :class="{
                                     'ring-2 ring-blue-300 bg-blue-50/40': executionDropTargetKey === column.key
                                 }"
-                                class="bg-white shadow-sm ring-1 ring-slate-900/5 rounded-xl min-h-0 min-w-0 flex flex-col transition-all duration-150"
+                                class="execution-column min-h-0 min-w-0 flex flex-col transition-all duration-150"
                             >
-                                <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                                <div class="execution-column-header">
+                                    <div class="min-w-0">
                                         <span
                                             :class="{
                                             'bg-amber-100 text-amber-700 border-amber-200': column.key === 'pending_purchase',
                                             'bg-blue-100 text-blue-700 border-blue-200': column.key === 'pending_arrival',
                                             'bg-violet-100 text-violet-700 border-violet-200': column.key === 'pending_distribution'
                                         }"
-                                        class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold border"
-                                    >
-                                        <span class="relative flex h-1.5 w-1.5 mr-1.5">
-                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" :class="statusPingClass(column.status)"></span>
-                                            <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="statusDotClass(column.status)"></span>
+                                            class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold border"
+                                        >
+                                            <span class="relative flex h-1.5 w-1.5 mr-1.5">
+                                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" :class="statusPingClass(column.status)"></span>
+                                                <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="statusDotClass(column.status)"></span>
+                                            </span>
+                                            {{ column.label }}
                                         </span>
-                                        {{ column.label }}
-                                    </span>
-                                    <span class="text-xs font-semibold text-slate-500">{{ column.count }}</span>
+                                        <div class="mt-2 text-[11px] text-slate-500">第 {{ columnIdx + 1 }} 阶段 · 拖拽卡片即可流转</div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-2xl font-bold font-mono text-slate-900">{{ column.count }}</div>
+                                        <div class="text-[10px] text-slate-400 uppercase">Items</div>
+                                    </div>
+                                </div>
+                                <div class="px-4 pb-3">
+                                    <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                        <div class="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-400 report-animate-x" :style="{ width: `${executionBoardOpenTotal > 0 ? Math.max(4, (Number(column.count) || 0) / executionBoardOpenTotal * 100) : 0}%` }"></div>
+                                    </div>
                                 </div>
                                 <div
                                     class="flex-1 overflow-y-auto p-3 space-y-3"
@@ -377,41 +427,42 @@
                                             'execution-card-dragging': draggingExecutionId === item.id,
                                             'execution-card-draggable': !executionLoading
                                         }"
-                                        class="rounded-lg border border-slate-200 bg-white p-3 space-y-2"
+                                        class="execution-card"
                                     >
                                         <div class="flex items-start justify-between gap-2">
                                             <div class="min-w-0">
                                                 <div class="text-[11px] font-semibold text-slate-700 font-mono truncate" :title="item.serial_number || ''">{{ item.serial_number || '-' }}</div>
                                                 <div class="text-[11px] text-slate-500 truncate">{{ item.department || '未分配部门' }} · {{ item.handler || '未登记经办人' }}</div>
                                             </div>
-                                            <a v-if="item.purchase_link" :href="item.purchase_link" target="_blank" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-slate-400 hover:text-blue-600 hover:bg-slate-50 transition-colors duration-200">
+                                            <a v-if="item.purchase_link" :href="item.purchase_link" target="_blank" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-slate-400 hover:text-blue-600 hover:bg-slate-50 transition-colors duration-200" title="打开采购链接">
                                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                                             </a>
                                         </div>
-                                        <div class="text-[10px] text-slate-400 font-medium">按住卡片拖拽到目标列</div>
-                                        <div class="text-sm font-medium text-slate-800 leading-snug truncate" :title="item.item_name || ''">{{ item.item_name || '未命名物品' }}</div>
-                                        <div class="text-[11px] text-slate-500 flex items-center justify-between gap-2">
-                                            <span>申请日 {{ item.request_date || '-' }}</span>
+                                        <div class="text-sm font-semibold text-slate-900 leading-snug truncate" :title="item.item_name || ''">{{ item.item_name || '未命名物品' }}</div>
+                                        <div class="execution-card-chips">
+                                            <span>申请 {{ item.request_date || '-' }}</span>
+                                            <span>{{ executionCardAgeText(item, column) }}</span>
                                             <span class="font-mono">x{{ item.quantity }}</span>
+                                            <span v-if="item.unit_price !== null && item.unit_price !== undefined && item.unit_price !== ''" class="font-mono">¥ {{ formatCurrency(item.unit_price) }}</span>
                                         </div>
 
                                         <div v-if="column.key === 'pending_purchase'" class="pt-1">
-                                            <button @click="moveToPendingArrival(item)" class="w-full h-8 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">一键流转至待到货</button>
+                                            <button @click="moveToPendingArrival(item)" class="execution-action-button">一键流转至待到货</button>
                                         </div>
 
                                         <div v-else-if="column.key === 'pending_arrival'" class="pt-1 space-y-2">
-                                            <input type="date" v-model="item.arrival_date" class="w-full h-8 px-2 border border-slate-300 rounded-md text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                                            <button @click="markArrived(item)" class="w-full h-8 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">确认到货并流转</button>
+                                            <input type="date" v-model="item.arrival_date" class="execution-card-input">
+                                            <button @click="markArrived(item)" class="execution-action-button">确认到货并流转</button>
                                         </div>
 
                                         <div v-else-if="column.key === 'pending_distribution'" class="pt-1 space-y-2">
-                                            <input type="date" v-model="item.distribution_date" class="w-full h-8 px-2 border border-slate-300 rounded-md text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                                            <input type="text" v-model="item.signoff_note" placeholder="签收备注（可选）" class="w-full h-8 px-2 border border-slate-300 rounded-md text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                                            <button @click="completeDistribution(item)" class="w-full h-8 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-all duration-200 ease-in-out">完成分发闭环</button>
+                                            <input type="date" v-model="item.distribution_date" class="execution-card-input">
+                                            <input type="text" v-model="item.signoff_note" placeholder="签收备注（可选）" class="execution-card-input">
+                                            <button @click="completeDistribution(item)" class="execution-action-button">完成分发闭环</button>
                                         </div>
                                     </div>
 
-                                    <div v-if="!column.items || !column.items.length" class="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 py-8 text-center text-xs text-slate-500">
+                                    <div v-if="!column.items || !column.items.length" class="execution-column-empty">
                                         当前列暂无记录
                                     </div>
                                 </div>
@@ -446,18 +497,28 @@
                             <p class="mt-3 text-sm font-medium">统计数据加载中...</p>
                         </div>
                         <div v-else>
-                            <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
-                                <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
-                                    <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">当前费用总计</div>
-                                    <div class="text-2xl font-bold text-slate-900 font-mono">¥ {{ formatCurrency(amountReport.summary.totalAmount) }}</div>
+                            <div class="report-kpi-grid">
+                                <div class="report-kpi-card report-kpi-card-dark">
+                                    <div class="report-kpi-label">当前费用总计</div>
+                                    <div class="report-kpi-value">¥ {{ formatCurrency(amountReport.summary.totalAmount) }}</div>
+                                    <div class="report-kpi-note">按当前筛选范围汇总</div>
                                 </div>
-                                <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
-                                    <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">已计价金额</div>
-                                    <div class="text-2xl font-bold text-slate-900 font-mono">¥ {{ formatCurrency(amountReport.summary.pricedAmount) }}</div>
+                                <div class="report-kpi-card">
+                                    <div class="report-kpi-label">已计价金额</div>
+                                    <div class="report-kpi-value">¥ {{ formatCurrency(amountReport.summary.pricedAmount) }}</div>
+                                    <div class="report-kpi-progress"><span :style="{ width: `${reportPricedAmountRatio.toFixed(2)}%` }"></span></div>
+                                    <div class="report-kpi-note">金额覆盖 {{ reportPricedAmountRatio.toFixed(0) }}%</div>
                                 </div>
-                                <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
-                                    <div class="text-[10px] font-semibold text-orange-600 uppercase tracking-wide mb-2">单价缺失笔数</div>
-                                    <div class="text-2xl font-bold text-orange-600 font-mono">{{ amountReport.summary.missingPriceRecords }}</div>
+                                <div class="report-kpi-card report-kpi-card-warning">
+                                    <div class="report-kpi-label">单价缺失笔数</div>
+                                    <div class="report-kpi-value">{{ amountReport.summary.missingPriceRecords }}</div>
+                                    <div class="report-kpi-progress report-kpi-progress-warning"><span :style="{ width: `${reportMissingPriceRatio.toFixed(2)}%` }"></span></div>
+                                    <div class="report-kpi-note">缺价率 {{ reportMissingPriceRatio.toFixed(0) }}%</div>
+                                </div>
+                                <div class="report-kpi-card">
+                                    <div class="report-kpi-label">统计记录数</div>
+                                    <div class="report-kpi-value">{{ amountReport.summary.totalRecords }}</div>
+                                    <div class="report-kpi-note">用于图表和结构分析</div>
                                 </div>
                             </div>
 
@@ -482,7 +543,7 @@
                                     </div>
 
                                     <!-- 柱状图 -->
-                                    <div class="border border-slate-200 rounded-xl p-4">
+                                    <div class="report-visual-card">
                                         <div class="flex items-center justify-between">
                                             <h4 class="text-sm font-semibold text-slate-800">
                                                 {{ reportGranularity === 'month' ? '月度' : reportGranularity === 'quarter' ? '季度' : '年度' }}金额趋势
@@ -511,7 +572,7 @@
 
 
                                 <div v-if="isCurrentSubview('reports', 'overview')" class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                    <div class="border border-slate-200 rounded-xl p-4">
+                                    <div class="report-visual-card">
                                         <div class="flex items-center justify-between">
                                             <h4 class="text-sm font-semibold text-slate-800">部门支出占比（Top 10）</h4>
                                             <span class="text-[11px] text-slate-500">按金额排序</span>
@@ -538,7 +599,7 @@
                                         </div>
                                     </div>
 
-                                    <div class="border border-slate-200 rounded-xl p-4">
+                                    <div class="report-visual-card">
                                         <h4 class="text-sm font-semibold text-slate-800">状态金额占比</h4>
                                         <div class="mt-4 flex flex-col sm:flex-row sm:items-center gap-5">
                                             <div class="relative shrink-0 mx-auto sm:mx-0">
@@ -567,7 +628,7 @@
                                     </div>
                                 </div>
 
-                                <div v-if="isCurrentSubview('reports', 'overview')" class="border border-slate-200 rounded-xl p-4">
+                                <div v-if="isCurrentSubview('reports', 'overview')" class="report-visual-card">
                                     <div class="flex items-center justify-between">
                                         <h4 class="text-sm font-semibold text-slate-800">月度金额趋势（最近 12 个月）</h4>
                                         <span class="text-[11px] text-slate-500">单位：元</span>
@@ -598,7 +659,7 @@
                                     </div>
                                 </div>
 
-                                <div v-if="isCurrentSubview('reports', 'suppliers')" class="border border-slate-200 rounded-xl p-5">
+                                <div v-if="isCurrentSubview('reports', 'suppliers')" class="report-visual-card">
                                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                         <div>
                                             <h4 class="text-base font-semibold text-slate-900">供应商采购分析</h4>
@@ -632,7 +693,7 @@
                                     </div>
 
                                     <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                        <div class="border border-slate-200 rounded-xl p-4">
+                                        <div class="report-visual-card">
                                             <div class="flex items-center justify-between">
                                                 <h5 class="text-sm font-semibold text-slate-800">Top 供应商采购额</h5>
                                                 <span class="text-[11px] text-slate-500">按当前筛选金额排序</span>
@@ -662,7 +723,7 @@
                                             </div>
                                         </div>
 
-                                        <div class="border border-slate-200 rounded-xl p-4">
+                                        <div class="report-visual-card">
                                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                                 <div>
                                                     <h5 class="text-sm font-semibold text-slate-800">供应商采购额走势</h5>
@@ -713,7 +774,7 @@
                                     </div>
 
                                     <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                        <div class="border border-slate-200 rounded-xl p-4">
+                                        <div class="report-visual-card">
                                             <div class="flex items-center justify-between">
                                                 <h5 class="text-sm font-semibold text-slate-800">年度采购总览</h5>
                                                 <span class="text-[11px] text-slate-500">最近 5 年</span>
@@ -740,7 +801,7 @@
                                             </div>
                                         </div>
 
-                                        <div class="border border-slate-200 rounded-xl p-4">
+                                        <div class="report-visual-card">
                                             <div class="flex items-center justify-between">
                                                 <h5 class="text-sm font-semibold text-slate-800">供应商采购商品明细</h5>
                                                 <span class="text-[11px] text-slate-500">按当前供应商聚焦</span>
@@ -784,7 +845,7 @@
                                     </div>
                                 </div>
 
-                                <div v-if="isCurrentSubview('reports', 'efficiency')" class="border border-slate-200 rounded-xl p-4">
+                                <div v-if="isCurrentSubview('reports', 'efficiency')" class="report-visual-card">
                                     <div class="flex items-center justify-between">
                                         <h4 class="text-sm font-semibold text-slate-800">状态快照（各状态存量）</h4>
                                         <span class="text-[11px] text-slate-500">当前实际库存各状态分布</span>
@@ -809,7 +870,7 @@
                                 </div>
 
                                 <div v-if="isCurrentSubview('reports', 'efficiency')" class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                    <div class="border border-slate-200 rounded-xl p-4">
+                                    <div class="report-visual-card">
                                         <div class="flex items-center justify-between">
                                             <h4 class="text-sm font-semibold text-slate-800">采购周期：申领到到货</h4>
                                             <span class="text-[11px] text-slate-500">样本 {{ operationsReport.cycleDistribution.requestToArrival.sampleSize }} 条</span>
@@ -833,7 +894,7 @@
                                         </div>
                                     </div>
 
-                                    <div class="border border-slate-200 rounded-xl p-4">
+                                    <div class="report-visual-card">
                                         <div class="flex items-center justify-between">
                                             <h4 class="text-sm font-semibold text-slate-800">采购周期：到货到分发</h4>
                                             <span class="text-[11px] text-slate-500">样本 {{ operationsReport.cycleDistribution.arrivalToDistribution.sampleSize }} 条</span>
@@ -858,7 +919,7 @@
                                     </div>
                                 </div>
 
-                                <div v-if="isCurrentSubview('reports', 'efficiency')" class="border border-slate-200 rounded-xl p-4">
+                                <div v-if="isCurrentSubview('reports', 'efficiency')" class="report-visual-card">
                                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                         <h4 class="text-sm font-semibold text-slate-800">月度金额结构（总额 / 已付款 / 未付款）</h4>
                                         <div class="flex items-center gap-3 text-[11px] text-slate-500">
@@ -1371,24 +1432,55 @@
     </template>
 
     <template id="settings-backup-panel-template">
-        <div class="space-y-4">
-            <div>
-                <h3 class="text-xl font-semibold tracking-tight text-slate-900">💾 数据容灾与同步</h3>
-                <p class="mt-1 text-sm text-slate-500">管理本地备份、恢复和云端同步，保障关键台账数据可回溯。</p>
+        <div class="backup-panel">
+            <div class="backup-hero">
+                <div class="min-w-0">
+                    <div class="backup-eyebrow">Resilience</div>
+                    <h3 class="backup-title">数据容灾与同步</h3>
+                    <p class="backup-description">把本地备份、恢复和 WebDAV 云端副本集中到一个安全入口，减少误操作成本。</p>
+                </div>
+                <div class="backup-status-card">
+                    <div class="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-100">Cloud Backup</div>
+                    <div class="mt-2 text-2xl font-bold text-white">{{ $root.webdavConfig.configured ? '已配置' : '未配置' }}</div>
+                    <div class="mt-1 text-xs text-blue-100">远端文件 {{ $root.webdavBackups.length || 0 }} 个</div>
+                </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <button @click="$root.backupData()" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
-                    <div class="text-sm font-semibold text-slate-900">数据备份</div>
-                    <div class="mt-1 text-xs text-slate-500">导出数据库与附件压缩包</div>
+            <div class="backup-action-grid">
+                <button @click="$root.backupData()" class="backup-action-card backup-action-primary">
+                    <span class="backup-action-icon">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3v10m0 0l-4-4m4 4l4-4M5 17.5A3.5 3.5 0 018.5 14h7a3.5 3.5 0 010 7h-7A3.5 3.5 0 015 17.5z"/></svg>
+                    </span>
+                    <span class="backup-action-copy">
+                        <span class="backup-action-title">立即备份</span>
+                        <span class="backup-action-desc">导出数据库与附件压缩包</span>
+                    </span>
                 </button>
-                <button @click="$root.$refs.restoreInput && $root.$refs.restoreInput.click()" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
-                    <div class="text-sm font-semibold text-slate-900">数据恢复</div>
-                    <div class="mt-1 text-xs text-slate-500">从本地备份快速恢复系统</div>
+                <button @click="$root.$refs.restoreInput && $root.$refs.restoreInput.click()" class="backup-action-card">
+                    <span class="backup-action-icon backup-action-icon-amber">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v6h6M20 20v-6h-6M5 14a7 7 0 0012.06 3.89M19 10A7 7 0 006.94 6.11"/></svg>
+                    </span>
+                    <span class="backup-action-copy">
+                        <span class="backup-action-title">本地恢复</span>
+                        <span class="backup-action-desc">选择备份包快速恢复系统</span>
+                    </span>
                 </button>
-                <button @click="$root.openWebdavModal()" class="bg-white border border-slate-200 rounded-lg p-4 text-left hover:shadow-md transition-all duration-200 ease-in-out">
-                    <div class="text-sm font-semibold text-slate-900">WebDAV 云同步</div>
-                    <div class="mt-1 text-xs text-slate-500">配置远程备份与灾备策略</div>
+                <button @click="$root.openWebdavModal()" class="backup-action-card">
+                    <span class="backup-action-icon backup-action-icon-violet">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 18a4 4 0 01-.88-7.9A5.5 5.5 0 0116.8 8.2 4.5 4.5 0 1117.5 18H7z"/></svg>
+                    </span>
+                    <span class="backup-action-copy">
+                        <span class="backup-action-title">WebDAV 云同步</span>
+                        <span class="backup-action-desc">配置远程目录与保留策略</span>
+                    </span>
                 </button>
+            </div>
+            <div class="backup-safety-strip">
+                <span>建议流程</span>
+                <strong>先本地备份</strong>
+                <i></i>
+                <strong>再上传云端</strong>
+                <i></i>
+                <strong>恢复前二次确认</strong>
             </div>
         </div>
     </template>
@@ -1769,11 +1861,23 @@
 
     <template id="ledger-table-panel-template">
         <div class="ledger-table-shell flex-1 min-h-0 flex flex-col">
+            <div class="ledger-table-toolbar">
+                <div class="ledger-table-toolbar-main">
+                    <span>本页 {{ items.length }} 条</span>
+                    <span>已选 {{ selectedItemsModel.length }} 条</span>
+                    <span>总计 {{ totalItems }} 条</span>
+                </div>
+                <div class="ledger-table-toolbar-hints">
+                    <span>点击字段直接编辑</span>
+                    <span>Enter 保存</span>
+                    <span>Esc 取消</span>
+                </div>
+            </div>
             <div class="ledger-table-scroll flex-1 min-h-0 overflow-x-auto border-b border-slate-200">
                 <table v-if="items.length > 0" class="ledger-table w-full min-w-max whitespace-nowrap text-left border-separate border-spacing-0">
                     <thead class="sticky top-0 z-20 bg-slate-50 shadow-[0_1px_0_0_#e2e8f0]">
                         <tr class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                            <th class="ledger-table-sticky-col px-4 py-3 text-center w-12 sticky left-0 z-20 bg-white shadow-[1px_0_0_0_#e2e8f0]"><input type="checkbox" v-model="selectAllModel" @change="$root.toggleSelectAll()" class="rounded text-blue-600 focus:ring-blue-500/40"></th>
+                            <th class="ledger-table-sticky-col px-4 py-3 text-center w-12 sticky left-0 z-20 bg-white shadow-[1px_0_0_0_#e2e8f0]"><input type="checkbox" v-model="selectAllModel" @change="$root.toggleSelectAll()" class="rounded text-blue-600 focus:ring-blue-500/40" title="选择本页"></th>
                             <th class="ledger-table-sticky-summary px-4 py-3 min-w-[280px] sticky left-12 z-30 bg-slate-50 shadow-[1px_0_0_0_#e2e8f0]">记录概览</th>
                             <th class="px-4 py-3 min-w-[180px]">供应商</th>
                             <th class="px-4 py-3 min-w-[220px]">采购链接</th>
@@ -1803,7 +1907,7 @@
                                 :class="Number(item.id) === Number(focusedLedgerItemId) ? 'bg-amber-50' : selectedItemsModel.includes(item.id) ? 'bg-slate-100' : 'bg-white'"
                                 class="ledger-table-sticky-col px-4 py-3 text-center align-middle sticky left-0 z-20 shadow-[1px_0_0_0_#e2e8f0]"
                             >
-                                <input type="checkbox" :value="item.id" v-model="selectedItemsModel" class="rounded text-blue-600 focus:ring-blue-500/40">
+                                <input type="checkbox" :value="item.id" v-model="selectedItemsModel" class="rounded text-blue-600 focus:ring-blue-500/40" title="选择此记录">
                             </td>
                             <td
                                 :class="Number(item.id) === Number(focusedLedgerItemId) ? 'bg-amber-50' : selectedItemsModel.includes(item.id) ? 'bg-slate-100' : 'bg-white'"
@@ -1841,6 +1945,12 @@
                                             class="w-full px-2 py-1 text-xs text-slate-500 align-middle border rounded-sm bg-transparent border-transparent hover:border-slate-300 outline-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all"
                                             placeholder="经办人"
                                         >
+                                    </div>
+                                    <div class="ledger-row-meta-strip">
+                                        <span>申请 {{ item.request_date || '-' }}</span>
+                                        <span>{{ item.payment_status || '未设置付款' }}</span>
+                                        <span v-if="item.invoice_issued">已入账</span>
+                                        <span v-else>待报发票</span>
                                     </div>
                                 </div>
                             </td>

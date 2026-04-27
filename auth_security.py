@@ -1,7 +1,7 @@
 import os
 import secrets
 import string
-import tempfile
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -18,6 +18,8 @@ AUTH_COOKIE_SAMESITE = "strict"
 AUTH_COOKIE_SALT = "office-supplies-auth"
 AUTH_COOKIE_SECRET_PATH = Path(APP_STATE_DIR) / ".auth_cookie_secret"
 RECOVERY_CODE_LENGTH = 16
+COOKIE_SECRET_READ_RETRIES = 20
+COOKIE_SECRET_READ_RETRY_DELAY_SECONDS = 0.05
 
 _PASSWORD_CONTEXT = CryptContext(schemes=["argon2"], deprecated="auto")
 _RECOVERY_ALPHABET = string.ascii_uppercase + string.digits
@@ -84,37 +86,51 @@ def generate_recovery_code(length: int = RECOVERY_CODE_LENGTH) -> str:
     )
 
 
-def _load_or_create_cookie_secret() -> str:
+def _read_cookie_secret_file() -> Optional[str]:
     if AUTH_COOKIE_SECRET_PATH.exists():
         value = AUTH_COOKIE_SECRET_PATH.read_text(encoding="utf-8").strip()
         if value:
             return value
+    return None
+
+
+def _wait_for_cookie_secret_file() -> Optional[str]:
+    for _ in range(COOKIE_SECRET_READ_RETRIES):
+        value = _read_cookie_secret_file()
+        if value:
+            return value
+        time.sleep(COOKIE_SECRET_READ_RETRY_DELAY_SECONDS)
+    return None
+
+
+def _load_or_create_cookie_secret() -> str:
+    value = _read_cookie_secret_file()
+    if value:
+        return value
 
     AUTH_COOKIE_SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
     secret = secrets.token_urlsafe(48)
-    # Atomic write: write to a temp file in the same directory, then rename.
-    # This prevents a race condition where multiple processes each write a
-    # different secret and sessions signed by one process are rejected by another.
-    dir_path = AUTH_COOKIE_SECRET_PATH.parent
-    fd, tmp_path = tempfile.mkstemp(dir=dir_path)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    try:
+        fd = os.open(AUTH_COOKIE_SECRET_PATH, flags, 0o600)
+    except FileExistsError:
+        value = _wait_for_cookie_secret_file()
+        if value:
+            return value
+        raise RuntimeError("Cookie secret file exists but is empty")
+
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(secret)
-        try:
-            os.chmod(tmp_path, 0o600)
-        except OSError:
-            pass
-        os.replace(tmp_path, AUTH_COOKIE_SECRET_PATH)
+            f.flush()
+            os.fsync(f.fileno())
     except Exception:
         try:
-            os.unlink(tmp_path)
+            os.unlink(AUTH_COOKIE_SECRET_PATH)
         except OSError:
             pass
         raise
-    # Re-read the file: if another process won the race and wrote first,
-    # we use their secret so all workers stay consistent.
-    value = AUTH_COOKIE_SECRET_PATH.read_text(encoding="utf-8").strip()
-    return value if value else secret
+    return secret
 
 
 def _get_serializer() -> URLSafeTimedSerializer:

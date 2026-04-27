@@ -8,6 +8,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import text
+
 from app_runtime import UPLOAD_DIR
 from .constants import DB_PATH, ItemStatus
 from .filters import build_item_filters
@@ -217,10 +219,30 @@ async def _fetch_supplier_row(supplier_id: int) -> dict | None:
     return rows[0] if rows else None
 
 
+async def _fetch_supplier_row_in_session(session, supplier_id: int) -> dict | None:
+    result = await session.execute(
+        text("SELECT id, name FROM suppliers WHERE id = :supplier_id LIMIT 1"),
+        {"supplier_id": int(supplier_id)},
+    )
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
 async def _ensure_supplier_exists(supplier_id: int | None, *, field: str) -> dict | None:
     if supplier_id is None:
         return None
     supplier = await _fetch_supplier_row(supplier_id)
+    if supplier is None:
+        raise ValueError(f"{field} does not exist")
+    return supplier
+
+
+async def _ensure_supplier_exists_in_session(
+    session, supplier_id: int | None, *, field: str
+) -> dict | None:
+    if supplier_id is None:
+        return None
+    supplier = await _fetch_supplier_row_in_session(session, supplier_id)
     if supplier is None:
         raise ValueError(f"{field} does not exist")
     return supplier
@@ -238,6 +260,28 @@ async def _get_item_row(item_id: int) -> dict | None:
         [item_id],
     )
     return rows[0] if rows else None
+
+
+async def _get_item_row_in_session(session, item_id: int) -> dict | None:
+    result = await session.execute(
+        text(
+            """
+            SELECT id, serial_number, department, handler, request_date, item_name, quantity,
+                   supplier_id, supplier_name_snapshot, status, arrival_date
+            FROM items
+            WHERE id = :item_id AND deleted_at IS NULL
+            LIMIT 1
+            """
+        ),
+        {"item_id": int(item_id)},
+    )
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
+async def _last_insert_rowid(session) -> int:
+    result = await session.execute(text("SELECT last_insert_rowid()"))
+    return int(result.scalar_one())
 
 
 async def list_suppliers(limit: int = 50) -> list[dict]:
@@ -469,100 +513,218 @@ async def get_invoice_attachment(attachment_id: int) -> dict | None:
 
 async def upsert_purchase_order(item_id: int, payload: dict) -> int:
     normalized = _normalize_purchase_order_payload(payload)
-    item = await _get_item_row(item_id)
-    if item is None:
-        raise ValueError("item does not exist")
-    supplier = await _ensure_supplier_exists(normalized["supplier_id"], field="supplier_id")
-    existing = await execute_sql("SELECT id FROM purchase_orders WHERE item_id = ? LIMIT 1", [item_id])
-    if existing:
-        purchase_order_id = int(existing[0]["id"])
-        await execute_write_sql(
-            """
-            UPDATE purchase_orders
-            SET supplier_id = ?, ordered_date = ?, expected_arrival_date = ?, status = ?, note = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            [normalized["supplier_id"], normalized["ordered_date"], normalized["expected_arrival_date"], normalized["status"], normalized["note"], purchase_order_id],
+    async with AsyncSessionLocal() as session:
+        item = await _get_item_row_in_session(session, item_id)
+        if item is None:
+            raise ValueError("item does not exist")
+        supplier = await _ensure_supplier_exists_in_session(
+            session, normalized["supplier_id"], field="supplier_id"
         )
-    else:
-        purchase_order_id = await execute_write_sql(
-            """
-            INSERT INTO purchase_orders (item_id, supplier_id, ordered_date, expected_arrival_date, status, note, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            [item_id, normalized["supplier_id"], normalized["ordered_date"], normalized["expected_arrival_date"], normalized["status"], normalized["note"]],
+        existing_result = await session.execute(
+            text("SELECT id FROM purchase_orders WHERE item_id = :item_id LIMIT 1"),
+            {"item_id": int(item_id)},
         )
-    if supplier is not None:
-        await execute_write_sql(
-            "UPDATE items SET supplier_id = ?, supplier_name_snapshot = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            [int(supplier["id"]), str(supplier["name"] or "").strip() or None, item_id],
-        )
-    if normalized["status"] == "ordered":
-        await execute_write_sql(
-            "UPDATE items SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL",
-            [ItemStatus.PENDING_ARRIVAL.value, item_id],
-        )
-    elif normalized["status"] in {"draft", "cancelled"}:
-        await execute_write_sql(
-            """
-            UPDATE items
-            SET status = CASE WHEN status = ? THEN ? ELSE status END, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND deleted_at IS NULL
-            """,
-            [ItemStatus.PENDING_ARRIVAL.value, ItemStatus.PENDING.value, item_id],
-        )
-    return purchase_order_id
+        existing = existing_result.mappings().first()
+        if existing:
+            purchase_order_id = int(existing["id"])
+            await session.execute(
+                text(
+                    """
+                    UPDATE purchase_orders
+                    SET supplier_id = :supplier_id,
+                        ordered_date = :ordered_date,
+                        expected_arrival_date = :expected_arrival_date,
+                        status = :status,
+                        note = :note,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :purchase_order_id
+                    """
+                ),
+                {
+                    "supplier_id": normalized["supplier_id"],
+                    "ordered_date": normalized["ordered_date"],
+                    "expected_arrival_date": normalized["expected_arrival_date"],
+                    "status": normalized["status"],
+                    "note": normalized["note"],
+                    "purchase_order_id": purchase_order_id,
+                },
+            )
+        else:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO purchase_orders (
+                        item_id, supplier_id, ordered_date, expected_arrival_date, status, note, updated_at
+                    )
+                    VALUES (
+                        :item_id, :supplier_id, :ordered_date, :expected_arrival_date, :status, :note, CURRENT_TIMESTAMP
+                    )
+                    """
+                ),
+                {
+                    "item_id": int(item_id),
+                    "supplier_id": normalized["supplier_id"],
+                    "ordered_date": normalized["ordered_date"],
+                    "expected_arrival_date": normalized["expected_arrival_date"],
+                    "status": normalized["status"],
+                    "note": normalized["note"],
+                },
+            )
+            purchase_order_id = await _last_insert_rowid(session)
+
+        if supplier is not None:
+            await session.execute(
+                text(
+                    """
+                    UPDATE items
+                    SET supplier_id = :supplier_id,
+                        supplier_name_snapshot = :supplier_name_snapshot,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :item_id
+                    """
+                ),
+                {
+                    "supplier_id": int(supplier["id"]),
+                    "supplier_name_snapshot": str(supplier["name"] or "").strip() or None,
+                    "item_id": int(item_id),
+                },
+            )
+        if normalized["status"] == "ordered":
+            await session.execute(
+                text(
+                    """
+                    UPDATE items
+                    SET status = :status, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :item_id AND deleted_at IS NULL
+                    """
+                ),
+                {"status": ItemStatus.PENDING_ARRIVAL.value, "item_id": int(item_id)},
+            )
+        elif normalized["status"] in {"draft", "cancelled"}:
+            await session.execute(
+                text(
+                    """
+                    UPDATE items
+                    SET status = CASE WHEN status = :from_status THEN :to_status ELSE status END,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :item_id AND deleted_at IS NULL
+                    """
+                ),
+                {
+                    "from_status": ItemStatus.PENDING_ARRIVAL.value,
+                    "to_status": ItemStatus.PENDING.value,
+                    "item_id": int(item_id),
+                },
+            )
+        await session.commit()
+        return purchase_order_id
 
 
 async def upsert_purchase_receipt(purchase_order_id: int, payload: dict) -> int:
     normalized = _normalize_purchase_receipt_payload(payload)
-    order_rows = await execute_sql(
-        """
-        SELECT po.id, po.item_id, i.quantity, i.status AS item_status, i.arrival_date
-        FROM purchase_orders po
-        JOIN items i ON i.id = po.item_id
-        WHERE po.id = ? AND i.deleted_at IS NULL
-        LIMIT 1
-        """,
-        [purchase_order_id],
-    )
-    if not order_rows:
-        raise ValueError("purchase order does not exist")
-    order_row = order_rows[0]
-    received_quantity_val = normalized["received_quantity"]
-    if received_quantity_val is None:
-        received_quantity_val = _safe_float(order_row["quantity"])
-    existing = await execute_sql("SELECT id FROM purchase_receipts WHERE purchase_order_id = ? LIMIT 1", [purchase_order_id])
-    if existing:
-        receipt_id = int(existing[0]["id"])
-        await execute_write_sql(
-            """
-            UPDATE purchase_receipts
-            SET received_date = ?, received_quantity = ?, note = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            [normalized["received_date"], received_quantity_val, normalized["note"], receipt_id],
+    async with AsyncSessionLocal() as session:
+        order_result = await session.execute(
+            text(
+                """
+                SELECT po.id, po.item_id, i.quantity, i.status AS item_status, i.arrival_date
+                FROM purchase_orders po
+                JOIN items i ON i.id = po.item_id
+                WHERE po.id = :purchase_order_id AND i.deleted_at IS NULL
+                LIMIT 1
+                """
+            ),
+            {"purchase_order_id": int(purchase_order_id)},
         )
-    else:
-        receipt_id = await execute_write_sql(
-            """
-            INSERT INTO purchase_receipts (purchase_order_id, received_date, received_quantity, note, updated_at)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            [purchase_order_id, normalized["received_date"], received_quantity_val, normalized["note"]],
+        order_row = order_result.mappings().first()
+        if not order_row:
+            raise ValueError("purchase order does not exist")
+
+        received_quantity_val = normalized["received_quantity"]
+        if received_quantity_val is None:
+            received_quantity_val = _safe_float(order_row["quantity"])
+        existing_result = await session.execute(
+            text(
+                "SELECT id FROM purchase_receipts WHERE purchase_order_id = :purchase_order_id LIMIT 1"
+            ),
+            {"purchase_order_id": int(purchase_order_id)},
         )
-    await execute_write_sql(
-        "UPDATE purchase_orders SET status = 'received', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        [purchase_order_id],
-    )
-    item_status = str(order_row["item_status"] or "")
-    next_status = item_status if item_status == ItemStatus.DISTRIBUTED.value else ItemStatus.PENDING_DISTRIBUTION.value
-    arrival_date_val = normalized["received_date"] or str(order_row["arrival_date"] or "") or None
-    await execute_write_sql(
-        "UPDATE items SET status = ?, arrival_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL",
-        [next_status, arrival_date_val, int(order_row["item_id"])],
-    )
-    return receipt_id
+        existing = existing_result.mappings().first()
+        if existing:
+            receipt_id = int(existing["id"])
+            await session.execute(
+                text(
+                    """
+                    UPDATE purchase_receipts
+                    SET received_date = :received_date,
+                        received_quantity = :received_quantity,
+                        note = :note,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :receipt_id
+                    """
+                ),
+                {
+                    "received_date": normalized["received_date"],
+                    "received_quantity": received_quantity_val,
+                    "note": normalized["note"],
+                    "receipt_id": receipt_id,
+                },
+            )
+        else:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO purchase_receipts (
+                        purchase_order_id, received_date, received_quantity, note, updated_at
+                    )
+                    VALUES (
+                        :purchase_order_id, :received_date, :received_quantity, :note, CURRENT_TIMESTAMP
+                    )
+                    """
+                ),
+                {
+                    "purchase_order_id": int(purchase_order_id),
+                    "received_date": normalized["received_date"],
+                    "received_quantity": received_quantity_val,
+                    "note": normalized["note"],
+                },
+            )
+            receipt_id = await _last_insert_rowid(session)
+
+        await session.execute(
+            text(
+                """
+                UPDATE purchase_orders
+                SET status = 'received', updated_at = CURRENT_TIMESTAMP
+                WHERE id = :purchase_order_id
+                """
+            ),
+            {"purchase_order_id": int(purchase_order_id)},
+        )
+        item_status = str(order_row["item_status"] or "")
+        next_status = (
+            item_status
+            if item_status == ItemStatus.DISTRIBUTED.value
+            else ItemStatus.PENDING_DISTRIBUTION.value
+        )
+        arrival_date_val = normalized["received_date"] or str(order_row["arrival_date"] or "") or None
+        await session.execute(
+            text(
+                """
+                UPDATE items
+                SET status = :status,
+                    arrival_date = :arrival_date,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :item_id AND deleted_at IS NULL
+                """
+            ),
+            {
+                "status": next_status,
+                "arrival_date": arrival_date_val,
+                "item_id": int(order_row["item_id"]),
+            },
+        )
+        await session.commit()
+        return receipt_id
 
 
 async def _fetch_price_memory(item_names: set[str]) -> dict[str, list[dict]]:
