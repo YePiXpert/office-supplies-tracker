@@ -258,12 +258,37 @@ python desktop.py
 
 - `data/office_supplies.db`
 - `uploads/`
-- `.webdav_config.json`
+- `.webdav_config.json`（密码加密存储）
 - `.gemini_config.json`
 
-建议定期执行本地备份或 WebDAV 同步。
-# 2026-04-09 更新说明
+WebDAV 密码使用 `itsdangerous` 加密，不再明文落盘。Cookie Secret 文件 `.auth_cookie_secret` 自动生成于状态目录。
 
-- `运营工作台` 现在优先展示 `待下单 / 待收货 / 补货建议 / 行动队列`
-- 运营中心已经支持轻量 `purchase_orders / purchase_receipts` 闭环
-- `统计报表` 新增 tracker 视角，用来查看待下单、待收货、待报销和供应商交期趋势
+建议定期执行本地备份或 WebDAV 同步。
+
+## 15. 开发与测试
+
+### 15.1 运行测试
+
+```bash
+pip install pytest pytest-asyncio
+pytest tests/ -v
+```
+
+测试覆盖：
+
+| 模块 | 用例数 | 说明 |
+|---|---|---|
+| `test_auth.py` | 11 | 哈希/验证、恢复码、Cookie 令牌 |
+| `test_backup.py` | 11 | Zip 安全、归档校验、DB 完整性 |
+| `test_import_flow.py` | 25 | 全角转换、日期归一化、导入合并 |
+| `test_parser.py` | 28 | 文件检测、表头提取、表格解析、跳词 |
+
+### 15.2 代码结构
+
+```
+db/     — 数据库层（SQLAlchemy async + 裸 DDL）
+parser/ — 文档解析器（策略模式拆分）
+routers/— FastAPI 路由（按功能模块拆分）
+```
+
+所有数据库读查询已迁移到 `AsyncSessionLocal`，写操作使用 `execute_write_sql` 或 ORM。`db/schema.py` 保留裸 `aiosqlite` 用于 DDL/PRAGMA 操作。
