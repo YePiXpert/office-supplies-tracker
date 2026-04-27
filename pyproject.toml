@@ -1,0 +1,28 @@
+[project]
+name = "office-supplies-tracker"
+dynamic = ["version", "readme"]
+requires-python = ">=3.11"
+description = "办公用品采购系统"
+
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+follow_imports = "silent"
+ignore_missing_imports = true
+exclude = [
+    "static/",
+    "alembic/",
+    "installer/",
+    "data/",
+    "uploads/",
+    "outputs/",
+    ".venv/",
+    "venv/",
+]
