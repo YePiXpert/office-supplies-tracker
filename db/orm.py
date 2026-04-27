@@ -60,10 +60,18 @@ async def execute_sql_scalar(sql: str, params: Optional[list] = None) -> Any:
 
 
 async def execute_write_sql(sql: str, params: Optional[list] = None) -> int:
-    """在 AsyncSession 中执行 raw SQL INSERT/UPDATE/DELETE，返回 rowcount。"""
+    """在 AsyncSession 中执行 raw SQL 写入。
+
+    INSERT 返回新行 id，UPDATE/DELETE 返回影响行数。
+    """
     params = params or []
+    is_insert = sql.lstrip().upper().startswith("INSERT")
     converted_sql, named_params = _convert_placeholders(sql, params)
     async with AsyncSessionLocal() as session:
         result = await session.execute(sa_text(converted_sql), named_params)
         await session.commit()
+        if is_insert:
+            lastrowid = getattr(result, "lastrowid", None)
+            if lastrowid is not None:
+                return int(lastrowid)
         return result.rowcount
