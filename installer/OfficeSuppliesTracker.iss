@@ -1,7 +1,7 @@
 #define MyAppName "OfficeSuppliesTracker"
 #define MyAppPublisher "Office Supplies Team"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.2.35"
+  #define MyAppVersion "1.2.36"
 #endif
 #define MyAppExeName "OfficeSuppliesTracker.exe"
 
