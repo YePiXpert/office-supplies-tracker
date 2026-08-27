@@ -71,7 +71,12 @@ for i in $(seq 1 60); do
   if curl -fsS "http://127.0.0.1:${WEB_PORT}/api/health" >/dev/null 2>&1; then
     break
   fi
-  [ "$i" = 60 ] && die "健康检查超时，查看日志：docker compose logs -f server"
+  if [ "$i" = 60 ]; then
+    warn "健康检查超时，server 最近日志："
+    docker compose logs --tail 30 server 2>&1 | sed 's/^/    /'
+    docker compose ps 2>&1 | sed 's/^/    /'
+    die "请把以上日志发给维护者排查"
+  fi
   sleep 3
 done
 for i in $(seq 1 30); do

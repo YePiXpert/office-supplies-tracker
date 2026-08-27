@@ -21,6 +21,7 @@ services:
       dockerfile: deploy/Dockerfile.server
     environment:
       DATA_DIR: /app/state
+      DATABASE_URL: file:/app/state/procure.db
       OCR_BASE_URL: http://ocr:8000
       OCR_API_KEY: ${OCR_API_KEY:-please-change-ocr-key}
     volumes:

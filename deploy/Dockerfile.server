@@ -25,4 +25,5 @@ COPY --from=build /repo/apps/server/prisma ./apps/server/prisma
 COPY --from=build /repo/apps/server/node_modules ./apps/server/node_modules
 WORKDIR /app/apps/server
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null || npx prisma db push --skip-generate; node dist/main.js"]
+# 运行时建表：migrate deploy（有迁移）或 db push（兜底）；exec 让 SIGTERM 直达 node 实现优雅停机
+CMD ["sh", "-c", "export DATABASE_URL=\"\${DATABASE_URL:-file:\${DATA_DIR:-/app/state}/procure.db}\"; npx prisma migrate deploy || npx prisma db push --skip-generate; exec node dist/main.js"]

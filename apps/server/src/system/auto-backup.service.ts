@@ -18,8 +18,9 @@ export class AutoBackupService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const cfg = await this.getConfig();
-    if (cfg.enabled) this.schedule(cfg);
+    // 配置读取失败（如首次启动表尚未就绪）不阻断服务启动
+    const cfg = await this.getConfig().catch(() => null);
+    if (cfg?.enabled) this.schedule(cfg);
   }
 
   async getConfig(): Promise<AutoBackupConfig> {
