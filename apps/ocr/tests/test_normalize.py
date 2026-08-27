@@ -1,0 +1,89 @@
+from app.normalize import (
+    clean_item_name,
+    extract_url,
+    parse_date,
+    parse_price,
+    parse_quantity,
+    to_halfwidth,
+)
+
+
+class TestHalfwidth:
+    def test_fullwidth_ascii(self):
+        assert to_halfwidth("ＡＢＣ１２３") == "ABC123"
+
+    def test_fullwidth_colon_and_space(self):
+        assert to_halfwidth("流水号：Ｘ-１　") == "流水号:X-1 "
+
+
+class TestParseDate:
+    def test_iso(self):
+        assert parse_date("申请日期：2026-08-27") == "2026-08-27"
+
+    def test_chinese(self):
+        assert parse_date("2026年8月27日提交") == "2026-08-27"
+
+    def test_slash(self):
+        assert parse_date("2026/8/5") == "2026-08-05"
+
+    def test_compact(self):
+        assert parse_date("单号 20260827 属于") == "2026-08-27"
+
+    def test_invalid(self):
+        assert parse_date("没有日期") is None
+        assert parse_date("9999-99-99") is None
+
+
+class TestParseQuantity:
+    def test_plain(self):
+        assert parse_quantity("签字笔 5") == 5.0
+
+    def test_with_unit(self):
+        assert parse_quantity("A4纸 20包") == 20.0
+
+    def test_trailing_unit(self):
+        assert parse_quantity("订书机 3 个") == 3.0
+
+    def test_x_notation(self):
+        assert parse_quantity("文件夹 x12") == 12.0
+
+    def test_decimal(self):
+        assert parse_quantity("胶带 2.5") == 2.5
+
+    def test_none(self):
+        assert parse_quantity("待办事项") is None
+
+
+class TestParsePrice:
+    def test_yuan_symbol(self):
+        assert parse_price("¥12.50") == 12.5
+
+    def test_rmb_suffix(self):
+        assert parse_price("单价 3.5元") == 3.5
+
+    def test_plain_number(self):
+        assert parse_price("数量5 单价9.9") == 9.9
+
+    def test_none(self):
+        assert parse_price("无金额") is None
+
+
+class TestExtractUrl:
+    def test_jd_link(self):
+        url = extract_url("购买链接 https://item.jd.com/100012345.html 请查收")
+        assert url == "https://item.jd.com/100012345.html"
+
+    def test_none(self):
+        assert extract_url("没有链接") is None
+
+
+class TestCleanItemName:
+    def test_strips_qty_price(self):
+        assert clean_item_name("签字笔 5 ¥12.50") == "签字笔"
+
+    def test_strips_url(self):
+        name = clean_item_name("文件夹 https://item.jd.com/123.html 3个")
+        assert name == "文件夹"
+
+    def test_strips_index_prefix(self):
+        assert clean_item_name("1. 订书机") == "订书机"

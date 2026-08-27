@@ -1,0 +1,46 @@
+{
+  "name": "@procure-lite/server",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "prisma generate && nest start --watch",
+    "build": "prisma generate && nest build",
+    "pretest": "prisma generate",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/multipart": "^9.0.3",
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-fastify": "^11.1.6",
+    "@nestjs/schedule": "^6.0.0",
+    "@node-rs/argon2": "^2.0.2",
+    "@prisma/client": "^6.16.2",
+    "@procure-lite/shared": "workspace:*",
+    "adm-zip": "^0.5.16",
+    "archiver": "^7.0.1",
+    "axios": "^1.13.0",
+    "exceljs": "^4.4.0",
+    "fastify": "^5.6.2",
+    "uuid": "^11.1.0",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.10",
+    "@nestjs/testing": "^11.1.6",
+    "@swc/core": "^1.16.1",
+    "@types/adm-zip": "^0.5.7",
+    "@types/archiver": "^6.0.3",
+    "@types/node": "^24",
+    "prisma": "^6.16.2",
+    "typescript": "^5.9.2",
+    "unplugin-swc": "^1.5.11",
+    "vitest": "^3.2.4"
+  }
+}

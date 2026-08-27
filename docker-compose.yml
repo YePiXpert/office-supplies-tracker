@@ -1,0 +1,38 @@
+name: procure-lite
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    ports:
+      - "8080:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.server
+    environment:
+      DATA_DIR: /app/state
+      OCR_BASE_URL: http://ocr:8000
+      OCR_API_KEY: ${OCR_API_KEY:-please-change-ocr-key}
+    volumes:
+      - procure-state:/app/state
+    depends_on:
+      - ocr
+    restart: unless-stopped
+
+  ocr:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.ocr
+    environment:
+      OCR_API_KEY: ${OCR_API_KEY:-please-change-ocr-key}
+      OCR_MAX_CONCURRENT: "1"
+    restart: unless-stopped
+
+volumes:
+  procure-state:

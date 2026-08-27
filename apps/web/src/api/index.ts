@@ -1,0 +1,260 @@
+import { http } from './client';
+
+export { http, apiError, bindRouter } from './client';
+import type {
+  AutoBackupConfig,
+  DistributionCreateInput,
+  DistributionQuery,
+  DuplicatePreview,
+  ImportConfirmInput,
+  ItemCreateInput,
+  ItemQuery,
+  ItemUpdateInput,
+  MovementCreateInput,
+  MovementQuery,
+  ParseResult,
+  ProductUpsertInput,
+  ReportQuery,
+  SupplierUpsertInput,
+  BatchUpdateInput,
+} from '@procure-lite/shared';
+
+/* ------------------------------- 通用分页结构 ------------------------------ */
+export interface Paged<T> {
+  total: number;
+  page: number;
+  pageSize: number;
+}
+export interface ItemRow {
+  id: number;
+  serialNumber: string;
+  department: string;
+  handler: string;
+  requestDate: string;
+  itemName: string;
+  quantity: number;
+  unit: string | null;
+  purchaseLink: string | null;
+  unitPrice: number | null;
+  supplierId: number | null;
+  supplierName: string | null;
+  status: string;
+  invoiceIssued: boolean;
+  paymentStatus: string;
+  arrivalDate: string | null;
+  distributionDate: string | null;
+  signoffNote: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  supplier?: { name: string } | null;
+}
+export interface ItemsPage extends Paged<never> {
+  items: ItemRow[];
+}
+
+/* ---------------------------------- 台账 ---------------------------------- */
+export const itemsApi = {
+  list: (query: Partial<ItemQuery>) => http.get<ItemsPage>('/items', { params: query }).then((r) => r.data),
+  get: (id: number) => http.get<ItemRow>(`/items/${id}`).then((r) => r.data),
+  create: (body: ItemCreateInput) => http.post<ItemRow>('/items', body).then((r) => r.data),
+  update: (id: number, body: ItemUpdateInput) => http.patch<ItemRow>(`/items/${id}`, body).then((r) => r.data),
+  remove: (id: number) => http.delete(`/items/${id}`).then((r) => r.data),
+  restore: (id: number) => http.post(`/items/${id}/restore`).then((r) => r.data),
+  purge: (id: number) => http.delete(`/items/${id}?permanent=true`).then((r) => r.data),
+  history: (id: number) => http.get(`/items/${id}/history`).then((r) => r.data),
+  rollback: (id: number, historyId: number) => http.post(`/items/${id}/rollback`, { historyId }).then((r) => r.data),
+  batchUpdate: (body: BatchUpdateInput) => http.post('/items/batch-update', body).then((r) => r.data),
+  facets: () => http.get<{ departments: string[]; handlers: string[] }>('/items/facets').then((r) => r.data),
+};
+
+/* ---------------------------------- 导入 ---------------------------------- */
+export interface ImportTaskView {
+  id: string;
+  filename: string;
+  status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
+  result?: ParseResult;
+  error?: string;
+}
+export const importsApi = {
+  upload: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return http.post<{ taskId: string }>('/imports/upload', form, {
+      headers: { 'content-type': 'multipart/form-data' },
+      timeout: 200_000,
+    }).then((r) => r.data);
+  },
+  task: (id: string) => http.get<ImportTaskView>(`/imports/tasks/${id}`).then((r) => r.data),
+  checkDuplicates: (body: { serialNumber: string; handler: string; itemNames: string[] }) =>
+    http.post<DuplicatePreview[]>('/imports/check-duplicates', body).then((r) => r.data),
+  confirm: (body: ImportConfirmInput) =>
+    http.post<{ created: number; merged: number; skipped: number }>('/imports/confirm', body).then((r) => r.data),
+};
+
+/* ---------------------------------- 发放 ---------------------------------- */
+export interface DistributionLineRow {
+  id: number;
+  itemId: number | null;
+  productId: number | null;
+  itemName: string;
+  recipient: string;
+  quantity: number;
+  signoffNote: string | null;
+}
+export interface DistributionRow {
+  id: number;
+  date: string;
+  source: 'DIRECT' | 'STOCK';
+  department: string | null;
+  note: string | null;
+  totalQuantity: number;
+  createdAt: string;
+  lines: DistributionLineRow[];
+}
+export const distributionsApi = {
+  list: (query: Partial<DistributionQuery>) =>
+    http.get<Paged<never> & { distributions: DistributionRow[] }>('/distributions', { params: query }).then((r) => r.data),
+  get: (id: number) => http.get<DistributionRow>(`/distributions/${id}`).then((r) => r.data),
+  create: (body: DistributionCreateInput) => http.post('/distributions', body).then((r) => r.data),
+  remove: (id: number) => http.delete(`/distributions/${id}`).then((r) => r.data),
+  recipients: (query: Partial<ReportQuery>) =>
+    http.get<{ recipient: string; department: string; quantity: number; times: number }[]>('/distributions/recipients', { params: query }).then((r) => r.data),
+};
+
+/* ---------------------------------- 库存 ---------------------------------- */
+export interface ProductRow {
+  id: number;
+  name: string;
+  unit: string | null;
+  category: string | null;
+  stockQty: number;
+  lowStockThreshold: number | null;
+  isLow?: boolean;
+  _count?: { movements: number; distributionLines: number };
+}
+export interface MovementRow {
+  id: number;
+  productId: number;
+  quantity: number;
+  type: string;
+  relatedItemId: number | null;
+  relatedDistributionId: number | null;
+  note: string | null;
+  createdAt: string;
+  product: { name: string; unit: string | null };
+}
+export const inventoryApi = {
+  products: (params?: { search?: string; low?: string }) =>
+    http.get<ProductRow[]>('/inventory/products', { params }).then((r) => r.data),
+  upsertProduct: (body: ProductUpsertInput) =>
+    http.post<ProductRow>('/inventory/products', body).then((r) => r.data),
+  deleteProduct: (id: number) => http.delete(`/inventory/products/${id}`).then((r) => r.data),
+  movements: (query: Partial<MovementQuery>) =>
+    http.get<Paged<never> & { movements: MovementRow[] }>('/inventory/movements', { params: query }).then((r) => r.data),
+  createMovement: (body: MovementCreateInput) => http.post('/inventory/movements', body).then((r) => r.data),
+  removeMovement: (id: number) => http.delete(`/inventory/movements/${id}`).then((r) => r.data),
+  stockIn: (itemId: number) => http.post(`/inventory/stock-in/${itemId}`).then((r) => r.data),
+};
+
+/* --------------------------------- 供应商 ---------------------------------- */
+export interface SupplierRow {
+  id: number;
+  name: string;
+  contact: string | null;
+  phone: string | null;
+  note: string | null;
+  _count?: { items: number; priceRecords: number };
+}
+export interface PriceRecordRow {
+  id: number;
+  supplierId: number;
+  itemName: string;
+  unitPrice: number;
+  purchaseLink: string | null;
+  createdAt: string;
+  supplier: { name: string };
+}
+export const suppliersApi = {
+  list: () => http.get<SupplierRow[]>('/suppliers').then((r) => r.data),
+  upsert: (body: SupplierUpsertInput) => http.post<SupplierRow>('/suppliers', body).then((r) => r.data),
+  remove: (id: number) => http.delete(`/suppliers/${id}`).then((r) => r.data),
+  priceRecords: (params?: { itemName?: string; supplierId?: number }) =>
+    http.get<PriceRecordRow[]>('/suppliers/price-records', { params }).then((r) => r.data),
+  addPriceRecord: (body: { supplierId: number; itemName: string; unitPrice: number; purchaseLink?: string }) =>
+    http.post('/suppliers/price-records', body).then((r) => r.data),
+  removePriceRecord: (id: number) => http.delete(`/suppliers/price-records/${id}`).then((r) => r.data),
+  suggest: (itemName: string) =>
+    http.get<PriceRecordRow[]>('/suppliers/suggest', { params: { itemName } }).then((r) => r.data),
+};
+
+/* ---------------------------------- 报表 ---------------------------------- */
+export interface DashboardData {
+  statusSlices: { status: string; count: number; amount: number }[];
+  kanbanCounts: Record<string, number>;
+  payment: { unpaidCount: number; unpaidAmount: number; noInvoiceCount: number };
+  inventory: { productCount: number; lowStockCount: number; totalStockQty: number };
+  today: { date: string; arrivals: number; distributionLines: number; distributedQty: number };
+  trend: { date: string; created: number; distributed: number; distributedAmount: number }[];
+}
+export const reportsApi = {
+  dashboard: () => http.get<DashboardData>('/reports/dashboard').then((r) => r.data),
+  amount: (params: { groupBy: 'month' | 'department' | 'supplier'; dateFrom?: string; dateTo?: string }) =>
+    http.get<{ label: string; amount: number; count: number }[]>('/reports/amount', { params }).then((r) => r.data),
+  operations: (params?: Partial<ReportQuery>) => http.get('/reports/operations', { params }).then((r) => r.data),
+  suppliers: (params?: Partial<ReportQuery>) => http.get('/reports/suppliers', { params }).then((r) => r.data),
+};
+
+/* ---------------------------------- 系统 ---------------------------------- */
+export interface SystemStatus {
+  version: string;
+  uptimeSeconds: number;
+  dbSizeBytes: number;
+  counts: { items: number; products: number; distributions: number };
+  autoBackup: AutoBackupConfig;
+  restoring: boolean;
+}
+export interface BackupInfo {
+  name: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+export const systemApi = {
+  status: () => http.get<SystemStatus>('/system/status').then((r) => r.data),
+  ocrHealth: () => http.get<boolean>('/system/ocr-health').then((r) => r.data).catch(() => false),
+  backups: () => http.get<BackupInfo[]>('/system/backups').then((r) => r.data),
+  createBackup: () => http.post<BackupInfo>('/system/backups').then((r) => r.data),
+  restoreBackup: (name: string) => http.post(`/system/backups/${name}/restore`).then((r) => r.data),
+  deleteBackup: (name: string) => http.delete(`/system/backups/${name}`).then((r) => r.data),
+  getAutoBackup: () => http.get<AutoBackupConfig>('/system/auto-backup').then((r) => r.data),
+  updateAutoBackup: (body: AutoBackupConfig) => http.put('/system/auto-backup', body).then((r) => r.data),
+};
+
+/* ---------------------------------- 审计 ---------------------------------- */
+export interface AuditRow {
+  id: number;
+  action: string;
+  entity: string | null;
+  entityId: number | null;
+  detail: string | null;
+  operatorIp: string | null;
+  createdAt: string;
+}
+export const auditApi = {
+  list: (params: { action?: string; search?: string; page?: number; pageSize?: number }) =>
+    http.get<Paged<never> & { logs: AuditRow[] }>('/audit-logs', { params }).then((r) => r.data),
+};
+
+/** 浏览器下载 API 生成的文件（同源带 Cookie） */
+export async function downloadFile(url: string, fallbackName: string): Promise<void> {
+  const res = await http.get(url, { responseType: 'blob' });
+  const disposition = res.headers['content-disposition'] as string | undefined;
+  const match = disposition?.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i);
+  const name = match ? decodeURIComponent(match[1]) : fallbackName;
+  const blobUrl = URL.createObjectURL(res.data as Blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(blobUrl);
+}

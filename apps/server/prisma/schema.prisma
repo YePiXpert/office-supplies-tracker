@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/* 台账：一行 = OA 单上的一条申领物品 */
+model Item {
+  id               Int        @id @default(autoincrement())
+  serialNumber     String
+  department       String
+  handler          String
+  requestDate      String // YYYY-MM-DD
+  itemName         String
+  quantity         Float
+  unit             String?
+  purchaseLink     String?
+  unitPrice        Float?
+  supplierId       Int?
+  supplier         Supplier?  @relation(fields: [supplierId], references: [id])
+  supplierName     String?
+  status           String     @default("PENDING_PURCHASE")
+  invoiceIssued    Boolean    @default(false)
+  paymentStatus    String     @default("UNPAID")
+  arrivalDate      String?
+  distributionDate String?
+  signoffNote      String?
+  note             String?
+  deletedAt        DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  history       ItemHistory[]
+  distributionLines DistributionLine[]
+  attachments   Attachment[]
+
+  @@unique([serialNumber, itemName, handler])
+  @@index([status, deletedAt, createdAt])
+  @@index([department, deletedAt])
+  @@index([handler])
+  @@index([requestDate])
+  @@index([supplierId])
+  @@index([deletedAt, createdAt])
+}
+
+/* 修改历史：字段级快照，支持回滚 */
+model ItemHistory {
+  id            Int      @id @default(autoincrement())
+  itemId        Int
+  item          Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  action        String // CREATE / UPDATE / BATCH_UPDATE / ROLLBACK / STATUS / DELETE / RESTORE
+  changedFields String? // JSON: {field: [before, after]}
+  beforeData    String? // JSON 快照
+  afterData     String? // JSON 快照
+  createdAt     DateTime @default(now())
+
+  @@index([itemId, createdAt])
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  action     String
+  entity     String?
+  entityId   Int?
+  detail     String? // JSON
+  operatorIp String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/* 发放单：一次发放动作（可含多个领用人/多条物品） */
+model Distribution {
+  id            Int      @id @default(autoincrement())
+  date          String // YYYY-MM-DD
+  source        String // DIRECT | STOCK
+  department    String?
+  note          String?
+  totalQuantity Float
+  createdAt     DateTime @default(now())
+
+  lines       DistributionLine[]
+  attachments Attachment[]
+
+  @@index([date])
+  @@index([department])
+  @@index([createdAt])
+}
+
+/* 领用明细：谁领了多少 */
+model DistributionLine {
+  id            Int         @id @default(autoincrement())
+  distributionId Int
+  distribution  Distribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  itemId        Int?
+  item          Item?       @relation(fields: [itemId], references: [id])
+  productId     Int?
+  product       Product?    @relation(fields: [productId], references: [id])
+  itemName      String
+  recipient     String
+  quantity      Float
+  signoffNote   String?
+  createdAt     DateTime    @default(now())
+
+  @@index([recipient])
+  @@index([itemId])
+  @@index([productId])
+  @@index([distributionId])
+}
+
+/* 物品主数据（库存账面） */
+model Product {
+  id                Int      @id @default(autoincrement())
+  name              String   @unique
+  unit              String?
+  category          String?
+  stockQty          Float    @default(0)
+  lowStockThreshold Float?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  movements         InventoryMovement[]
+  distributionLines DistributionLine[]
+
+  @@index([name])
+}
+
+/* 库存流水：quantity 为带符号增量，stockQty = SUM(quantity) */
+model InventoryMovement {
+  id                    Int      @id @default(autoincrement())
+  productId             Int
+  product               Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity              Float
+  type                  String // INBOUND | OUTBOUND | ADJUSTMENT
+  relatedItemId         Int?
+  relatedDistributionId Int?
+  note                  String?
+  createdAt             DateTime @default(now())
+
+  @@index([productId, createdAt])
+  @@index([type])
+}
+
+model Supplier {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  contact   String?
+  phone     String?
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items        Item[]
+  priceRecords SupplierPriceRecord[]
+}
+
+/* 价格记忆：同一品名在各供应商的单价与链接 */
+model SupplierPriceRecord {
+  id           Int      @id @default(autoincrement())
+  supplierId   Int
+  supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  itemName     String
+  unitPrice    Float
+  purchaseLink String?
+  createdAt    DateTime @default(now())
+
+  @@index([itemName])
+  @@index([supplierId, createdAt])
+}
+
+/* 附件：发票、签收凭证等 */
+model Attachment {
+  id            Int          @id @default(autoincrement())
+  kind          String // INVOICE | SIGNOFF
+  itemId        Int?
+  item          Item?        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  distributionId Int?
+  distribution  Distribution? @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  filename      String
+  storagePath   String
+  mimeType      String
+  sizeBytes     Int
+  createdAt     DateTime     @default(now())
+
+  @@index([itemId])
+  @@index([distributionId])
+}
+
+/* OA 导入任务（持久化，重启不丢） */
+model ImportTask {
+  id         String    @id
+  filename   String
+  status     String // PENDING | RUNNING | DONE | FAILED
+  result     String? // JSON ParseResult
+  error      String?
+  createdAt  DateTime  @default(now())
+  finishedAt DateTime?
+}
+
+/* 单管理员安全状态 */
+model SystemSecurity {
+  id               Int       @id @default(1)
+  passwordHash     String
+  recoveryCodeHash String?
+  failedAttempts   Int       @default(0)
+  lockedUntil      DateTime?
+  updatedAt        DateTime  @updatedAt
+}
+
+model Setting {
+  key   String @id
+  value String
+}

@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+
+overrides:
+  # 统一 fastify 版本，避免 Nest 与 @fastify/* 插件类型增强不一致
+  fastify: ^5.12.1
+
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@swc/core': true
+  '@tailwindcss/oxide': true
+  esbuild: true
+  prisma: true
+  vue-demi: true
+  'unplugin-swc': true

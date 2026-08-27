@@ -1,0 +1,85 @@
+"""API 集成测试：用假 OCR 结果替换 Paddle，验证解析端到端流程。"""
+
+import io
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app import pipeline
+
+FAKE_OCR_LINES = [
+    {"text": "办公用品申领单", "box": []},
+    {"text": "流水号：OA-2026-0817-009", "box": []},
+    {"text": "申领部门：财务部", "box": []},
+    {"text": "经办人：李娜", "box": []},
+    {"text": "申请日期：2026年8月20日", "box": []},
+    {"text": "同意", "box": []},
+    {"text": "笔记本(B5) 30本", "box": []},
+    {"text": "黑色签字笔 50支 ¥1.20", "box": []},
+]
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+@pytest.fixture
+def auth_headers():
+    return {"X-API-Key": "dev-ocr-key"}
+
+
+async def _fake_run_ocr(image_bytes: bytes):
+    return FAKE_OCR_LINES
+
+
+def test_health_no_auth(client):
+    res = client.get("/health")
+    assert res.status_code == 200
+    assert res.json()["ok"] is True
+
+
+def test_parse_requires_api_key(client):
+    res = client.post("/parse", files={"file": ("a.png", b"x", "image/png")})
+    assert res.status_code == 401
+
+
+def test_parse_rejects_extension(client, auth_headers):
+    res = client.post("/parse", files={"file": ("a.exe", b"x", "application/octet-stream")}, headers=auth_headers)
+    assert res.status_code == 400
+
+
+def test_parse_image_with_fake_ocr(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(pipeline, "run_ocr", _fake_run_ocr)
+    png = _tiny_png()
+    res = client.post("/parse", files={"file": ("oa.png", png, "image/png")}, headers=auth_headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["mode"] == "IMAGE_OCR"
+    assert body["serialNumber"] == "OA-2026-0817-009"
+    assert body["department"] == "财务部"
+    assert body["handler"] == "李娜"
+    assert body["requestDate"] == "2026-08-20"
+    names = {it["itemName"] for it in body["items"]}
+    assert "笔记本(B5)" in names
+    assert "黑色签字笔" in names
+    assert "同意" not in names
+
+
+def test_parse_text_mode(client, auth_headers):
+    text = "流水号：OA-1\n申领部门：行政部\n经办人：王芳\n申请日期：2026-08-01\n胶棒 12支\n"
+    res = client.post("/parse", files={"file": ("oa.txt", text.encode(), "text/plain")}, headers=auth_headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["mode"] == "TEXT"
+    assert body["department"] == "行政部"
+    assert body["items"][0]["quantity"] == 12
+
+
+def _tiny_png() -> bytes:
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 4), "white").save(buf, format="PNG")
+    return buf.getvalue()

@@ -1,0 +1,39 @@
+import { createRouter, createWebHistory } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
+
+export const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
+    {
+      path: '/',
+      component: () => import('@/components/layout/AppShell.vue'),
+      children: [
+        { path: '', redirect: '/dashboard' },
+        { path: 'dashboard', name: 'dashboard', component: () => import('@/views/DashboardView.vue'), meta: { title: '概览', icon: 'dashboard' } },
+        { path: 'ledger', name: 'ledger', component: () => import('@/views/LedgerView.vue'), meta: { title: '采购台账', icon: 'ledger' } },
+        { path: 'kanban', name: 'kanban', component: () => import('@/views/KanbanView.vue'), meta: { title: '执行看板', icon: 'kanban' } },
+        { path: 'import', name: 'import', component: () => import('@/views/ImportView.vue'), meta: { title: '导入单据', icon: 'import' } },
+        { path: 'distributions', name: 'distributions', component: () => import('@/views/DistributionsView.vue'), meta: { title: '领用发放', icon: 'distribution' } },
+        { path: 'inventory', name: 'inventory', component: () => import('@/views/InventoryView.vue'), meta: { title: '库存管理', icon: 'inventory' } },
+        { path: 'reports', name: 'reports', component: () => import('@/views/ReportsView.vue'), meta: { title: '统计报表', icon: 'report' } },
+        { path: 'suppliers', name: 'suppliers', component: () => import('@/views/SuppliersView.vue'), meta: { title: '供应商', icon: 'supplier' } },
+        { path: 'audit', name: 'audit', component: () => import('@/views/AuditView.vue'), meta: { title: '审计日志', icon: 'audit' } },
+        { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { title: '系统设置', icon: 'settings' } },
+      ],
+    },
+    { path: '/:pathMatch(.*)*', redirect: '/dashboard' },
+  ],
+});
+
+router.beforeEach(async (to) => {
+  const auth = useAuthStore();
+  if (!auth.checked) await auth.refresh();
+  if (to.meta.public) {
+    return auth.loggedIn ? { path: '/dashboard' } : true;
+  }
+  // 未初始化时强制先走初始化流程；已初始化但未登录 → 登录页
+  if (!auth.isInitialized) return { path: '/login' };
+  if (!auth.loggedIn) return { path: '/login', query: { redirect: to.fullPath } };
+  return true;
+});

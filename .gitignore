@@ -1,0 +1,27 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# 运行时状态（数据库、上传、备份、密钥）
+state/
+data/
+*.db
+*.db-journal
+*.sqlite
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# 环境与编辑器
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.log
+.DS_Store
+*.egg-info/

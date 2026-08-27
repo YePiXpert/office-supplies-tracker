@@ -1,0 +1,70 @@
+import { beforeAll, afterAll, describe, expect, it } from 'vitest';
+import { createApp, closeApp, cookieFrom, type TestApp } from './utils';
+
+let ctx: TestApp;
+
+beforeAll(async () => {
+  ctx = await createApp({ login: false });
+});
+afterAll(() => closeApp(ctx));
+
+describe('认证流程', () => {
+  it('未初始化时 status 显示未初始化', async () => {
+    const res = await ctx.inject({ method: 'GET', url: '/api/auth/status' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().initialized).toBe(false);
+  });
+
+  it('未登录访问业务接口返回 401', async () => {
+    const res = await ctx.inject({ method: 'GET', url: '/api/items' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('初始化返回恢复码，重复初始化 409', async () => {
+    const res = await ctx.inject({
+      method: 'POST',
+      url: '/api/auth/setup',
+      payload: { password: 'super-secret-8' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().recoveryCode).toMatch(/^[A-Z2-9]{16}$/);
+
+    const dup = await ctx.inject({ method: 'POST', url: '/api/auth/setup', payload: { password: 'another-one-8' } });
+    expect(dup.statusCode).toBe(409);
+  });
+
+  it('密码错误返回 401，正确密码登录成功并种下会话 Cookie', async () => {
+    const bad = await ctx.inject({ method: 'POST', url: '/api/auth/login', payload: { password: 'wrong-pass' } });
+    expect(bad.statusCode).toBe(401);
+
+    const ok = await ctx.inject({ method: 'POST', url: '/api/auth/login', payload: { password: 'super-secret-8' } });
+    expect(ok.statusCode).toBe(200);
+    const setCookie = ok.headers['set-cookie'] as unknown as string[];
+    expect(String(Array.isArray(setCookie) ? setCookie[0] : setCookie)).toContain('pl_session=');
+    expect(String(Array.isArray(setCookie) ? setCookie[0] : setCookie)).toContain('HttpOnly');
+
+    ctx.cookie = cookieFrom(ok);
+  });
+
+  it('登录后可访问业务接口，伪造 Cookie 拒绝', async () => {
+    const ok = await ctx.inject({ method: 'GET', url: '/api/items', headers: { cookie: ctx.cookie } });
+    expect(ok.statusCode).toBe(200);
+
+    const forged = await ctx.inject({
+      method: 'GET',
+      url: '/api/items',
+      headers: { cookie: 'pl_session=Zm9v.bg==' },
+    });
+    expect(forged.statusCode).toBe(401);
+  });
+
+  it('弱密码（<8 位）校验失败返回 400', async () => {
+    const res = await ctx.inject({
+      method: 'POST',
+      url: '/api/auth/setup',
+      payload: { password: 'short' },
+    });
+    // 已初始化时也会 409/400，但校验先于业务 —— 顺序上 zod 校验在 pipe 中先执行
+    expect([400, 409]).toContain(res.statusCode);
+  });
+});

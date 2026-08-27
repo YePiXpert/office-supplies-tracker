@@ -1,0 +1,27 @@
+# API 服务端构建 + 运行
+FROM node:22-alpine AS build
+WORKDIR /repo
+RUN corepack enable
+COPY pnpm-workspace.yaml package.json ./
+COPY packages/shared/package.json packages/shared/
+COPY apps/server/package.json apps/server/
+RUN pnpm install --frozen-lockfile --filter @procure-lite/server... --filter @procure-lite/shared
+COPY packages/shared packages/shared
+COPY apps/server apps/server
+RUN pnpm --filter @procure-lite/shared build \
+  && cd apps/server && npx prisma generate \
+  && pnpm --filter @procure-lite/server build
+
+FROM node:22-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /repo/node_modules ./node_modules
+COPY --from=build /repo/packages/shared/package.json ./packages/shared/
+COPY --from=build /repo/packages/shared/dist ./packages/shared/dist
+COPY --from=build /repo/apps/server/package.json ./apps/server/
+COPY --from=build /repo/apps/server/dist ./apps/server/dist
+COPY --from=build /repo/apps/server/prisma ./apps/server/prisma
+COPY --from=build /repo/apps/server/node_modules ./apps/server/node_modules
+WORKDIR /app/apps/server
+EXPOSE 3000
+CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null || npx prisma db push --skip-generate; node dist/main.js"]
