@@ -430,6 +430,42 @@
                 ledgerDensityLabel() {
                     return this.ledgerDensity === 'compact' ? '紧凑' : '舒适';
                 },
+                dashboardStatusDistribution() {
+                    const statusCount = this.stats?.statusCount || {};
+                    return [
+                        { key: 'purchase', label: '待采购', count: Number(statusCount['待采购']) || 0, color: '#f59e0b', dotClass: 'dashboard-status-dot-amber' },
+                        { key: 'arrival', label: '待到货', count: Number(statusCount['待到货']) || 0, color: '#3b82f6', dotClass: 'dashboard-status-dot-blue' },
+                        { key: 'distribution', label: '待分发', count: Number(statusCount['待分发']) || 0, color: '#8b5cf6', dotClass: 'dashboard-status-dot-violet' },
+                        { key: 'complete', label: '已分发', count: Number(statusCount['已分发']) || 0, color: '#10b981', dotClass: 'dashboard-status-dot-emerald' },
+                    ];
+                },
+                dashboardStatusTotal() {
+                    return this.dashboardStatusDistribution.reduce((sum, segment) => sum + segment.count, 0);
+                },
+                dashboardStatusDonutStyle() {
+                    const total = this.dashboardStatusTotal;
+                    if (total <= 0) {
+                        return { '--dashboard-donut-background': '#e2e8f0' };
+                    }
+                    let cursor = 0;
+                    const segments = this.dashboardStatusDistribution
+                        .filter((segment) => segment.count > 0)
+                        .map((segment) => {
+                            const start = cursor;
+                            cursor += (segment.count / total) * 100;
+                            return `${segment.color} ${start.toFixed(2)}% ${Math.min(100, cursor).toFixed(2)}%`;
+                        });
+                    return {
+                        '--dashboard-donut-background': `conic-gradient(${segments.join(', ')})`,
+                    };
+                },
+                dashboardStatusDonutLabel() {
+                    if (!this.dashboardStatusTotal) return '流程分布：暂无采购记录';
+                    const details = this.dashboardStatusDistribution
+                        .map((segment) => `${segment.label} ${segment.count} 条`)
+                        .join('，');
+                    return `流程分布，共 ${this.dashboardStatusTotal} 条：${details}`;
+                },
                 dashboardTodoCards() {
                     const center = this.operationsCenter || {};
                     const queues = center.action_queues || {};

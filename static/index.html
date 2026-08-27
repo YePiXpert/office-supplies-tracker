@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#14213d">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Procure Lite">
@@ -22,6 +22,7 @@
     <script src="/static/vendor/vue.global.prod.js"></script>
     <script src="/static/vendor/axios.min.js"></script>
     <link rel="stylesheet" href="/static/app.css?v=1.2.103">
+    <link rel="stylesheet" href="/static/redesign.css?v=1.2.103">
         <style>
             .toast-enter-active,
             .toast-leave-active {
@@ -58,6 +59,7 @@
 </head>
     <body class="app-body flex h-screen w-full bg-slate-50 overflow-hidden text-slate-900">
     <div id="app" class="app-shell flex h-screen w-full overflow-hidden" style="display:none;">
+        <a v-if="isAuthenticated" href="#main-content" class="skip-link">跳到主要内容</a>
         <input type="file" ref="fileInput" @change="handleFileSelect" accept=".pdf,.png,.jpg,.jpeg,.jfif" class="hidden">
         <input type="file" ref="restoreInput" @change="handleRestoreSelect" accept=".zip" class="hidden">
         <datalist id="departmentOptions">
@@ -69,22 +71,47 @@
 
         <template v-if="isAuthenticated">
         <aside class="app-sidebar w-64 shrink-0 bg-white border-r border-slate-200 flex flex-col">
-            <div class="h-16 px-5 border-b border-slate-200 flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
-                </div>
-                <div>
+            <div class="app-sidebar-brand h-16 px-5 border-b border-slate-200 flex items-center gap-3">
+                <img class="app-sidebar-logo" src="/static/icons/icon.svg" alt="">
+                <div class="app-sidebar-brand-copy">
                     <div class="text-sm font-semibold text-slate-900">Procure Lite</div>
-                    <div class="text-[11px] text-slate-500">轻量采购台账</div>
+                    <div class="text-[11px] text-slate-500">采购协作工作台</div>
                 </div>
+                <nav class="mobile-topbar-actions" aria-label="手机辅助导航">
+                    <button
+                        @click="switchView('audit')"
+                        :class="{ 'is-active': currentView === 'audit' }"
+                        :aria-current="currentView === 'audit' ? 'page' : null"
+                        type="button"
+                        aria-label="审计日志"
+                        title="审计日志"
+                    >
+                        <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 4h10a2 2 0 012 2v14H5V6a2 2 0 012-2zm2 5h6m-6 4h6m-6 4h3"/></svg>
+                    </button>
+                    <button
+                        @click="switchView('settings')"
+                        :class="{ 'is-active': currentView === 'settings' }"
+                        :aria-current="currentView === 'settings' ? 'page' : null"
+                        type="button"
+                        aria-label="系统设置"
+                        title="系统设置"
+                    >
+                        <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 7h10m4 0h2M4 17h2m4 0h10M14 5v4M8 15v4"/></svg>
+                    </button>
+                    <button @click="authLogout(true)" type="button" aria-label="退出登录" title="退出登录">
+                        <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 8l4 4m0 0l-4 4m4-4H9m3 8H6a2 2 0 01-2-2V6a2 2 0 012-2h6"/></svg>
+                    </button>
+                </nav>
             </div>
             <div class="flex-1 min-h-0 flex flex-col">
-                <nav class="flex-1 min-h-0 overflow-y-auto p-3">
+                <nav class="flex-1 min-h-0 overflow-y-auto p-3" aria-label="主导航">
+                    <div class="sidebar-section-label">工作区</div>
                     <div class="space-y-1">
                         <div v-for="view in navPrimaryViews" :key="view.id" class="space-y-1">
                             <button
                                 @click="switchView(view.id)"
                                 :class="currentView === view.id ? 'sidebar-nav-active font-semibold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'"
+                                :aria-current="currentView === view.id ? 'page' : null"
                                 class="w-full h-10 px-3 pl-4 rounded-lg text-left text-sm font-medium transition-all duration-200 ease-in-out"
                             >
                                 <span class="sidebar-nav-icon" :class="`sidebar-nav-icon-${view.id}`" aria-hidden="true"></span>
@@ -95,35 +122,46 @@
                     </div>
                 </nav>
                 <div class="p-3 border-t border-slate-200">
+                    <div class="sidebar-section-label">系统</div>
                     <button
                         v-for="view in navSecondaryViews"
                         :key="view.id"
                         @click="switchView(view.id)"
                         :class="currentView === view.id ? 'sidebar-nav-active font-semibold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'"
+                        :aria-current="currentView === view.id ? 'page' : null"
+                        :aria-label="view.label"
                         class="w-full h-10 px-3 pl-4 rounded-lg text-left text-sm font-medium transition-all duration-200 ease-in-out"
                     >
                         <span class="sidebar-nav-icon" :class="`sidebar-nav-icon-${view.id}`" aria-hidden="true"></span>
                         <span class="sidebar-nav-label">{{ view.label }}</span>
                     </button>
-                    <button @click="authLogout(true)"
-                            class="mt-2 w-full h-10 px-3 rounded-lg text-left text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all duration-200 ease-in-out">
-                        🚪 退出登录
+                    <button @click="authLogout(true)" type="button" aria-label="退出登录"
+                            class="sidebar-logout mt-2 w-full h-10 px-3 rounded-lg text-left text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all duration-200 ease-in-out">
+                        <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 8l4 4m0 0l-4 4m4-4H9m3 8H6a2 2 0 01-2-2V6a2 2 0 012-2h6"/></svg>
+                        <span>退出登录</span>
                     </button>
-                    <div class="mt-2 px-3 text-[11px] text-slate-400">版本 v{{ appVersion }}</div>
+                    <div class="sidebar-version mt-2 px-3 text-[11px] text-slate-400">
+                        <span class="sidebar-version-dot" aria-hidden="true"></span>
+                        <span>运行正常 · v{{ appVersion }}</span>
+                    </div>
                 </div>
             </div>
         </aside>
 
         <div class="app-content flex-1 min-w-0 flex flex-col">
-            <header class="app-header bg-white border-b border-slate-200" :class="{ 'app-header-searchable': currentViewSearchEnabled, 'app-header-ledger-compact': currentView === 'ledger' }">
+            <header class="app-header bg-white border-b border-slate-200" :class="{ 'app-header-searchable': currentViewSearchEnabled, 'app-header-subnav': currentViewHasSubViews, 'app-header-ledger-compact': currentView === 'ledger' }">
                 <div class="app-header-top">
                     <div class="app-header-title-wrap">
                         <div class="app-header-breadcrumb">
-                            <span>{{ currentViewMeta.label || currentViewMeta.title }}</span>
+                            <span>Procure Lite</span>
                             <span v-if="currentViewHasSubViews">/</span>
                             <span v-if="currentViewHasSubViews">{{ currentSubViewMeta.label }}</span>
                         </div>
-                        <h1 class="app-header-title">{{ currentSubViewMeta.title || currentViewMeta.title }}</h1>
+                        <div class="app-header-title-line">
+                            <h1 class="app-header-title">{{ currentSubViewMeta.title || currentViewMeta.title }}</h1>
+                            <span v-if="currentView === 'dashboard'" class="app-header-live"><i aria-hidden="true"></i>今日概览</span>
+                        </div>
+                        <p v-if="currentViewHasSubViews && currentSubViewMeta.description" class="app-header-context">{{ currentSubViewMeta.description }}</p>
                     </div>
 
                     <div class="app-header-tools">
@@ -135,72 +173,86 @@
                                 v-model="globalSearchKeyword"
                                 @keyup.enter="handleGlobalSearch"
                                 type="search"
+                                aria-label="全局搜索"
                                 placeholder="搜索物品、单据、供应商等"
                             >
-                            <button v-if="globalSearchKeyword" @click="globalSearchKeyword = ''" type="button" title="清空搜索">×</button>
+                            <button v-if="globalSearchKeyword" @click="globalSearchKeyword = ''" type="button" title="清空搜索" aria-label="清空搜索">×</button>
                         </label>
-                        <button @click="handleGlobalSearch" type="button" class="app-header-tool-button app-header-search-button">搜索</button>
+                        <button @click="handleGlobalSearch" type="button" class="app-header-tool-button app-header-search-button" aria-label="执行搜索">
+                            <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 110-15 7.5 7.5 0 010 15z"/></svg>
+                            <span>搜索</span>
+                        </button>
                         <div class="app-header-date-pill">
                             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3M5 11h14M6 5h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z"/>
                             </svg>
                             <span>{{ todayDateText() || '今日' }}</span>
                         </div>
-                        <button @click="loadOperationsCenter" type="button" class="app-header-icon-button" title="刷新待办">
+                        <button @click="loadOperationsCenter" type="button" class="app-header-icon-button" title="刷新待办" aria-label="刷新待办">
                             <span class="app-header-badge" v-if="dashboardTodoTotal">{{ dashboardTodoTotal > 99 ? '99+' : dashboardTodoTotal }}</span>
                             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 01-6 0"/>
                             </svg>
                         </button>
-                        <button type="button" class="app-header-user">
+                        <div class="app-header-user" aria-label="当前用户：管理员">
                             <span>管</span>
                             <strong>管理员</strong>
-                        </button>
+                        </div>
                     </div>
                 </div>
 
-                <div v-if="currentViewHasSubViews" class="app-header-tabs">
+                <nav v-if="currentViewHasSubViews" class="app-header-tabs" aria-label="当前模块导航">
                     <button
                         v-for="subview in currentViewSidebarSubViews"
                         :key="`header-tab-${currentView}-${subview.id}`"
                         @click="switchSubView(subview.id)"
                         :class="{ 'is-active': subview.isActive }"
+                        :aria-current="subview.isActive ? 'page' : null"
                         type="button"
                     >
                         <span>{{ subview.label }}</span>
                         <em v-if="subview.badgeLabel">{{ subview.badgeLabel }}</em>
                     </button>
-                </div>
+                </nav>
             </header>
 
-            <main class="app-main flex-1 min-h-0 p-6 overflow-hidden" :class="{ 'app-main-ledger': currentView === 'ledger' }">
+            <main id="main-content" class="app-main flex-1 min-h-0 p-6 overflow-hidden" :class="{ 'app-main-ledger': currentView === 'ledger' }">
                 <section v-if="currentView === 'dashboard'" class="dashboard-pane view-pane h-full overflow-y-auto pr-1">
                     <div class="dashboard-command-strip">
                         <div class="dashboard-command-main">
-                            <span class="dashboard-command-kicker">PROCURE COMMAND CENTER</span>
-                            <h2>采购执行驾驶舱</h2>
-                            <p>把申请、采购、收货、分发和报销集中到同一个工作台，优先处理会阻塞闭环的事项。</p>
+                            <span class="dashboard-command-kicker"><i aria-hidden="true"></i>今日工作概览</span>
+                            <h2>让每一笔采购都有下文</h2>
+                            <p>从待采购到报销完成，先处理阻塞项，再推进今日计划。</p>
                             <div class="dashboard-command-actions">
-                                <button @click="$refs.fileInput && $refs.fileInput.click()" type="button">导入采购单</button>
-                                <button @click="openAddModal" type="button">新增记录</button>
-                                <button @click="switchView('execution')" type="button">进入执行看板</button>
+                                <button @click="openAddModal" type="button" class="dashboard-command-primary">
+                                    <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
+                                    <span>新增记录</span>
+                                </button>
+                                <button @click="$refs.fileInput && $refs.fileInput.click()" type="button">
+                                    <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 002 2h10a2 2 0 002-2v-4"/></svg>
+                                    <span>导入单据</span>
+                                </button>
+                                <button @click="switchView('execution')" type="button">
+                                    <span>打开执行看板</span>
+                                    <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                </button>
                             </div>
                         </div>
                         <div class="dashboard-command-panel">
                             <div class="dashboard-command-total">
-                                <span>当前采购总量</span>
+                                <span>采购记录</span>
                                 <strong>{{ stats.total }}</strong>
-                                <em>今日待办 {{ dashboardTodoTotal }} 项</em>
+                                <em><i aria-hidden="true"></i>{{ dashboardTodoTotal ? `有 ${dashboardTodoTotal} 项待推进` : '当前没有阻塞项' }}</em>
                             </div>
                             <div class="dashboard-command-flow" aria-label="采购闭环进度">
                                 <button @click="switchView('ledger'); applyLedgerSnapshot({ ...ledgerFilterSnapshot, status: '待采购', paymentStatus: '', month: '' })" type="button">
-                                    <span>01</span><strong>待采购</strong><em>{{ stats.statusCount['待采购'] || 0 }}</em>
+                                    <span>01</span><strong>待采购</strong><em>{{ stats.statusCount['待采购'] || 0 }}</em><i aria-hidden="true"></i>
                                 </button>
                                 <button @click="switchView('ledger'); applyLedgerSnapshot({ ...ledgerFilterSnapshot, status: '待到货', paymentStatus: '', month: '' })" type="button">
-                                    <span>02</span><strong>待到货</strong><em>{{ stats.statusCount['待到货'] || 0 }}</em>
+                                    <span>02</span><strong>待到货</strong><em>{{ stats.statusCount['待到货'] || 0 }}</em><i aria-hidden="true"></i>
                                 </button>
                                 <button @click="switchView('ledger'); applyLedgerSnapshot({ ...ledgerFilterSnapshot, status: '待分发', paymentStatus: '', month: '' })" type="button">
-                                    <span>03</span><strong>待分发</strong><em>{{ stats.statusCount['待分发'] || 0 }}</em>
+                                    <span>03</span><strong>待分发</strong><em>{{ stats.statusCount['待分发'] || 0 }}</em><i aria-hidden="true"></i>
                                 </button>
                                 <button @click="switchView('ledger'); applyLedgerSnapshot({ ...ledgerFilterSnapshot, status: '已分发', paymentStatus: '', month: '' })" type="button">
                                     <span>04</span><strong>已完成</strong><em>{{ stats.statusCount['已分发'] || 0 }}</em>
@@ -208,44 +260,6 @@
                             </div>
                         </div>
                     </div>
-
-                    <section v-if="!itemsLoading && Number(stats.total || 0) === 0" class="dashboard-first-run" aria-label="首次使用引导">
-                        <div class="dashboard-first-run-copy">
-                            <span class="dashboard-command-kicker dashboard-first-run-kicker">GET STARTED</span>
-                            <h2>从第一张采购单开始建立闭环</h2>
-                            <p>Procure Lite 会把单据识别、台账确认、执行跟踪和备份恢复连成一条线。首次部署后，可以按这四步把流程跑通。</p>
-                            <div class="dashboard-first-run-actions">
-                                <button @click="$refs.fileInput && $refs.fileInput.click()" type="button" class="dashboard-first-run-action dashboard-first-run-action-primary">导入第一张单据</button>
-                                <button @click="openAddModal" type="button" class="dashboard-first-run-action">手动新增记录</button>
-                                <button @click="switchView('settings')" type="button" class="dashboard-first-run-action">设置备份</button>
-                            </div>
-                        </div>
-                        <ol class="dashboard-first-run-steps">
-                            <li>
-                                <span>01</span>
-                                <strong>导入第一张采购单</strong>
-                                <em>上传 PDF 或图片，让 OCR 先提取基础字段。</em>
-                            </li>
-                            <li>
-                                <span>02</span>
-                                <strong>确认台账字段</strong>
-                                <em>补齐部门、经办人、供应商和数量。</em>
-                            </li>
-                            <li>
-                                <span>03</span>
-                                <strong>跟踪采购闭环</strong>
-                                <em>按待采购、待到货、待分发和待报销推进。</em>
-                            </li>
-                            <li>
-                                <span>04</span>
-                                <strong>设置备份策略</strong>
-                                <em>配置本地自动备份或 WebDAV 云备份。</em>
-                            </li>
-                        </ol>
-                        <div class="dashboard-first-run-visual" aria-hidden="true">
-                            <img src="/static/illustrations/first-run-onboarding.png" alt="">
-                        </div>
-                    </section>
 
                     <div class="dashboard-metrics-row">
                         <button @click="switchView('ledger'); applyLedgerSnapshot({ ...ledgerFilterSnapshot, status: '待采购', paymentStatus: '', month: '' })" type="button" class="dashboard-metric-card dashboard-metric-blue">
@@ -330,7 +344,14 @@
                                             <td>{{ item.department || '-' }}</td>
                                             <td>{{ item.handler || '-' }}</td>
                                             <td>
-                                                <span class="dashboard-ledger-name">{{ item.item_name || '未命名物品' }}</span>
+                                                <button
+                                                    @click.stop="openLedgerDetail(item)"
+                                                    type="button"
+                                                    class="dashboard-ledger-name-button"
+                                                    :aria-label="`查看 ${item.item_name || '未命名物品'} 详情`"
+                                                >
+                                                    <span class="dashboard-ledger-name">{{ item.item_name || '未命名物品' }}</span>
+                                                </button>
                                             </td>
                                             <td>{{ item.quantity || '-' }}</td>
                                             <td>
@@ -406,37 +427,45 @@
 
                             <section class="dashboard-side-card">
                                 <div class="dashboard-side-header">
-                                    <h2>部门支出</h2>
-                                    <span>当前筛选</span>
+                                    <h2>流程分布</h2>
+                                    <span>全部记录</span>
                                 </div>
                                 <div class="dashboard-donut-block">
-                                    <div class="dashboard-donut">
-                                        <strong>{{ stats.total }}</strong>
+                                    <div class="dashboard-donut" :style="dashboardStatusDonutStyle" role="img" :aria-label="dashboardStatusDonutLabel">
+                                        <strong>{{ dashboardStatusTotal }}</strong>
                                         <span>总记录</span>
                                     </div>
                                     <div class="dashboard-donut-legend">
-                                        <div><span class="dashboard-status-dot dashboard-status-dot-amber"></span>待采购 <strong>{{ stats.statusCount['待采购'] || 0 }}</strong></div>
-                                        <div><span class="dashboard-status-dot dashboard-status-dot-blue"></span>待到货 <strong>{{ stats.statusCount['待到货'] || 0 }}</strong></div>
-                                        <div><span class="dashboard-status-dot dashboard-status-dot-violet"></span>待分发 <strong>{{ stats.statusCount['待分发'] || 0 }}</strong></div>
-                                        <div><span class="dashboard-status-dot dashboard-status-dot-emerald"></span>已分发 <strong>{{ stats.statusCount['已分发'] || 0 }}</strong></div>
+                                        <div v-for="segment in dashboardStatusDistribution" :key="segment.key">
+                                            <span class="dashboard-status-dot" :class="segment.dotClass" aria-hidden="true"></span>
+                                            {{ segment.label }} <strong>{{ segment.count }}</strong>
+                                        </div>
                                     </div>
                                 </div>
                             </section>
 
-                            <section class="dashboard-side-card">
+                            <section class="dashboard-side-card dashboard-shortcuts-card">
                                 <div class="dashboard-side-header">
-                                    <h2>采购周期</h2>
-                                    <span>执行效率</span>
+                                    <h2>快捷入口</h2>
+                                    <span>常用工具</span>
                                 </div>
-                                <div class="dashboard-cycle-chart" aria-label="采购周期趋势">
-                                    <span style="--value: 56%"></span>
-                                    <span style="--value: 68%"></span>
-                                    <span style="--value: 48%"></span>
-                                    <span style="--value: 72%"></span>
-                                    <span style="--value: 52%"></span>
-                                    <span style="--value: 44%"></span>
+                                <div class="dashboard-shortcut-list">
+                                    <button @click="switchView('reports')" type="button">
+                                        <span class="dashboard-shortcut-icon" aria-hidden="true"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg></span>
+                                        <span><strong>统计报表</strong><em>查看金额与效率</em></span>
+                                        <svg class="dashboard-shortcut-arrow" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                    </button>
+                                    <button @click="openDataQualityModal" type="button">
+                                        <span class="dashboard-shortcut-icon" aria-hidden="true"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12l2 2 4-4m5-3.5L12 3 4 6.5V12c0 4.4 3.4 7.8 8 9 4.6-1.2 8-4.6 8-9V6.5z"/></svg></span>
+                                        <span><strong>数据质检</strong><em>发现缺失与异常</em></span>
+                                        <svg class="dashboard-shortcut-arrow" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                    </button>
+                                    <button @click="switchView('settings')" type="button">
+                                        <span class="dashboard-shortcut-icon" aria-hidden="true"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 7h16M7 3v8m10 2v8M4 17h16"/></svg></span>
+                                        <span><strong>备份设置</strong><em>检查数据保护</em></span>
+                                        <svg class="dashboard-shortcut-arrow" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                    </button>
                                 </div>
-                                <p class="dashboard-cycle-note">切换到统计报表可查看真实月度、供应商和效率分析。</p>
                             </section>
                         </aside>
                     </div>
@@ -844,9 +873,9 @@
                                     <!-- 柱状图 -->
                                     <div class="report-visual-card">
                                         <div class="flex items-center justify-between">
-                                            <h4 class="text-sm font-semibold text-slate-800">
+                                            <h3 class="text-sm font-semibold text-slate-800">
                                                 {{ reportGranularity === 'month' ? '月度' : reportGranularity === 'quarter' ? '季度' : '年度' }}金额趋势
-                                            </h4>
+                                            </h3>
                                             <span class="text-[11px] text-slate-500">单位：元</span>
                                         </div>
                                         <div class="mt-6 h-52 flex items-end gap-2">
@@ -873,7 +902,7 @@
                                 <div v-if="isCurrentSubview('reports', 'overview')" class="grid grid-cols-1 xl:grid-cols-2 gap-6">
                                     <div class="report-visual-card">
                                         <div class="flex items-center justify-between">
-                                            <h4 class="text-sm font-semibold text-slate-800">部门支出占比（Top 10）</h4>
+                                            <h3 class="text-sm font-semibold text-slate-800">部门支出占比（Top 10）</h3>
                                             <span class="text-[11px] text-slate-500">按金额排序</span>
                                         </div>
                                         <div class="mt-4 max-h-[420px] overflow-y-auto space-y-3 pr-1">
@@ -899,7 +928,7 @@
                                     </div>
 
                                     <div class="report-visual-card">
-                                        <h4 class="text-sm font-semibold text-slate-800">状态金额占比</h4>
+                                        <h3 class="text-sm font-semibold text-slate-800">状态金额占比</h3>
                                         <div class="mt-4 flex flex-col sm:flex-row sm:items-center gap-5">
                                             <div class="relative shrink-0 mx-auto sm:mx-0">
                                                 <div class="h-40 w-40 rounded-full border border-slate-200" :style="reportStatusDonutStyle"></div>
@@ -929,7 +958,7 @@
 
                                 <div v-if="isCurrentSubview('reports', 'overview')" class="report-visual-card">
                                     <div class="flex items-center justify-between">
-                                        <h4 class="text-sm font-semibold text-slate-800">月度金额趋势（最近 12 个月）</h4>
+                                        <h3 class="text-sm font-semibold text-slate-800">月度金额趋势（最近 12 个月）</h3>
                                         <span class="text-[11px] text-slate-500">单位：元</span>
                                     </div>
                                     <div class="mt-6 h-52 flex items-end gap-2">
@@ -961,7 +990,7 @@
                                 <div v-if="isCurrentSubview('reports', 'suppliers')" class="report-visual-card">
                                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                         <div>
-                                            <h4 class="text-base font-semibold text-slate-900">供应商采购分析</h4>
+                                            <h3 class="text-base font-semibold text-slate-900">供应商采购分析</h3>
                                             <p class="mt-1 text-sm text-slate-500">看清哪些商品主要从哪些供应商采购，并支持月度 / 年度导出。</p>
                                         </div>
                                         <div class="flex flex-wrap items-center gap-2">
@@ -994,7 +1023,7 @@
                                     <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
                                         <div class="report-visual-card">
                                             <div class="flex items-center justify-between">
-                                                <h5 class="text-sm font-semibold text-slate-800">Top 供应商采购额</h5>
+                                                <h4 class="text-sm font-semibold text-slate-800">Top 供应商采购额</h4>
                                                 <span class="text-[11px] text-slate-500">按当前筛选金额排序</span>
                                             </div>
                                             <div class="mt-4 space-y-3">
@@ -1025,7 +1054,7 @@
                                         <div class="report-visual-card">
                                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                                 <div>
-                                                    <h5 class="text-sm font-semibold text-slate-800">供应商采购额走势</h5>
+                                                    <h4 class="text-sm font-semibold text-slate-800">供应商采购额走势</h4>
                                                     <p class="mt-1 text-[11px] text-slate-500">{{ supplierReport.selectedYear || supplierReportYear }} 年 · {{ supplierReportGranularity === 'month' ? '月度' : supplierReportGranularity === 'quarter' ? '季度' : '年度' }}走势</p>
                                                 </div>
                                                 <div class="flex items-center gap-2">
@@ -1075,7 +1104,7 @@
                                     <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
                                         <div class="report-visual-card">
                                             <div class="flex items-center justify-between">
-                                                <h5 class="text-sm font-semibold text-slate-800">年度采购总览</h5>
+                                                <h4 class="text-sm font-semibold text-slate-800">年度采购总览</h4>
                                                 <span class="text-[11px] text-slate-500">最近 5 年</span>
                                             </div>
                                             <div class="mt-5 h-44 flex items-end gap-3">
@@ -1102,7 +1131,7 @@
 
                                         <div class="report-visual-card">
                                             <div class="flex items-center justify-between">
-                                                <h5 class="text-sm font-semibold text-slate-800">供应商采购商品明细</h5>
+                                                <h4 class="text-sm font-semibold text-slate-800">供应商采购商品明细</h4>
                                                 <span class="text-[11px] text-slate-500">按当前供应商聚焦</span>
                                             </div>
                                             <div class="mt-4 space-y-2 max-h-[420px] overflow-y-auto pr-1">
@@ -1125,7 +1154,7 @@
 
                                     <div class="mt-6 border border-amber-200 rounded-xl p-4 bg-amber-50/50">
                                         <div class="flex items-center justify-between">
-                                            <h5 class="text-sm font-semibold text-amber-900">未归属供应商记录</h5>
+                                            <h4 class="text-sm font-semibold text-amber-900">未归属供应商记录</h4>
                                             <span class="text-[11px] text-amber-700">建议优先补齐，避免报表失真</span>
                                         </div>
                                         <div class="mt-4 space-y-2">
@@ -1146,7 +1175,7 @@
 
                                 <div v-if="isCurrentSubview('reports', 'efficiency')" class="report-visual-card action-queue-summary">
                                     <div class="flex items-center justify-between">
-                                        <h4 class="text-sm font-semibold text-slate-800">行动队列摘要</h4>
+                                        <h3 class="text-sm font-semibold text-slate-800">行动队列摘要</h3>
                                         <span class="text-[11px] text-slate-500">共 {{ operationsReport.actionQueueSummary.all }} 项</span>
                                     </div>
                                     <div class="mt-4 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
@@ -1166,7 +1195,7 @@
 
                                 <div v-if="isCurrentSubview('reports', 'efficiency')" class="report-visual-card">
                                     <div class="flex items-center justify-between">
-                                        <h4 class="text-sm font-semibold text-slate-800">状态快照（各状态存量）</h4>
+                                        <h3 class="text-sm font-semibold text-slate-800">状态快照（各状态存量）</h3>
                                         <span class="text-[11px] text-slate-500">当前实际库存各状态分布</span>
                                     </div>
                                     <div class="mt-4 space-y-3">
@@ -1191,7 +1220,7 @@
                                 <div v-if="isCurrentSubview('reports', 'efficiency')" class="grid grid-cols-1 xl:grid-cols-2 gap-6">
                                     <div class="report-visual-card">
                                         <div class="flex items-center justify-between">
-                                            <h4 class="text-sm font-semibold text-slate-800">采购周期：申领到到货</h4>
+                                            <h3 class="text-sm font-semibold text-slate-800">采购周期：申领到到货</h3>
                                             <span class="text-[11px] text-slate-500">样本 {{ operationsReport.cycleDistribution.requestToArrival.sampleSize }} 条</span>
                                         </div>
                                         <div class="mt-2 text-[11px] text-slate-500">平均 {{ operationsReport.cycleDistribution.requestToArrival.averageDays.toFixed(2) }} 天</div>
@@ -1215,7 +1244,7 @@
 
                                     <div class="report-visual-card">
                                         <div class="flex items-center justify-between">
-                                            <h4 class="text-sm font-semibold text-slate-800">采购周期：到货到分发</h4>
+                                            <h3 class="text-sm font-semibold text-slate-800">采购周期：到货到分发</h3>
                                             <span class="text-[11px] text-slate-500">样本 {{ operationsReport.cycleDistribution.arrivalToDistribution.sampleSize }} 条</span>
                                         </div>
                                         <div class="mt-2 text-[11px] text-slate-500">平均 {{ operationsReport.cycleDistribution.arrivalToDistribution.averageDays.toFixed(2) }} 天</div>
@@ -1240,7 +1269,7 @@
 
                                 <div v-if="isCurrentSubview('reports', 'efficiency')" class="report-visual-card">
                                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                        <h4 class="text-sm font-semibold text-slate-800">月度金额结构（总额 / 已付款 / 未付款）</h4>
+                                        <h3 class="text-sm font-semibold text-slate-800">月度金额结构（总额 / 已付款 / 未付款）</h3>
                                         <div class="flex items-center gap-3 text-[11px] text-slate-500">
                                             <span class="inline-flex items-center gap-1"><i class="h-2.5 w-2.5 rounded-full bg-emerald-500"></i>已付款</span>
                                             <span class="inline-flex items-center gap-1"><i class="h-2.5 w-2.5 rounded-full bg-amber-500"></i>未付款</span>
@@ -1729,50 +1758,63 @@
             <div class="auth-shell">
                 <section class="auth-brand-panel">
                     <div class="auth-brand-copy">
-                        <span class="auth-kicker">SELF-HOSTED PROCUREMENT</span>
-                        <h2>Procure Lite · 管理员安全入口</h2>
-                        <p>单管理员本地安全模型，把采购台账、附件和备份留在你的 VPS 上。</p>
-                    </div>
-                    <div class="auth-illustration" aria-hidden="true">
-                        <img src="/static/illustrations/auth-security.png" alt="">
+                        <div class="auth-product-mark">
+                            <img src="/static/icons/icon.svg" alt="">
+                            <span><strong>Procure Lite</strong><em>采购协作工作台</em></span>
+                        </div>
+                        <span class="auth-kicker"><i aria-hidden="true"></i>自托管 · 数据可控</span>
+                        <h1>采购进度清楚，<br>数据留在自己手里。</h1>
+                        <p>把单据识别、采购台账、执行跟进和备份恢复放在一个安静可靠的工作台里。</p>
                     </div>
                     <div class="auth-security-list">
                         <div>
-                            <strong>数据保存在你的 VPS</strong>
-                            <span>SQLite、上传文件和备份目录都在自托管环境中。</span>
+                            <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5 6.5C5 5.1 8.1 4 12 4s7 1.1 7 2.5S15.9 9 12 9 5 7.9 5 6.5zm0 0v5C5 12.9 8.1 14 12 14s7-1.1 7-2.5v-5m-14 5v5C5 17.9 8.1 19 12 19s7-1.1 7-2.5v-5"/></svg>
+                            <span><strong>本地数据</strong><em>SQLite 与附件留在你的 VPS</em></span>
                         </div>
                         <div>
-                            <strong>恢复码只显示一次</strong>
-                            <span>首次初始化后请离线保存，用于忘记密码时找回。</span>
+                            <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3l8 3.5V12c0 4.4-3.4 7.8-8 9-4.6-1.2-8-4.6-8-9V6.5L12 3zm-3 9l2 2 4-4"/></svg>
+                            <span><strong>安全访问</strong><em>恢复码与闲置超时保护</em></span>
                         </div>
                         <div>
-                            <strong>30 分钟闲置自动退出</strong>
-                            <span>降低共享设备或移动端长时间停留的风险。</span>
+                            <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 12a8 8 0 101.9-5.2M4 4v5h5m3-2v5l3 2"/></svg>
+                            <span><strong>随时可恢复</strong><em>本地与 WebDAV 双重备份</em></span>
                         </div>
                     </div>
                 </section>
 
                 <section class="auth-form-panel">
                     <div class="auth-form-header">
-                        <h2>管理员安全入口</h2>
-                        <p>单管理员本地安全模型（30 分钟闲置自动退出）</p>
+                        <span class="auth-form-eyebrow">管理员入口</span>
+                        <h2>{{ authView === 'setup' ? '开始使用 Procure Lite' : (authView === 'recover' ? '重置管理员密码' : '欢迎回来') }}</h2>
+                        <p>{{ authView === 'setup' ? '先设置一个管理员密码，完成后即可进入工作台。' : (authView === 'recover' ? '使用初始化时保存的恢复码重新获得访问权限。' : '登录后继续处理今天的采购事项。') }}</p>
                     </div>
                     <div class="auth-form-body">
                         <div v-if="authView === 'loading'" class="py-10 text-center text-sm text-slate-500">正在检查系统安全状态...</div>
 
                         <template v-else-if="authView === 'setup'">
-                            <h3 class="text-sm font-semibold text-slate-800">首次初始化管理员密码</h3>
-                            <input v-model="authSetupPassword" type="password" placeholder="请输入管理员密码（至少 8 位）" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                            <input v-model="authSetupPasswordConfirm" type="password" placeholder="请再次确认密码" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <label class="auth-field">
+                                <span>管理员密码</span>
+                                <input v-model="authSetupPassword" type="password" autocomplete="new-password" placeholder="至少 8 位字符" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            </label>
+                            <label class="auth-field">
+                                <span>确认密码</span>
+                                <input v-model="authSetupPasswordConfirm" type="password" autocomplete="new-password" placeholder="再次输入管理员密码" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            </label>
+                            <p class="auth-field-hint">初始化完成后会生成一次性恢复码，请离线保存。</p>
                             <button @click="handleAuthSetup" :disabled="authLoading" class="w-full h-11 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 transition-all duration-200">
                                 {{ authLoading ? '初始化中...' : '完成初始化' }}
                             </button>
                         </template>
 
                         <template v-else-if="authView === 'recover'">
-                            <h3 class="text-sm font-semibold text-slate-800">使用恢复码重置密码</h3>
-                            <input v-model="authRecoveryCode" type="text" placeholder="请输入 16 位恢复码" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm font-mono uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                            <input v-model="authRecoveryNewPassword" type="password" placeholder="请输入新密码（至少 8 位）" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <label class="auth-field">
+                                <span>恢复码</span>
+                                <input v-model="authRecoveryCode" type="text" autocomplete="off" placeholder="输入 16 位恢复码" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm font-mono uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            </label>
+                            <label class="auth-field">
+                                <span>新管理员密码</span>
+                                <input v-model="authRecoveryNewPassword" type="password" autocomplete="new-password" placeholder="至少 8 位字符" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            </label>
                             <button @click="handleAuthRecover" :disabled="authLoading" class="w-full h-11 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 transition-all duration-200">
                                 {{ authLoading ? '提交中...' : '重置密码并登录' }}
                             </button>
@@ -1782,8 +1824,10 @@
                         </template>
 
                         <template v-else>
-                            <h3 class="text-sm font-semibold text-slate-800">管理员登录</h3>
-                            <input v-model="authLoginPassword" type="password" @keyup.enter="handleAuthLogin" placeholder="请输入管理员密码" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <label class="auth-field">
+                                <span>管理员密码</span>
+                                <input v-model="authLoginPassword" type="password" autocomplete="current-password" @keyup.enter="handleAuthLogin" placeholder="输入管理员密码" class="h-11 px-3 w-full border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            </label>
                             <button @click="handleAuthLogin" :disabled="authLoading || authLockSeconds > 0" class="w-full h-11 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 transition-all duration-200">
                                 {{ authLoading ? '登录中...' : (authLockSeconds > 0 ? `已锁定 ${authLockCountdownText}` : '登录系统') }}
                             </button>
@@ -1827,13 +1871,14 @@
             <option v-for="name in handlers" :key="`handler-${name}`" :value="name"></option>
         </datalist>
 
-        <div class="fixed top-6 right-6 z-50 flex flex-col gap-3 pointer-events-none">
+        <div class="toast-region fixed top-6 right-6 z-50 flex flex-col gap-3 pointer-events-none" aria-label="系统通知">
             <transition-group name="toast">
                 <div
                     v-for="toast in toasts"
                     :key="toast.id"
                     class="flex items-center w-80 bg-white shadow-xl ring-1 ring-slate-900/5 rounded-lg p-4 pointer-events-auto transition-all duration-300 transform"
                     :class="toast.type === 'error' ? 'border-l-4 border-red-500' : 'border-l-4 border-emerald-500'"
+                    :role="toast.type === 'error' ? 'alert' : 'status'"
                 >
                     <span class="text-sm font-medium text-slate-700 flex-1">{{ toast.message }}</span>
                     <button
@@ -2250,7 +2295,10 @@
     <template id="settings-maintenance-panel-template">
         <div class="space-y-4">
             <div>
-                <h3 class="text-xl font-semibold tracking-tight text-slate-900">🛠️ 系统维护</h3>
+                <h3 class="flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-900">
+                    <svg class="h-5 w-5 text-blue-600" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M14.7 6.3a4 4 0 00-5-5L12.4 4 10 6.4 7.3 3.7a4 4 0 005 5l-6.6 6.6a2 2 0 002.8 2.8l6.6-6.6a4 4 0 005-5L17.4 9 15 6.6l2.7-2.7a4 4 0 00-3 2.4z"/></svg>
+                    <span>系统维护</span>
+                </h3>
                 <p class="mt-1 text-sm text-slate-500">处理回收站、数据质量巡检与审计日志，维持长期稳定运行。</p>
             </div>
             <div class="system-status-grid">

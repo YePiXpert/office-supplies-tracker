@@ -8,23 +8,39 @@ def read_static(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_dashboard_first_run_onboarding_markup_is_present():
+def test_dashboard_uses_compact_operational_entry_points():
     html = read_static("static/index.html")
 
-    assert 'class="dashboard-first-run"' in html
-    assert "Number(stats.total || 0) === 0" in html
-    assert "/static/illustrations/first-run-onboarding.png" in html
-    assert "导入第一张采购单" in html
-    assert "确认台账字段" in html
-    assert "跟踪采购闭环" in html
-    assert "设置备份策略" in html
+    assert 'class="dashboard-command-strip"' in html
+    assert "让每一笔采购都有下文" in html
+    assert "新增记录" in html
+    assert "导入单据" in html
+    assert "打开执行看板" in html
+    assert "快捷入口" in html
+    assert "数据质检" in html
     assert "switchView('settings')" in html
+    assert 'class="dashboard-first-run"' not in html
+    assert 'class="dashboard-cycle-chart"' not in html
 
 
-def test_dashboard_first_run_onboarding_styles_are_defined():
-    css = read_static("static/app.css")
+def test_dashboard_redesign_styles_are_defined():
+    css = read_static("static/redesign.css")
 
-    assert ".dashboard-first-run" in css
-    assert ".dashboard-first-run-steps" in css
-    assert ".dashboard-first-run-action" in css
-    assert ".dashboard-first-run-visual" in css
+    assert ".dashboard-command-strip" in css
+    assert ".dashboard-metrics-row" in css
+    assert ".dashboard-shortcut-list" in css
+    assert "prefers-reduced-motion" in css
+
+
+def test_dashboard_flow_distribution_uses_live_counts():
+    html = read_static("static/index.html")
+    state_js = read_static("static/state.js")
+    css = read_static("static/redesign.css")
+
+    assert ':style="dashboardStatusDonutStyle"' in html
+    assert 'v-for="segment in dashboardStatusDistribution"' in html
+    assert "dashboardStatusDistribution()" in state_js
+    assert "dashboardStatusDonutStyle()" in state_js
+    assert "segment.count / total" in state_js
+    assert "--dashboard-donut-background" in css
+    assert "0 28%" not in css

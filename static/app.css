@@ -8415,34 +8415,38 @@ html,
     border-radius: var(--cockpit-radius) !important;
 }
 
-#app input,
-#app select,
-#app textarea,
-#app .toolbar-control,
-#app .ledger-filter-control,
-#app .ledger-batch-toolbar-control,
-#app .execution-filter-control,
-#app .execution-card-input,
-#app .auto-backup-controls input {
+:where(
+    #app input,
+    #app select,
+    #app textarea,
+    #app .toolbar-control,
+    #app .ledger-filter-control,
+    #app .ledger-batch-toolbar-control,
+    #app .execution-filter-control,
+    #app .execution-card-input,
+    #app .auto-backup-controls input
+) {
     min-height: 2.5rem;
-    border: 1px solid var(--cockpit-border) !important;
-    border-radius: var(--cockpit-radius) !important;
-    background-color: #ffffff !important;
-    color: var(--cockpit-ink) !important;
-    box-shadow: none !important;
+    border: 1px solid var(--cockpit-border);
+    border-radius: var(--cockpit-radius);
+    background-color: #ffffff;
+    color: var(--cockpit-ink);
+    box-shadow: none;
 }
 
-#app input:focus,
-#app select:focus,
-#app textarea:focus,
-#app .toolbar-control:focus,
-#app .ledger-filter-control:focus,
-#app .ledger-batch-toolbar-control:focus,
-#app .execution-filter-control:focus,
-#app .execution-card-input:focus {
-    border-color: var(--cockpit-teal) !important;
-    box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12) !important;
-    outline: none !important;
+:where(
+    #app input:focus,
+    #app select:focus,
+    #app textarea:focus,
+    #app .toolbar-control:focus,
+    #app .ledger-filter-control:focus,
+    #app .ledger-batch-toolbar-control:focus,
+    #app .execution-filter-control:focus,
+    #app .execution-card-input:focus
+) {
+    border-color: var(--cockpit-teal);
+    box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+    outline: none;
 }
 
 #app button {
@@ -9147,7 +9151,7 @@ html,
     font-weight: 900;
 }
 
-.auth-brand-copy h2 {
+.auth-brand-copy h1 {
     margin: 0.85rem 0 0;
     color: var(--cockpit-ink);
     font-size: clamp(1.85rem, 4vw, 3.15rem);
@@ -9276,7 +9280,7 @@ html,
         padding: 1rem;
     }
 
-    .auth-brand-copy h2 {
+    .auth-brand-copy h1 {
         font-size: 1.7rem;
     }
 

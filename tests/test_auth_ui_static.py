@@ -14,18 +14,22 @@ def test_auth_gate_renders_polished_security_layout():
     assert 'class="auth-shell"' in html
     assert 'class="auth-brand-panel"' in html
     assert 'class="auth-form-panel"' in html
-    assert "/static/illustrations/auth-security.png" in html
-    assert "数据保存在你的 VPS" in html
-    assert "恢复码只显示一次" in html
-    assert "30 分钟闲置自动退出" in html
-    assert "单管理员本地安全模型" in html
+    assert 'class="auth-product-mark"' in html
+    assert "<h1>采购进度清楚" in html
+    assert "采购进度清楚" in html
+    assert "数据留在自己手里" in html
+    assert "本地数据" in html
+    assert "安全访问" in html
+    assert "随时可恢复" in html
+    assert 'autocomplete="current-password"' in html
+    assert 'autocomplete="new-password"' in html
 
 
 def test_auth_gate_styles_are_defined():
-    css = read_static("static/app.css")
+    css = read_static("static/redesign.css")
 
     assert ".auth-shell" in css
     assert ".auth-brand-panel" in css
     assert ".auth-security-list" in css
     assert ".auth-form-panel" in css
-    assert ".auth-illustration" in css
+    assert ".auth-field" in css

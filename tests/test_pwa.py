@@ -25,10 +25,12 @@ def test_root_exposes_pwa_metadata(monkeypatch):
     assert response.status_code == 200
     assert "no-store" in response.headers.get("cache-control", "")
     html = response.text
-    assert 'name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover"' in html
+    assert 'name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"' in html
+    assert "maximum-scale" not in html
+    assert "user-scalable=no" not in html
     assert 'rel="manifest"' in html
     assert 'href="/manifest.webmanifest"' in html
-    assert 'name="theme-color" content="#2563eb"' in html
+    assert 'name="theme-color" content="#14213d"' in html
     assert 'rel="icon" href="/favicon.ico"' in html
     assert 'rel="icon" type="image/svg+xml" href="/icons/icon.svg"' in html
     assert 'rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"' in html
@@ -49,7 +51,7 @@ def test_manifest_contract(monkeypatch):
     assert manifest["start_url"] == "/"
     assert manifest["scope"] == "/"
     assert manifest["display"] == "standalone"
-    assert manifest["theme_color"] == "#2563eb"
+    assert manifest["theme_color"] == "#14213d"
     assert manifest["background_color"] == "#f8fafc"
     assert manifest["lang"] == "zh-CN"
     icon_sizes = {icon["sizes"]: icon for icon in manifest["icons"]}
@@ -103,6 +105,10 @@ def test_mobile_pwa_shell_contract(monkeypatch):
     pwa_js = pwa_response.text
     assert 'class="mobile-tabbar"' in html
     assert 'v-for="view in mobileTabViews"' in html
+    assert 'class="mobile-topbar-actions"' in html
+    assert "switchView('audit')" in html
+    assert "switchView('settings')" in html
+    assert "'app-header-subnav': currentViewHasSubViews" in html
     assert 'class="mobile-selection-dock"' in html
     assert 'class="mobile-action-sheet-overlay"' in html
     assert 'class="mobile-action-sheet-details"' in html
