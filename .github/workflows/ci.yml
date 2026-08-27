@@ -40,6 +40,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @procure-lite/shared build
+      - run: pnpm --filter @procure-lite/server exec prisma generate
       - run: pnpm --filter @procure-lite/server typecheck
       - run: pnpm --filter @procure-lite/server test
       - run: pnpm --filter @procure-lite/server build
