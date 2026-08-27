@@ -22,9 +22,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    */
   private async applyPragmas(): Promise<void> {
     try {
-      await this.$executeRawUnsafe('PRAGMA journal_mode=WAL;');
-      await this.$executeRawUnsafe('PRAGMA busy_timeout=5000;');
-      await this.$executeRawUnsafe('PRAGMA foreign_keys=ON;');
+      // journal_mode 会返回结果行，必须走 queryRaw 而非 executeRaw
+      await this.$queryRawUnsafe('PRAGMA journal_mode=WAL;');
+      await this.$queryRawUnsafe('PRAGMA busy_timeout=5000;');
+      await this.$queryRawUnsafe('PRAGMA foreign_keys=ON;');
     } catch (e) {
       this.logger.warn(`PRAGMA 应用失败（不影响启动）: ${e instanceof Error ? e.message : e}`);
     }
