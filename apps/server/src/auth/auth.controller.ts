@@ -17,8 +17,11 @@ export class AuthController {
   ) {}
 
   @Get('status')
-  status() {
-    return this.auth.status();
+  async status(@Req() req: FastifyRequest) {
+    // authenticated 依据会话 Cookie 现场验证，前端据此恢复登录态
+    const token = (req.cookies as Record<string, string> | undefined)?.[config.session.cookieName];
+    const base = await this.auth.status();
+    return { ...base, authenticated: !!this.session.verify(token) };
   }
 
   @Post('setup')
