@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useToastStore } from '@/stores/toast';
+import { apiError } from '@/api/client';
+
+const toast = useToastStore();
 import type { EChartsOption } from 'echarts';
 import Input from '@/components/ui/Input.vue';
 import Select from '@/components/ui/Select.vue';
@@ -31,6 +35,8 @@ async function load(): Promise<void> {
     funnel.value = ops as typeof funnel.value;
     points.value = amount;
     recipients.value = recips;
+  } catch (e) {
+    toast.error(apiError(e));
   } finally {
     loading.value = false;
   }
@@ -133,6 +139,9 @@ const groupOptions = [
             </tr>
           </tbody>
         </table>
+        <p v-if="recipients.length > 20" class="px-4 pt-2 pb-3 text-[11px] text-faint">
+          仅显示前 20 名，共 {{ recipients.length }} 人
+        </p>
       </div>
     </div>
   </div>

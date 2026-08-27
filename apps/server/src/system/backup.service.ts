@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
   OnModuleDestroy,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -39,16 +40,16 @@ export class BackupService implements OnModuleDestroy {
   }
 
   async create(ip?: string): Promise<BackupInfo> {
+    if (this.restoring) throw new ServiceUnavailableException('备份恢复进行中，请稍后再试');
     const stamp = new Date();
     const name = `backup-${stamp.toISOString().replace(/[:.]/g, '-').slice(0, 19)}.zip`;
     const target = path.join(config.backupsDir, name);
     const snapshotPath = path.join(config.backupsDir, `.snapshot-${Date.now()}.db`);
 
     try {
-      // VACUUM INTO 生成一致性快照，避免复制运行中的库文件
-      await this.prisma.$executeRawUnsafe(
-        `VACUUM INTO '${snapshotPath.replace(/\\/g, '/')}'`,
-      );
+      // VACUUM INTO 生成一致性快照（单引号转义防意外）
+      const snapshotSql = snapshotPath.split('\\').join('/').replace(/'/g, "''");
+      await this.prisma.$executeRawUnsafe(`VACUUM INTO '${snapshotSql}'`);
 
       await new Promise<void>((resolve, reject) => {
         const output = createWriteStream(target);
@@ -94,7 +95,9 @@ export class BackupService implements OnModuleDestroy {
   /** 恢复：校验 zip → 断开数据库 → 替换文件 → 重连 */
   async restore(name: string, ip?: string): Promise<void> {
     const full = this.resolve(name);
+    if (this.restoring) throw new ServiceUnavailableException('已有恢复任务进行中');
     this.restoring = true;
+    let disconnected = false;
     try {
       const zip = new AdmZip(full);
       const entries = zip.getEntries();
@@ -115,6 +118,7 @@ export class BackupService implements OnModuleDestroy {
       if (!fs.existsSync(dbFile)) throw new BadRequestException('备份缺少数据库文件');
 
       await this.prisma.$disconnect();
+      disconnected = true;
       fs.copyFileSync(dbFile, config.dbPath);
 
       fs.rmSync(config.uploadsDir, { recursive: true, force: true });
@@ -128,9 +132,19 @@ export class BackupService implements OnModuleDestroy {
 
       fs.rmSync(tempDir, { recursive: true, force: true });
       await this.prisma.$connect();
+      disconnected = false;
       await this.audit.log('BACKUP_RESTORE', { entity: 'backup', detail: { name }, ip });
       this.logger.log(`已从备份 ${name} 恢复`);
+    } catch (e) {
+      this.logger.error(`恢复失败：${e instanceof Error ? e.message : e}`);
+      throw e;
     } finally {
+      // 无论成败，只要断开过就尽力重连，避免进程带着关闭的连接池继续服务
+      if (disconnected) {
+        await this.prisma.$connect().catch((re: unknown) => {
+          this.logger.error(`恢复后重连数据库失败，由容器重启兜底: ${re}`);
+        });
+      }
       this.restoring = false;
     }
   }

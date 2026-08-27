@@ -9,9 +9,15 @@ export const http = axios.create({
 });
 
 let routerRef: Router | null = null;
+let unauthorizedHandler: (() => void) | null = null;
 
 export function bindRouter(router: Router): void {
   routerRef = router;
+}
+
+/** 注册 401 回调（main.ts 里用它清除前端登录态，避免路由守卫把用户弹回工作台） */
+export function onUnauthorized(handler: () => void): void {
+  unauthorizedHandler = handler;
 }
 
 /** 从 axios 错误中提取用户可读信息 */
@@ -31,6 +37,7 @@ http.interceptors.response.use(
   (res) => res,
   (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
+      unauthorizedHandler?.();
       const path = routerRef?.currentRoute.value.path;
       if (path && path !== '/login') {
         void routerRef?.push({ path: '/login', query: { redirect: path } });

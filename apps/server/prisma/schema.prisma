@@ -207,6 +207,7 @@ model SystemSecurity {
   recoveryCodeHash String?
   failedAttempts   Int       @default(0)
   lockedUntil      DateTime?
+  sessionEpoch     Int       @default(0)
   updatedAt        DateTime  @updatedAt
 }
 

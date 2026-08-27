@@ -165,7 +165,7 @@ function fmt(dt: string | Date | null | undefined): string {
         <p v-if="attachments.length === 0" class="text-xs text-faint">暂无附件</p>
         <ul v-else class="space-y-1">
           <li v-for="a in attachments" :key="a.id" class="flex items-center justify-between gap-2 text-sm">
-            <button class="truncate text-primary hover:underline cursor-pointer" @click="downloadFile(`/attachments/${a.id}/download`, a.filename)">
+            <button class="truncate text-primary hover:underline cursor-pointer" @click="downloadFile(`/attachments/${a.id}/download`, a.filename).catch((err) => toast.error(apiError(err)))">
               <Icon name="file" :size="12" class="inline mr-1" />{{ a.filename }}
             </button>
             <span class="text-[11px] text-faint shrink-0">{{ fmt(a.createdAt) }}</span>

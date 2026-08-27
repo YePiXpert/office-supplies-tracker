@@ -7,6 +7,7 @@ import EmptyState from '@/components/ui/EmptyState.vue';
 import { auditApi, type AuditRow } from '@/api';
 import { apiError } from '@/api/client';
 import { useToastStore } from '@/stores/toast';
+import { formatDateTime } from '@/utils/datetime';
 
 const toast = useToastStore();
 const logs = ref<AuditRow[]>([]);
@@ -81,11 +82,7 @@ function detailOf(log: AuditRow): string {
   }
 }
 
-function fmtTime(dt: string): string {
-  const d = new Date(dt);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
+
 </script>
 
 <template>
@@ -110,7 +107,7 @@ function fmtTime(dt: string): string {
         <thead><tr><th>时间</th><th>操作</th><th>对象</th><th>详情</th><th>来源 IP</th></tr></thead>
         <tbody>
           <tr v-for="log in logs" :key="log.id">
-            <td class="text-xs text-muted num whitespace-nowrap">{{ fmtTime(log.createdAt) }}</td>
+            <td class="text-xs text-muted num whitespace-nowrap">{{ formatDateTime(log.createdAt, true) }}</td>
             <td>
               <Badge :tone="ACTION_LABELS[log.action]?.tone ?? 'gray'">
                 {{ ACTION_LABELS[log.action]?.label ?? log.action }}

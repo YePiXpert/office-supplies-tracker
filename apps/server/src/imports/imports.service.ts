@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -26,7 +27,7 @@ export interface ImportTaskView {
 }
 
 @Injectable()
-export class ImportsService {
+export class ImportsService implements OnModuleInit {
   private readonly logger = new Logger(ImportsService.name);
 
   constructor(
@@ -34,6 +35,16 @@ export class ImportsService {
     private readonly ocr: OcrClient,
     private readonly audit: AuditService,
   ) {}
+
+  /** 进程重启后，把停留在 RUNNING 的僵尸任务标记为失败（任务态只在内存推进） */
+  async onModuleInit(): Promise<void> {
+    await this.prisma.importTask
+      .updateMany({
+        where: { status: 'RUNNING' },
+        data: { status: 'FAILED', error: '服务重启导致解析中断，请重新上传', finishedAt: new Date() },
+      })
+      .catch(() => undefined);
+  }
 
   /** 保存文件 → 建任务 → 异步解析（任务状态落库，重启后仍可查询） */
   async upload(file: { buffer: Buffer; filename: string; size: number }, ip?: string) {
@@ -45,6 +56,11 @@ export class ImportsService {
     if (file.size > config.maxUploadBytes) {
       throw new BadRequestException(`文件超过 ${Math.floor(config.maxUploadBytes / 1024 / 1024)}MB 限制`);
     }
+
+    // 顺带清理 30 天前的导入任务记录，防止无限增长
+    await this.prisma.importTask
+      .deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 30 * 86400_000) } } })
+      .catch(() => undefined);
 
     const id = randomUUID();
     const stored = path.join(config.uploadsDir, `${id}${ext}`);
@@ -60,8 +76,9 @@ export class ImportsService {
   }
 
   private async runParse(taskId: string, filePath: string, filename: string): Promise<void> {
+    let result: Awaited<ReturnType<OcrClient['parse']>> | undefined;
     try {
-      const result = await this.ocr.parse(fs.readFileSync(filePath), filename);
+      result = await this.ocr.parse(fs.readFileSync(filePath), filename);
       await this.prisma.importTask.update({
         where: { id: taskId },
         data: { status: 'DONE', result: JSON.stringify(result), finishedAt: new Date() },
@@ -75,6 +92,9 @@ export class ImportsService {
           data: { status: 'FAILED', error: message, finishedAt: new Date() },
         })
         .catch(() => undefined);
+    } finally {
+      // 暂存原件用完即删（解析结果 JSON 已留痕），避免 uploads 无限膨胀
+      fs.rm(filePath, { force: true }, () => undefined);
     }
   }
 

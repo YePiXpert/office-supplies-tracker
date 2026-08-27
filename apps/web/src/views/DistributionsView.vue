@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDateTime } from '@/utils/datetime';
 import { computed, onMounted, reactive, ref } from 'vue';
 import Button from '@/components/ui/Button.vue';
 import Icon from '@/components/ui/Icon.vue';
@@ -88,7 +89,7 @@ async function revoke(): Promise<void> {
 const maxQty = computed(() => Math.max(1, ...recipientStats.value.map((s) => s.quantity)));
 
 function fmtTime(dt: string): string {
-  return new Date(dt).toISOString().slice(0, 16).replace('T', ' ');
+  return formatDateTime(dt);
 }
 </script>
 

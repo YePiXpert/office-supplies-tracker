@@ -7,6 +7,10 @@ import StatusBadge from '@/components/ui/StatusBadge.vue';
 import EChart from '@/components/charts/EChart.vue';
 import { AXIS_STYLE, CHART_COLORS, TOOLTIP_STYLE } from '@/components/charts/chartTheme';
 import { reportsApi, inventoryApi, itemsApi, type DashboardData } from '@/api';
+import { apiError } from '@/api/client';
+import { useToastStore } from '@/stores/toast';
+
+const toast = useToastStore();
 import { ITEM_STATUS_LABELS, type ItemStatus } from '@procure-lite/shared';
 
 const data = ref<DashboardData | null>(null);
@@ -24,6 +28,8 @@ onMounted(async () => {
     data.value = dashboard;
     lowStock.value = low;
     recent.value = items.items;
+  } catch (e) {
+    toast.error(apiError(e));
   } finally {
     loading.value = false;
   }

@@ -9,6 +9,7 @@ import { distributionsApi, inventoryApi, itemsApi, type ItemRow, type ProductRow
 import { useToastStore } from '@/stores/toast';
 import { apiError } from '@/api/client';
 import type { DistributionSource } from '@procure-lite/shared';
+import { todayString } from '@/utils/datetime';
 
 const props = withDefaults(
   defineProps<{
@@ -27,7 +28,7 @@ const pendingItems = ref<ItemRow[]>([]);
 const products = ref<ProductRow[]>([]);
 
 const form = reactive({
-  date: new Date().toISOString().slice(0, 10),
+  date: todayString(),
   department: '',
   note: '',
 });
@@ -48,12 +49,12 @@ watch(
   () => props.open,
   async (open) => {
     if (!open) return;
-    form.date = new Date().toISOString().slice(0, 10);
+    form.date = todayString();
     form.note = '';
-    mode.value = props.presetItems.length > 0 ? 'DIRECT' : 'DIRECT';
+    mode.value = 'DIRECT';
     const [items, prods] = await Promise.all([
       itemsApi.list({ status: 'PENDING_DISTRIBUTION', pageSize: 100 }),
-      inventoryApi.products(),
+      inventoryApi.products().catch(() => []),
     ]);
     pendingItems.value = items.items;
     products.value = prods.filter((p) => p.stockQty > 0);
@@ -195,7 +196,7 @@ async function submit(): Promise<void> {
         :key="m.key"
         class="h-8 px-3 rounded-(--radius-control) text-xs font-medium border cursor-pointer transition-colors"
         :class="mode === m.key ? 'bg-primary text-white border-primary' : 'bg-surface text-muted border-line-strong hover:border-primary'"
-        @click="mode = m.key as DistributionSource; lines = [emptyLine()]"
+        @click="mode = m.key as DistributionSource"
       >
         {{ m.label }}
       </button>

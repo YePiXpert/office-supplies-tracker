@@ -4,7 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import fs from 'node:fs';
+import path from 'node:path';
 import { Prisma } from '@prisma/client';
+import { config } from '../config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type {
@@ -254,9 +257,22 @@ export class ItemsService {
   }
 
   async purge(id: number, ip?: string) {
-    // 级联清理：历史、关联领用明细会失去台账关联（保留明细但置空引用）
+    // 仅回收站中的记录可彻底删除，避免在线数据被误清
+    const target = await this.prisma.item.findFirst({ where: { id } });
+    if (!target) throw new NotFoundException('记录不存在');
+    if (!target.deletedAt) {
+      throw new BadRequestException('只有回收站中的记录才能彻底删除');
+    }
+    const attachments = await this.prisma.attachment.findMany({
+      where: { itemId: id },
+      select: { storagePath: true },
+    });
+    // 级联清理：历史随记录删除；领用明细保留但解除引用
     await this.prisma.distributionLine.updateMany({ where: { itemId: id }, data: { itemId: null } });
     await this.prisma.item.delete({ where: { id } });
+    for (const a of attachments) {
+      fs.rm(path.join(config.uploadsDir, a.storagePath), { force: true }, () => undefined);
+    }
     await this.audit.log('ITEM_PURGE', { entity: 'item', entityId: id, ip });
     return { ok: true };
   }
@@ -274,6 +290,19 @@ export class ItemsService {
   async rollback(id: number, historyId: number, ip?: string) {
     const record = await this.prisma.itemHistory.findFirst({ where: { id: historyId, itemId: id } });
     if (!record?.afterData) throw new NotFoundException('历史记录不存在');
+
+    // 目标点之后若发生过入库/发放，回滚状态会造成库存与台账脱节（如已入库物品回到待分发可二次发放）
+    const laterActions = await this.prisma.itemHistory.findMany({
+      where: { itemId: id, createdAt: { gt: record.createdAt } },
+      select: { action: true },
+    });
+    const blocking = laterActions.some((a) =>
+      ['STOCK_IN', 'DISTRIBUTE', 'DISTRIBUTION_REVOKE'].includes(a.action),
+    );
+    if (blocking) {
+      throw new BadRequestException('目标版本之后发生过入库/发放，直接回滚会导致库存不一致；请通过作废发放单或盘点调整处理');
+    }
+
     const target = JSON.parse(record.afterData) as Snapshot;
     const before = await this.prisma.item.findFirst({ where: { id } });
     if (!before) throw new NotFoundException('记录不存在');
@@ -284,11 +313,16 @@ export class ItemsService {
       patch[field] = target[field] ?? null;
     }
 
-    const after = await this.prisma.item.update({
-      where: { id },
-      data: patch,
-      include: { supplier: { select: { name: true } } },
-    });
+    let after;
+    try {
+      after = await this.prisma.item.update({
+        where: { id },
+        data: patch,
+        include: { supplier: { select: { name: true } } },
+      });
+    } catch (e) {
+      throw this.mapUniqueError(e);
+    }
     const beforeSnap = snapshotOf(before);
     const afterSnap = snapshotOf(after);
     await this.prisma.itemHistory.create({

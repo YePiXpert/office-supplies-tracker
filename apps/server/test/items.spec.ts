@@ -117,6 +117,12 @@ describe('台账 CRUD', () => {
     const restored = await ctx.inject({ method: 'GET', url: '/api/items', ...auth() });
     expect(restored.json().total).toBe(2);
 
+    // 在线记录不允许直接彻底删除
+    const onlinePurge = await ctx.inject({ method: 'DELETE', url: `/api/items/${itemId}?permanent=true`, ...auth() });
+    expect(onlinePurge.statusCode).toBe(400);
+
+    // 再入回收站后可彻底删除
+    await ctx.inject({ method: 'DELETE', url: `/api/items/${itemId}`, ...auth() });
     const purge = await ctx.inject({ method: 'DELETE', url: `/api/items/${itemId}?permanent=true`, ...auth() });
     expect(purge.statusCode).toBe(200);
     const after = await ctx.inject({ method: 'GET', url: '/api/items?deleted=include', ...auth() });

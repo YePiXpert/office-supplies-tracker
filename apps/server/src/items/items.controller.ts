@@ -57,6 +57,16 @@ export class ItemsController {
     return buffer;
   }
 
+  @Post('batch-delete')
+  @HttpCode(200)
+  batchDelete(
+    @Body(new ZodValidationPipe(z.object({ ids: z.array(z.coerce.number().int().positive()).min(1) })))
+    body: { ids: number[] },
+    @Req() req: FastifyRequest,
+  ) {
+    return this.items.softDelete(body.ids, clientIp(req));
+  }
+
   @Post('batch-update')
   @HttpCode(200)
   batchUpdate(

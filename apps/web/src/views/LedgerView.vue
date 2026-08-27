@@ -138,8 +138,8 @@ async function batch(patch: Record<string, unknown>): Promise<void> {
 async function batchDelete(): Promise<void> {
   const ids = [...selected.value];
   try {
-    for (const id of ids) await itemsApi.remove(id);
-    toast.success(`已移入回收站 ${ids.length} 条`);
+    const res = await itemsApi.batchDelete(ids);
+    toast.success(`已移入回收站 ${res.deleted} 条`);
     confirmDelete.value = false;
     await load();
   } catch (e) {
@@ -177,7 +177,7 @@ const allChecked = computed(() => rows.value.length > 0 && rows.value.every((r) 
 
 async function exportXlsx(): Promise<void> {
   try {
-    const params = new URLSearchParams({ ...cleanFilters(), pageSize: '200' });
+    const params = new URLSearchParams(cleanFilters()); // 导出走服务端全量，无需分页参数
     await downloadFile(`/items/export?${params.toString()}`, `采购台账-${Date.now()}.xlsx`);
     toast.success('导出已开始下载');
   } catch (e) {

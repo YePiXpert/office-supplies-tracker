@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDateTime } from '@/utils/datetime';
 import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import Button from '@/components/ui/Button.vue';
@@ -144,7 +145,7 @@ function fmtSize(bytes: number): string {
   return `${(bytes / 1024).toFixed(0)} KB`;
 }
 function fmtTime(dt: string): string {
-  return new Date(dt).toISOString().slice(0, 16).replace('T', ' ');
+  return formatDateTime(dt);
 }
 function fmtUptime(sec: number): string {
   const d = Math.floor(sec / 86400);

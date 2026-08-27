@@ -1,10 +1,9 @@
 import type { FastifyRequest } from 'fastify';
 
-/** 取客户端 IP：优先信任反代头（Docker 部署在 nginx 后面） */
+/**
+ * 客户端 IP：fastify 在 trustProxy 配置下已按可信跳数解析 X-Forwarded-For，
+ * req.ip 取最右侧不可伪造条目，无需手动拆头。
+ */
 export function clientIp(req: FastifyRequest): string | undefined {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.length > 0) {
-    return forwarded.split(',')[0].trim();
-  }
-  return req.ip;
+  return req.ip?.replace('::ffff:', '') || undefined;
 }

@@ -6,6 +6,8 @@ interface AuthStatus {
   initialized: boolean;
   locked: boolean;
   lockRemainingSeconds: number;
+  /** 服务端依据会话 Cookie 现场验证，F5 后据此恢复登录态 */
+  authenticated?: boolean;
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -19,6 +21,8 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const res = await http.get<AuthStatus>('/auth/status');
       status.value = res.data;
+      // authenticated 是服务端对 Cookie 的现场验证结果，权威恢复登录态
+      if (typeof res.data.authenticated === 'boolean') loggedIn.value = res.data.authenticated;
     } finally {
       checked.value = true;
     }

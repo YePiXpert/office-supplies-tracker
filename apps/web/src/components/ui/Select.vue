@@ -39,24 +39,28 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
       :model-value="modelValue ?? undefined"
       @update:model-value="(v) => emit('update:modelValue', v === null ? '' : String(v))"
     >
-      <SelectTrigger
-        class="inline-flex w-full h-9.5 items-center justify-between gap-2 px-3 text-sm bg-surface border border-line-strong rounded-(--radius-control) data-[placeholder]:text-faint focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-        :disabled="disabled"
-        :aria-label="label"
-      >
-        <span class="truncate">
-          <template v-if="clearable && modelValue">
-            <button
-              type="button"
-              class="mr-1 text-faint hover:text-red"
-              aria-label="清除选择"
-              @click.prevent.stop="emit('update:modelValue', '')"
-            >×</button>
-          </template>
-          <SelectValue :placeholder="placeholder" />
-        </span>
-        <Icon name="chevron-down" :size="14" class="shrink-0 text-muted" />
-      </SelectTrigger>
+      <!-- 清除按钮独立于 trigger 之外，避免 button 嵌套 button 的非法 DOM -->
+      <div class="relative">
+        <SelectTrigger
+          class="inline-flex w-full h-9.5 items-center justify-between gap-2 px-3 text-sm bg-surface border border-line-strong rounded-(--radius-control) data-[placeholder]:text-faint focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          :class="clearable && modelValue ? 'pr-7' : ''"
+          :disabled="disabled"
+          :aria-label="label"
+        >
+          <span class="truncate">
+            <SelectValue :placeholder="placeholder" />
+          </span>
+          <Icon name="chevron-down" :size="14" class="shrink-0 text-muted" />
+        </SelectTrigger>
+        <button
+          v-if="clearable && modelValue"
+          type="button"
+          class="absolute right-2 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center size-5 rounded-full text-faint hover:text-red hover:bg-red-soft cursor-pointer"
+          aria-label="清除选择"
+          :disabled="disabled"
+          @click.prevent.stop="emit('update:modelValue', '')"
+        >×</button>
+      </div>
       <SelectPortal>
         <SelectContent
           position="popper"

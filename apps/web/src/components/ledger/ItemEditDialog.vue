@@ -8,6 +8,7 @@ import Textarea from '@/components/ui/Textarea.vue';
 import { itemsApi, suppliersApi, type ItemRow, type SupplierRow } from '@/api';
 import { useToastStore } from '@/stores/toast';
 import { apiError } from '@/api/client';
+import { todayString, formatDateTime } from '@/utils/datetime';
 import {
   ITEM_STATUSES,
   ITEM_STATUS_LABELS,
@@ -28,7 +29,7 @@ const form = reactive({
   serialNumber: '',
   department: '',
   handler: '',
-  requestDate: today(),
+  requestDate: todayString(),
   itemName: '',
   quantity: '1',
   unit: '',
@@ -54,7 +55,7 @@ watch(
       serialNumber: it?.serialNumber ?? '',
       department: it?.department ?? '',
       handler: it?.handler ?? '',
-      requestDate: it?.requestDate ?? today(),
+      requestDate: it?.requestDate ?? todayString(),
       itemName: it?.itemName ?? '',
       quantity: String(it?.quantity ?? 1),
       unit: it?.unit ?? '',
@@ -118,9 +119,7 @@ async function save(): Promise<void> {
   }
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+
 </script>
 
 <template>

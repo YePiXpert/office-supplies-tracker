@@ -10,6 +10,7 @@ import Dialog from '@/components/ui/Dialog.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import { suppliersApi, type PriceRecordRow, type SupplierRow } from '@/api';
 import { useToastStore } from '@/stores/toast';
+import { formatDate } from '@/utils/datetime';
 import { apiError } from '@/api/client';
 
 const toast = useToastStore();
@@ -145,7 +146,7 @@ async function runSuggest(): Promise<void> {
 }
 
 function fmtTime(dt: string): string {
-  return new Date(dt).toISOString().slice(0, 10);
+  return formatDate(dt);
 }
 </script>
 
@@ -199,7 +200,7 @@ function fmtTime(dt: string): string {
           {{ t.label }}
         </button>
         <div class="ml-auto flex items-center gap-2 pb-1.5">
-          <Button v-if="tab === 'prices'" variant="secondary" size="sm" @click="priceForm = { supplierId: '', itemName: '', unitPrice: '', purchaseLink: '' }; priceDialogOpen = true">
+          <Button v-if="tab === 'prices'" variant="secondary" size="sm" @click="Object.assign(priceForm, { supplierId: '', itemName: '', unitPrice: '', purchaseLink: '' }); priceDialogOpen = true">
             <Icon name="plus" :size="13" /> 记一笔价格
           </Button>
           <Button variant="primary" size="sm" @click="openSupplierDialog(null)">

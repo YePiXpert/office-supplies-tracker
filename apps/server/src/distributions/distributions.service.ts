@@ -4,7 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import fs from 'node:fs';
+import path from 'node:path';
 import { Prisma } from '@prisma/client';
+import { config } from '../config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { DistributionCreateInput, DistributionQuery } from '@procure-lite/shared';
@@ -41,6 +44,10 @@ export class DistributionsService {
       const items = input.source === 'DIRECT'
         ? await tx.item.findMany({ where: { id: { in: [...itemQty.keys()] } } })
         : [];
+      if (items.length !== itemQty.size) {
+        const missing = [...itemQty.keys()].filter((id) => !items.some((i) => i.id === id));
+        throw new BadRequestException(`台账记录不存在：${missing.join(', ')}`);
+      }
       for (const item of items) {
         if (item.deletedAt) throw new BadRequestException(`台账记录「${item.itemName}」已在回收站`);
         if (item.status !== 'PENDING_DISTRIBUTION') {
@@ -54,6 +61,10 @@ export class DistributionsService {
       const products = input.source === 'STOCK'
         ? await tx.product.findMany({ where: { id: { in: [...stockQty.keys()] } } })
         : [];
+      if (products.length !== stockQty.size) {
+        const missing = [...stockQty.keys()].filter((id) => !products.some((pr) => pr.id === id));
+        throw new BadRequestException(`库存物品不存在：${missing.join(', ')}`);
+      }
       for (const product of products) {
         if ((stockQty.get(product.id) ?? 0) > product.stockQty) {
           throw new ConflictException(`「${product.name}」库存不足（剩余 ${product.stockQty}）`);
@@ -266,7 +277,15 @@ export class DistributionsService {
         }
       }
 
+      // 先取出附件路径，删库后移除文件（孤儿文件清理）
+      const attachments = await tx.attachment.findMany({
+        where: { distributionId: id },
+        select: { storagePath: true },
+      });
       await tx.distribution.delete({ where: { id } });
+      for (const a of attachments) {
+        fs.rm(path.join(config.uploadsDir, a.storagePath), { force: true }, () => undefined);
+      }
       return { ok: true };
     });
     await this.audit.log('DISTRIBUTION_REVOKE', { entity: 'distribution', entityId: id, ip });

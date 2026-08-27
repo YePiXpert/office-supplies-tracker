@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDateTime } from '@/utils/datetime';
 import { computed, onMounted, reactive, ref } from 'vue';
 import Button from '@/components/ui/Button.vue';
 import Icon from '@/components/ui/Icon.vue';
@@ -163,7 +164,7 @@ async function removeMovement(): Promise<void> {
 }
 
 function fmtTime(dt: string): string {
-  return new Date(dt).toISOString().slice(0, 16).replace('T', ' ');
+  return formatDateTime(dt);
 }
 </script>
 
@@ -181,7 +182,7 @@ function fmtTime(dt: string): string {
           {{ t.label }}
         </button>
         <div class="ml-auto flex items-center gap-2 pb-1.5">
-          <Button variant="secondary" size="sm" @click="movementForm = { productId: '', type: 'INBOUND', quantity: '', note: '' }; movementDialogOpen = true">
+          <Button variant="secondary" size="sm" @click="Object.assign(movementForm, { productId: '', type: 'INBOUND', quantity: '', note: '' }); movementDialogOpen = true">
             <Icon name="plus" :size="13" /> 记一笔流水
           </Button>
           <Button variant="primary" size="sm" @click="openProductDialog(null)">

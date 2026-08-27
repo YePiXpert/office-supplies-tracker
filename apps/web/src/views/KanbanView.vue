@@ -9,9 +9,12 @@ import { itemsApi, inventoryApi, type ItemRow } from '@/api';
 import { useToastStore } from '@/stores/toast';
 import { apiError } from '@/api/client';
 import { KANBAN_STATUSES, ITEM_STATUS_LABELS, type ItemStatus } from '@procure-lite/shared';
+import { todayString } from '@/utils/datetime';
 
 const toast = useToastStore();
 const columns = ref<Record<string, ItemRow[]>>({});
+/** 每列真实总数（>100 时列表被截断，需要向用户明示） */
+const totals = ref<Record<string, number>>({});
 const loading = ref(true);
 
 const distributeOpen = ref(false);
@@ -25,6 +28,9 @@ async function load(): Promise<void> {
       KANBAN_STATUSES.map((s) => itemsApi.list({ status: s, pageSize: 100 })),
     );
     columns.value = Object.fromEntries(KANBAN_STATUSES.map((s, i) => [s, results[i].items]));
+    totals.value = Object.fromEntries(KANBAN_STATUSES.map((s, i) => [s, results[i].total]));
+  } catch (e) {
+    toast.error(apiError(e));
   } finally {
     loading.value = false;
   }
@@ -35,7 +41,7 @@ async function advance(item: ItemRow, next: ItemStatus, withArrival = false): Pr
   try {
     await itemsApi.update(item.id, {
       status: next,
-      ...(withArrival ? { arrivalDate: new Date().toISOString().slice(0, 10) } : {}),
+      ...(withArrival ? { arrivalDate: todayString() } : {}),
     });
     toast.success(`「${item.itemName}」${ITEM_STATUS_LABELS[next]}`);
     await load();
@@ -78,10 +84,20 @@ const COLUMN_META: Record<string, { tone: string; hint: string }> = {
             <span class="inline-flex items-center h-6 px-2 rounded-full border text-xs font-semibold" :class="COLUMN_META[status].tone">
               {{ ITEM_STATUS_LABELS[status] }}
             </span>
-            <span class="text-xs text-faint num">{{ columns[status]?.length ?? 0 }}</span>
+            <span class="text-xs text-faint num">{{ totals[status] ?? columns[status]?.length ?? 0 }}</span>
           </div>
         </header>
-        <p class="px-4 pt-2 text-[11px] text-faint">{{ COLUMN_META[status].hint }}</p>
+        <p class="px-4 pt-2 text-[11px] text-faint">
+          {{ COLUMN_META[status].hint }}
+          <router-link
+            v-if="(totals[status] ?? 0) > (columns[status]?.length ?? 0)"
+            :to="`/ledger`"
+            class="text-amber hover:underline"
+            :title="`该状态共 ${totals[status]} 条，看板仅展示前 ${columns[status]?.length} 条`"
+          >
+            共 {{ totals[status] }} 条 · 查看全部
+          </router-link>
+        </p>
 
         <div class="flex-1 p-3 space-y-2.5 overflow-y-auto max-h-[calc(100dvh-320px)]">
           <EmptyState

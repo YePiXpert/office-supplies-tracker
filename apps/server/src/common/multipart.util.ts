@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, PayloadTooLargeException } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 
 export interface UploadedFile {
@@ -19,6 +19,9 @@ export async function readUpload(req: FastifyRequest): Promise<UploadedFile> {
   const file = await req.file();
   if (!file) throw new BadRequestException('请选择要上传的文件');
   const buffer = await file.toBuffer();
+  if (file.file?.truncated) {
+    throw new PayloadTooLargeException('文件超过大小限制');
+  }
   return {
     buffer,
     filename: file.filename || 'upload',

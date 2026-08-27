@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { recentDays } from '../common/date.util';
+import { localDateKey, recentDays } from '../common/date.util';
 import {
   ITEM_STATUSES,
   KANBAN_STATUSES,
@@ -52,10 +52,10 @@ export class ReportsService {
     }));
     const trendIdx = new Map(trend.map((t) => [t.date, t]));
     for (const item of items) {
-      const created = trendIdx.get(item.createdAt.toISOString().slice(0, 10));
+      const created = trendIdx.get(localDateKey(item.createdAt));
       if (created) created.created += 1;
       if (item.distributionDate) {
-        const dist = trendIdx.get(item.distributionDate);
+        const dist = trendIdx.get(localDateKey(item.distributionDate));
         if (dist) {
           dist.distributed += 1;
           dist.distributedAmount += this.amountOf(item.unitPrice, item.quantity);

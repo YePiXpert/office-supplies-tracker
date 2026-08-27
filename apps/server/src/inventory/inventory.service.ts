@@ -116,8 +116,12 @@ export class InventoryService {
       if (input.type === 'INBOUND' && input.quantity <= 0) {
         throw new BadRequestException('入库数量必须为正数');
       }
-      const next = product.stockQty + input.quantity;
-      if (next < 0) {
+      // 条件增量更新：并发下不丢更新，且原子地保证库存非负
+      const updated = await tx.product.updateMany({
+        where: { id: input.productId, stockQty: { gte: -input.quantity } },
+        data: { stockQty: { increment: input.quantity } },
+      });
+      if (updated.count === 0) {
         throw new ConflictException(`调整后库存为负（当前 ${product.stockQty}）`);
       }
 
@@ -128,10 +132,6 @@ export class InventoryService {
           type: input.type,
           note: input.note,
         },
-      });
-      await tx.product.update({
-        where: { id: input.productId },
-        data: { stockQty: next },
       });
       return movement;
     });
@@ -154,10 +154,12 @@ export class InventoryService {
       }
       const product = await tx.product.findUnique({ where: { id: movement.productId } });
       if (!product) throw new NotFoundException('物品不存在');
-      const next = product.stockQty - movement.quantity;
-      if (next < 0) throw new ConflictException('回冲后库存为负，无法删除');
+      const updated = await tx.product.updateMany({
+        where: { id: product.id, stockQty: { gte: movement.quantity } },
+        data: { stockQty: { decrement: movement.quantity } },
+      });
+      if (updated.count === 0) throw new ConflictException('回冲后库存为负，无法删除');
       await tx.inventoryMovement.delete({ where: { id } });
-      await tx.product.update({ where: { id: product.id }, data: { stockQty: next } });
       return product.id;
     });
     await this.audit.log('INVENTORY_MOVEMENT_DELETE', {

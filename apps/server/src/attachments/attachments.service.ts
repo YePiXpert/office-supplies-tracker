@@ -51,6 +51,14 @@ export class AttachmentsService implements OnModuleDestroy {
     if (!params.itemId && !params.distributionId) {
       throw new BadRequestException('缺少关联对象');
     }
+    if (params.itemId) {
+      const item = await this.prisma.item.findFirst({ where: { id: params.itemId, deletedAt: null } });
+      if (!item) throw new NotFoundException('台账记录不存在');
+    }
+    if (params.distributionId) {
+      const dist = await this.prisma.distribution.findUnique({ where: { id: params.distributionId } });
+      if (!dist) throw new NotFoundException('发放单不存在');
+    }
 
     const storedName = `${randomUUID()}${ext}`;
     const storagePath = path.join(config.uploadsDir, 'attachments', storedName);

@@ -65,6 +65,8 @@ export const itemsApi = {
   history: (id: number) => http.get(`/items/${id}/history`).then((r) => r.data),
   rollback: (id: number, historyId: number) => http.post(`/items/${id}/rollback`, { historyId }).then((r) => r.data),
   batchUpdate: (body: BatchUpdateInput) => http.post('/items/batch-update', body).then((r) => r.data),
+  batchDelete: (ids: number[]) =>
+    http.post<{ deleted: number }>('/items/batch-delete', { ids }).then((r) => r.data),
   facets: () => http.get<{ departments: string[]; handlers: string[] }>('/items/facets').then((r) => r.data),
 };
 

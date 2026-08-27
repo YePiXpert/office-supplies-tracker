@@ -1,14 +1,18 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { AuthService } from './auth.service';
 import { SessionService } from './session.service';
 import { Public } from '../common/public.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { clientIp } from '../common/request.util';
+import { config } from '../config';
 import { changePasswordSchema, loginSchema, setupSchema } from '@procure-lite/shared';
-import { z } from 'zod';
 
-@Public()
+/**
+ * @Public 只标注在真正公开的路由上（类级标注会让 change-password 等
+ * 敏感接口免鉴权，形成绕过锁定阈值的在线猜密码通道）。
+ */
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -16,6 +20,7 @@ export class AuthController {
     private readonly session: SessionService,
   ) {}
 
+  @Public()
   @Get('status')
   async status(@Req() req: FastifyRequest) {
     // authenticated 依据会话 Cookie 现场验证，前端据此恢复登录态
@@ -24,6 +29,7 @@ export class AuthController {
     return { ...base, authenticated: !!this.session.verify(token) };
   }
 
+  @Public()
   @Post('setup')
   setup(
     @Body(new ZodValidationPipe(setupSchema)) body: { password: string },
@@ -32,6 +38,7 @@ export class AuthController {
     return this.auth.setup(body.password, clientIp(req));
   }
 
+  @Public()
   @Post('login')
   @HttpCode(200)
   async login(
@@ -39,11 +46,12 @@ export class AuthController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    await this.auth.login(body.password, clientIp(req));
-    this.session.issue(res, req);
+    const epoch = await this.auth.login(body.password, clientIp(req));
+    this.session.issue(res, req, epoch);
     return { ok: true };
   }
 
+  @Public()
   @Post('logout')
   @HttpCode(200)
   logout(@Res({ passthrough: true }) res: FastifyReply) {
@@ -51,6 +59,7 @@ export class AuthController {
     return { ok: true };
   }
 
+  @Public()
   @Post('recover')
   @HttpCode(200)
   recover(
@@ -65,7 +74,7 @@ export class AuthController {
     return this.auth.recover(body.recoveryCode, body.newPassword, clientIp(req));
   }
 
-  /** 以下需要登录（不加 @Public） */
+  /* 以下需要登录（无 @Public） */
 
   @Post('change-password')
   @HttpCode(200)

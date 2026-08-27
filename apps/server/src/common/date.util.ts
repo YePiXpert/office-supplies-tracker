@@ -21,3 +21,10 @@ export function recentDays(n: number): string[] {
   }
   return days;
 }
+
+/** Date/日期字符串 → 本地时区 YYYY-MM-DD（避免 toISOString 的 UTC 偏移） */
+export function localDateKey(input: Date | string): string {
+  const d = new Date(input);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}

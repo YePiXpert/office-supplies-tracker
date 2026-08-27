@@ -62,14 +62,17 @@ export class AttachmentsController {
   }
 
   @Get(':id/download')
-  async download(@Param('id', ParseIntPipe) id: number, @Res({ passthrough: true }) res: FastifyReply) {
+  async download(@Param('id', ParseIntPipe) id: number, @Res() res: FastifyReply) {
     const { record, filePath } = await this.attachments.get(id);
+    const size = fs.statSync(filePath).size;
+    res.status(200);
     res.header('content-type', record.mimeType);
     res.header(
       'content-disposition',
       `attachment; filename*=UTF-8''${encodeURIComponent(record.filename)}`,
     );
-    return fs.readFileSync(filePath);
+    res.header('content-length', String(size));
+    fs.createReadStream(filePath).pipe(res.raw);
   }
 
   @Delete(':id')

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref } from 'vue';
+import { todayString } from '@/utils/datetime';
 import { useRouter } from 'vue-router';
 import Button from '@/components/ui/Button.vue';
 import Icon from '@/components/ui/Icon.vue';
@@ -29,7 +30,7 @@ const form = reactive({
   serialNumber: '',
   department: '',
   handler: '',
-  requestDate: new Date().toISOString().slice(0, 10),
+  requestDate: todayString(),
   supplierId: '',
 });
 
@@ -44,21 +45,29 @@ const lines = ref<DraftLine[]>([]);
 
 const fileInput = ref<HTMLInputElement | null>(null)
 
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let pollFailures = 0;
 onUnmounted(() => stopPoll());
 
 function stopPoll(): void {
-  if (pollTimer) clearInterval(pollTimer);
+  if (pollTimer) clearTimeout(pollTimer);
   pollTimer = null;
+  pollFailures = 0;
+}
+
+/** 递归 setTimeout：上一次响应回来后才排下一次，天然避免重叠轮询 */
+function schedulePoll(): void {
+  pollTimer = setTimeout(() => void poll(), 1500);
 }
 
 async function upload(file: File): Promise<void> {
+  stopPoll(); // 防御：清掉可能残留的旧轮询
   step.value = 'parsing';
   taskError.value = '';
   try {
     const { taskId: id } = await importsApi.upload(file);
     taskId.value = id;
-    pollTimer = setInterval(() => void poll(), 1500);
+    schedulePoll();
   } catch (e) {
     taskError.value = apiError(e);
     step.value = 'upload';
@@ -79,7 +88,11 @@ function onDrop(e: DragEvent): void {
 async function poll(): Promise<void> {
   try {
     const task = await importsApi.task(taskId.value);
-    if (task.status === 'RUNNING' || task.status === 'PENDING') return;
+    pollFailures = 0;
+    if (task.status === 'RUNNING' || task.status === 'PENDING') {
+      schedulePoll();
+      return;
+    }
     stopPoll();
     if (task.status === 'FAILED' || !task.result) {
       taskError.value = task.error ?? '解析失败';
@@ -91,7 +104,7 @@ async function poll(): Promise<void> {
     form.serialNumber = task.result.serialNumber ?? '';
     form.department = task.result.department ?? '';
     form.handler = task.result.handler ?? '';
-    form.requestDate = task.result.requestDate ?? new Date().toISOString().slice(0, 10);
+    form.requestDate = task.result.requestDate ?? todayString();
     lines.value = task.result.items.map((it) => ({
       itemName: it.itemName,
       quantity: String(it.quantity ?? 1),
@@ -103,8 +116,17 @@ async function poll(): Promise<void> {
     suppliers.value = await suppliersApi.list().catch(() => []);
     await checkDuplicates();
     step.value = 'review';
-  } catch {
-    // 轮询网络抖动忽略
+  } catch (e) {
+    // 连续失败 5 次（约 8 秒）才判死；单次抖动继续等
+    pollFailures += 1;
+    if (pollFailures >= 5) {
+      stopPoll();
+      taskError.value = apiError(e);
+      toast.error(taskError.value);
+      step.value = 'upload';
+    } else {
+      schedulePoll();
+    }
   }
 }
 
