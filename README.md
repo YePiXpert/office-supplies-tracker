@@ -51,15 +51,25 @@ pnpm test          # 前后端全部（vitest）
 cd apps/ocr && pytest   # 解析器单测 + API 集成（无需 paddle）
 ```
 
-## Docker 部署
+## Docker 部署（VPS）
+
+**首次部署**（服务器上装好 git 与 docker 后）：
 
 ```bash
-export OCR_API_KEY=<随机串>
-docker compose up -d --build
-# 访问 http://<host>:8080
+git clone https://github.com/YePiXpert/procure-lite.git && cd procure-lite
+bash deploy/deploy.sh          # 默认 8080 端口；自定义：bash deploy/deploy.sh 9000
 ```
 
-数据落在 `procure-state` 卷（SQLite + 附件 + 备份），可在「系统设置」中开启自动备份并下载异地保存。
+脚本会自动生成 `.env`（随机 OCR_API_KEY）、构建并启动三个容器、等待健康检查通过。首次访问 `http://<服务器IP>:8080` 设置管理员密码。OCR 镜像首次构建需 5–15 分钟（含 PaddleOCR 模型下载）。
+
+**版本升级**：
+
+```bash
+bash deploy/upgrade.sh         # 拉取最新代码 → 备份数据 → 重建 web/server → 健康检查
+bash deploy/upgrade.sh --full  # 同时重建 OCR 镜像（改动了解析服务时用）
+```
+
+升级前会自动把数据卷（数据库 + 附件 + 配置）打包到 `pre-upgrade-backups/`（保留最近 5 份），脚本末尾附带失败时的回滚命令。数据落在 `procure-state` 卷，日常还可在「系统设置」中开启自动备份并下载异地保存。
 
 ## 安全模型
 

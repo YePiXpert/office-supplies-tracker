@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: deploy/Dockerfile.web
     ports:
-      - "8080:80"
+      - "${WEB_PORT:-8080}:80"
     depends_on:
       - server
     restart: unless-stopped
