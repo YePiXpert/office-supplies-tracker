@@ -1,7 +1,10 @@
 name: procure-lite
 
+# 镜像优先从 GHCR 拉取（CI 自动构建推送）；
+# 若无法访问 GHCR 或需要本地改动，docker compose up --build 走本地构建
 services:
   web:
+    image: ghcr.io/yepixpert/procure-lite-web:latest
     build:
       context: .
       dockerfile: deploy/Dockerfile.web
@@ -12,6 +15,7 @@ services:
     restart: unless-stopped
 
   server:
+    image: ghcr.io/yepixpert/procure-lite-server:latest
     build:
       context: .
       dockerfile: deploy/Dockerfile.server
@@ -26,6 +30,7 @@ services:
     restart: unless-stopped
 
   ocr:
+    image: ghcr.io/yepixpert/procure-lite-ocr:latest
     build:
       context: .
       dockerfile: deploy/Dockerfile.ocr

@@ -53,6 +53,10 @@ cd apps/ocr && pytest   # 解析器单测 + API 集成（无需 paddle）
 
 ## Docker 部署（VPS）
 
+每次 push 到 `main`，GitHub Actions 会自动跑完全部测试后把三个镜像构建并推送到 GHCR（`ghcr.io/yepixpert/procure-lite-{web,server,ocr}`），**VPS 上不需要编译**，直接拉镜像。
+
+> GHCR 包默认私有。首次发布后到 GitHub → 你的 Packages → 各镜像 → Settings → Change visibility 改为 **Public**（公开仓库无敏感信息）；或保持私有并在 VPS 上 `docker login ghcr.io`（PAT 勾选 `read:packages`）。
+
 **首次部署**（服务器上装好 git 与 docker 后）：
 
 ```bash
@@ -60,13 +64,14 @@ git clone https://github.com/YePiXpert/procure-lite.git && cd procure-lite
 bash deploy/deploy.sh          # 默认 8080 端口；自定义：bash deploy/deploy.sh 9000
 ```
 
-脚本会自动生成 `.env`（随机 OCR_API_KEY）、构建并启动三个容器、等待健康检查通过。首次访问 `http://<服务器IP>:8080` 设置管理员密码。OCR 镜像首次构建需 5–15 分钟（含 PaddleOCR 模型下载）。
+脚本自动完成：生成 `.env`（随机 OCR_API_KEY）→ 从 GHCR 拉镜像并启动（拉取失败自动回退本地构建）→ 健康检查。首次访问 `http://<服务器IP>:8080` 设置管理员密码。
 
 **版本升级**：
 
 ```bash
-bash deploy/upgrade.sh         # 拉取最新代码 → 备份数据 → 重建 web/server → 健康检查
-bash deploy/upgrade.sh --full  # 同时重建 OCR 镜像（改动了解析服务时用）
+bash deploy/upgrade.sh             # git pull + 拉新镜像 → 备份数据 → 滚动升级
+bash deploy/upgrade.sh --build     # 不等 CI，直接本地构建（--full 连 OCR 一起）
+bash deploy/upgrade.sh --no-pull   # 只更新镜像，不动代码
 ```
 
 升级前会自动把数据卷（数据库 + 附件 + 配置）打包到 `pre-upgrade-backups/`（保留最近 5 份），脚本末尾附带失败时的回滚命令。数据落在 `procure-state` 卷，日常还可在「系统设置」中开启自动备份并下载异地保存。

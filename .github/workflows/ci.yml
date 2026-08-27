@@ -3,7 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   web:
@@ -58,13 +64,49 @@ jobs:
         run: pytest -v
 
   docker:
-    name: Docker 镜像构建
+    name: 镜像（${{ matrix.name }}）构建并推送 GHCR
     runs-on: ubuntu-latest
     needs: [web, server, ocr]
+    # PR 只验证构建不推送；push / 手动触发推送 ghcr.io
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: web
+            dockerfile: deploy/Dockerfile.web
+          - name: server
+            dockerfile: deploy/Dockerfile.server
+          - name: ocr
+            dockerfile: deploy/Dockerfile.ocr
     steps:
       - uses: actions/checkout@v4
-      - name: 构建三个镜像
-        run: |
-          docker build -f deploy/Dockerfile.web -t procure-lite/web:ci .
-          docker build -f deploy/Dockerfile.server -t procure-lite/server:ci .
-          docker build -f deploy/Dockerfile.ocr -t procure-lite/ocr:ci .
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 计算镜像标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/procure-lite-${{ matrix.name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+            type=sha,prefix=sha-
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GHA 构建缓存：OCR 镜像数 GB，命中缓存后增量构建只需几分钟
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
