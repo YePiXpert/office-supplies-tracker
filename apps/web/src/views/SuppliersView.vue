@@ -4,58 +4,107 @@ import Button from '@/components/ui/Button.vue';
 import Icon from '@/components/ui/Icon.vue';
 import Input from '@/components/ui/Input.vue';
 import Select from '@/components/ui/Select.vue';
+import SearchInput from '@/components/ui/SearchInput.vue';
 import Badge from '@/components/ui/Badge.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
+import ErrorState from '@/components/ui/ErrorState.vue';
 import Dialog from '@/components/ui/Dialog.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import { suppliersApi, type PriceRecordRow, type SupplierRow } from '@/api';
 import { useToastStore } from '@/stores/toast';
+import { useCatalogStore } from '@/stores/catalog';
 import { formatDate } from '@/utils/datetime';
+import { formatCurrency } from '@/utils/format';
+import { createRequestGuard } from '@/utils/request';
+import { useUrlState } from '@/composables/useUrlState';
 import { apiError } from '@/api/client';
 
 const toast = useToastStore();
-const tab = ref<'suppliers' | 'prices'>('suppliers');
+const catalog = useCatalogStore();
+const priceGuard = createRequestGuard();
+
+const DEFAULTS = { tab: 'suppliers' as string, priceSearch: '', suggest: '' };
+const state = reactive({ ...DEFAULTS });
+useUrlState(state, DEFAULTS);
+
+const tab = computed({
+  get: () => (state.tab === 'prices' ? 'prices' : 'suppliers') as 'suppliers' | 'prices',
+  set: (v) => {
+    state.tab = v;
+  },
+});
 
 const suppliers = ref<SupplierRow[]>([]);
 const prices = ref<PriceRecordRow[]>([]);
-const priceSearch = ref('');
 const loading = ref(true);
+const loadError = ref('');
+const loadingPrices = ref(false);
+let pricesLoaded = false;
 
 const supplierDialogOpen = ref(false);
 const supplierDialogTarget = ref<SupplierRow | null>(null);
 const supplierForm = reactive({ name: '', contact: '', phone: '', note: '' });
+const supplierErrors = reactive<Record<string, string>>({});
 
 const priceDialogOpen = ref(false);
 const priceForm = reactive({ supplierId: '', itemName: '', unitPrice: '', purchaseLink: '' });
+const priceErrors = reactive<Record<string, string>>({});
 
 const deleteTarget = ref<SupplierRow | null>(null);
 const deletePriceTarget = ref<PriceRecordRow | null>(null);
 const saving = ref(false);
 
 /* 采购建议 */
-const suggestQuery = ref('');
 const suggestions = ref<PriceRecordRow[]>([]);
 const suggestLoading = ref(false);
+const suggestedFor = ref('');
 
-async function load(): Promise<void> {
-  loading.value = true;
+async function loadSuppliers(): Promise<void> {
+  loading.value = suppliers.value.length === 0;
   try {
     suppliers.value = await suppliersApi.list();
-    prices.value = await suppliersApi
-      .priceRecords(priceSearch.value ? { itemName: priceSearch.value } : undefined)
-      .catch(() => []);
+    loadError.value = '';
   } catch (e) {
-    toast.error(apiError(e));
+    loadError.value = apiError(e);
   } finally {
     loading.value = false;
   }
 }
-onMounted(load);
+
+async function loadPrices(): Promise<void> {
+  const isCurrent = priceGuard.begin();
+  loadingPrices.value = prices.value.length === 0;
+  try {
+    const rows = await suppliersApi.priceRecords(
+      state.priceSearch ? { itemName: state.priceSearch } : undefined,
+    );
+    if (!isCurrent()) return;
+    prices.value = rows;
+    pricesLoaded = true;
+  } catch (e) {
+    if (isCurrent()) toast.error(apiError(e));
+  } finally {
+    if (isCurrent()) loadingPrices.value = false;
+  }
+}
+
+onMounted(() => {
+  void loadSuppliers();
+  if (tab.value === 'prices') void loadPrices();
+  if (state.suggest) void runSuggest();
+});
+
+function switchTab(t: 'suppliers' | 'prices'): void {
+  if (tab.value === t) return;
+  tab.value = t;
+  if (t === 'prices' && !pricesLoaded) void loadPrices();
+}
 
 const supplierOptions = computed(() => suppliers.value.map((s) => ({ label: s.name, value: String(s.id) })));
 
 function openSupplierDialog(target: SupplierRow | null): void {
   supplierDialogTarget.value = target;
+  Object.keys(supplierErrors).forEach((k) => delete supplierErrors[k]);
   Object.assign(supplierForm, {
     name: target?.name ?? '',
     contact: target?.contact ?? '',
@@ -66,7 +115,11 @@ function openSupplierDialog(target: SupplierRow | null): void {
 }
 
 async function saveSupplier(): Promise<void> {
-  if (!supplierForm.name.trim()) return toast.error('请填写供应商名称');
+  Object.keys(supplierErrors).forEach((k) => delete supplierErrors[k]);
+  if (!supplierForm.name.trim()) {
+    supplierErrors.name = '请填写供应商名称';
+    return;
+  }
   saving.value = true;
   try {
     await suppliersApi.upsert({
@@ -78,7 +131,8 @@ async function saveSupplier(): Promise<void> {
     });
     toast.success('供应商已保存');
     supplierDialogOpen.value = false;
-    await load();
+    catalog.invalidateSuppliers();
+    await loadSuppliers();
   } catch (e) {
     toast.error(apiError(e));
   } finally {
@@ -86,11 +140,22 @@ async function saveSupplier(): Promise<void> {
   }
 }
 
+function openPriceDialog(): void {
+  Object.keys(priceErrors).forEach((k) => delete priceErrors[k]);
+  Object.assign(priceForm, { supplierId: '', itemName: '', unitPrice: '', purchaseLink: '' });
+  priceDialogOpen.value = true;
+}
+
 async function savePrice(): Promise<void> {
-  if (!priceForm.supplierId) return toast.error('请选择供应商');
-  if (!priceForm.itemName.trim()) return toast.error('请填写品名');
+  Object.keys(priceErrors).forEach((k) => delete priceErrors[k]);
+  if (!priceForm.supplierId) priceErrors.supplierId = '请选择供应商';
+  if (!priceForm.itemName.trim()) priceErrors.itemName = '请填写品名';
   const price = Number(priceForm.unitPrice);
-  if (!Number.isFinite(price) || price <= 0) return toast.error('请填写正确的单价');
+  if (priceForm.unitPrice === '' || !Number.isFinite(price) || price <= 0) {
+    priceErrors.unitPrice = '请填写大于 0 的单价';
+  }
+  if (Object.keys(priceErrors).length > 0) return;
+
   saving.value = true;
   try {
     await suppliersApi.addPriceRecord({
@@ -101,7 +166,7 @@ async function savePrice(): Promise<void> {
     });
     toast.success('价格记录已保存');
     priceDialogOpen.value = false;
-    await load();
+    await Promise.all([loadPrices(), loadSuppliers()]);
   } catch (e) {
     toast.error(apiError(e));
   } finally {
@@ -115,7 +180,8 @@ async function removeSupplier(): Promise<void> {
     await suppliersApi.remove(deleteTarget.value.id);
     toast.success('供应商已删除');
     deleteTarget.value = null;
-    await load();
+    catalog.invalidateSuppliers();
+    await loadSuppliers();
   } catch (e) {
     toast.error(apiError(e));
   }
@@ -127,26 +193,28 @@ async function removePrice(): Promise<void> {
     await suppliersApi.removePriceRecord(deletePriceTarget.value.id);
     toast.success('价格记录已删除');
     deletePriceTarget.value = null;
-    await load();
+    await Promise.all([loadPrices(), loadSuppliers()]);
   } catch (e) {
     toast.error(apiError(e));
   }
 }
 
 async function runSuggest(): Promise<void> {
-  if (!suggestQuery.value.trim()) return;
+  const query = state.suggest.trim();
+  if (!query) {
+    suggestions.value = [];
+    suggestedFor.value = '';
+    return;
+  }
   suggestLoading.value = true;
   try {
-    suggestions.value = await suppliersApi.suggest(suggestQuery.value.trim());
+    suggestions.value = await suppliersApi.suggest(query);
+    suggestedFor.value = query;
   } catch (e) {
     toast.error(apiError(e));
   } finally {
     suggestLoading.value = false;
   }
-}
-
-function fmtTime(dt: string): string {
-  return formatDate(dt);
 }
 </script>
 
@@ -154,20 +222,23 @@ function fmtTime(dt: string): string {
   <div class="space-y-4">
     <!-- 采购建议 -->
     <div class="card p-4">
-      <h2 class="text-sm font-bold text-ink mb-2.5">比价建议</h2>
+      <h2 class="text-sm font-bold text-ink mb-1">比价建议</h2>
+      <p class="text-xs text-faint mb-2.5">按品名查各家最新报价；下单登记时也会自动提示</p>
       <div class="flex gap-2">
-        <div class="relative flex-1 max-w-sm">
-          <Icon name="search" :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-          <input
-            v-model="suggestQuery"
-            class="w-full h-9.5 pl-9 pr-3 text-sm bg-surface border border-line-strong rounded-(--radius-control) focus:border-primary focus:outline-none"
-            placeholder="输入品名查各家最新报价"
-            @keyup.enter="runSuggest"
-          />
-        </div>
+        <SearchInput
+          v-model="state.suggest"
+          class="flex-1 max-w-sm"
+          placeholder="输入品名查各家最新报价"
+          :delay="0"
+          @search="runSuggest"
+        />
         <Button variant="primary" size="md" :loading="suggestLoading" @click="runSuggest">查价</Button>
       </div>
-      <div v-if="suggestions.length > 0" class="mt-3 overflow-x-auto">
+
+      <p v-if="suggestedFor && suggestions.length === 0 && !suggestLoading" class="mt-3 text-xs text-faint">
+        「{{ suggestedFor }}」还没有报价记录。品名需要与记价时完全一致才能匹配上。
+      </p>
+      <div v-else-if="suggestions.length > 0" class="mt-3 overflow-x-auto">
         <table class="table-base min-w-[560px]">
           <thead><tr><th>供应商</th><th class="text-right">单价</th><th>链接</th><th>报价时间</th></tr></thead>
           <tbody>
@@ -176,12 +247,12 @@ function fmtTime(dt: string): string {
                 <span class="font-medium">{{ s.supplier.name }}</span>
                 <Badge v-if="i === 0" tone="teal" class="ml-1.5">最低价</Badge>
               </td>
-              <td class="text-right num font-semibold">¥{{ s.unitPrice }}</td>
+              <td class="text-right num font-semibold">{{ formatCurrency(s.unitPrice) }}</td>
               <td>
                 <a v-if="s.purchaseLink" :href="s.purchaseLink" target="_blank" rel="noopener" class="text-primary hover:underline text-xs">打开链接</a>
                 <span v-else class="text-faint text-xs">—</span>
               </td>
-              <td class="text-xs text-faint num">{{ fmtTime(s.createdAt) }}</td>
+              <td class="text-xs text-faint num">{{ formatDate(s.createdAt) }}</td>
             </tr>
           </tbody>
         </table>
@@ -195,12 +266,12 @@ function fmtTime(dt: string): string {
           :key="t.key"
           class="px-3 h-9 text-sm font-medium rounded-t-lg cursor-pointer transition-colors"
           :class="tab === t.key ? 'text-primary border-b-2 border-primary bg-primary-soft/40' : 'text-muted hover:text-text'"
-          @click="tab = t.key as 'suppliers' | 'prices'"
+          @click="switchTab(t.key as 'suppliers' | 'prices')"
         >
           {{ t.label }}
         </button>
         <div class="ml-auto flex items-center gap-2 pb-1.5">
-          <Button v-if="tab === 'prices'" variant="secondary" size="sm" @click="Object.assign(priceForm, { supplierId: '', itemName: '', unitPrice: '', purchaseLink: '' }); priceDialogOpen = true">
+          <Button v-if="tab === 'prices'" variant="secondary" size="sm" @click="openPriceDialog">
             <Icon name="plus" :size="13" /> 记一笔价格
           </Button>
           <Button variant="primary" size="sm" @click="openSupplierDialog(null)">
@@ -212,15 +283,19 @@ function fmtTime(dt: string): string {
       <!-- 供应商列表 -->
       <template v-if="tab === 'suppliers'">
         <div v-if="loading" class="py-14 text-center text-sm text-faint">加载中…</div>
+        <ErrorState v-else-if="loadError" :message="loadError" @retry="loadSuppliers" />
         <EmptyState v-else-if="suppliers.length === 0" icon="supplier" title="还没有供应商" description="把常用的几家加进来，采购时快速选择" />
-        <div v-else class="overflow-x-auto">
-          <table class="table-base min-w-[640px]">
+        <div v-else class="overflow-x-auto max-h-[calc(100dvh-420px)]">
+          <table class="table-base table-sticky min-w-[640px]">
             <thead><tr><th>名称</th><th>联系人</th><th>电话</th><th class="text-right">关联台账</th><th class="text-right">报价数</th><th class="w-24">操作</th></tr></thead>
             <tbody>
               <tr v-for="s in suppliers" :key="s.id">
                 <td class="font-medium">{{ s.name }}</td>
                 <td class="text-xs">{{ s.contact ?? '—' }}</td>
-                <td class="text-xs num">{{ s.phone ?? '—' }}</td>
+                <td class="text-xs num">
+                  <a v-if="s.phone" :href="`tel:${s.phone}`" class="hover:text-primary hover:underline">{{ s.phone }}</a>
+                  <template v-else>—</template>
+                </td>
                 <td class="text-right num">{{ s._count?.items ?? 0 }}</td>
                 <td class="text-right num">{{ s._count?.priceRecords ?? 0 }}</td>
                 <td>
@@ -238,30 +313,29 @@ function fmtTime(dt: string): string {
       <!-- 价格记录 -->
       <template v-else>
         <div class="flex items-center gap-2.5 px-4 py-3 border-b border-line">
-          <div class="relative flex-1 max-w-xs">
-            <Icon name="search" :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-            <input
-              v-model="priceSearch"
-              class="w-full h-9 pl-9 pr-3 text-sm bg-surface border border-line-strong rounded-(--radius-control) focus:border-primary focus:outline-none"
-              placeholder="按品名过滤"
-              @keyup.enter="load"
-            />
-          </div>
+          <SearchInput v-model="state.priceSearch" class="flex-1 max-w-xs" placeholder="按品名过滤" @search="loadPrices" />
+          <p v-if="prices.length >= 200" class="text-xs text-amber">仅显示最近 200 条，请用品名过滤</p>
         </div>
-        <EmptyState v-if="prices.length === 0" icon="supplier" title="暂无价格记录" description="下单时顺手记下单价，下次自动比价" />
-        <div v-else class="overflow-x-auto">
-          <table class="table-base min-w-[640px]">
+        <div v-if="loadingPrices" class="py-14 text-center text-sm text-faint">加载中…</div>
+        <EmptyState
+          v-else-if="prices.length === 0"
+          icon="supplier"
+          :title="state.priceSearch ? '没有匹配的价格记录' : '暂无价格记录'"
+          description="下单时顺手记下单价，下次自动比价"
+        />
+        <div v-else class="overflow-x-auto max-h-[calc(100dvh-420px)]">
+          <table class="table-base table-sticky min-w-[640px]">
             <thead><tr><th>品名</th><th>供应商</th><th class="text-right">单价</th><th>链接</th><th>时间</th><th class="w-16" /></tr></thead>
             <tbody>
               <tr v-for="p in prices" :key="p.id">
                 <td class="font-medium">{{ p.itemName }}</td>
                 <td class="text-xs">{{ p.supplier.name }}</td>
-                <td class="text-right num">¥{{ p.unitPrice }}</td>
+                <td class="text-right num">{{ formatCurrency(p.unitPrice) }}</td>
                 <td>
                   <a v-if="p.purchaseLink" :href="p.purchaseLink" target="_blank" rel="noopener" class="text-primary hover:underline text-xs">链接</a>
                   <span v-else class="text-faint text-xs">—</span>
                 </td>
-                <td class="text-xs text-faint num">{{ fmtTime(p.createdAt) }}</td>
+                <td class="text-xs text-faint num">{{ formatDate(p.createdAt) }}</td>
                 <td>
                   <button class="p-1.5 text-faint hover:text-red cursor-pointer" title="删除" @click="deletePriceTarget = p"><Icon name="trash" :size="14" /></button>
                 </td>
@@ -275,10 +349,10 @@ function fmtTime(dt: string): string {
     <!-- 供应商对话框 -->
     <Dialog :open="supplierDialogOpen" :title="supplierDialogTarget ? '编辑供应商' : '新增供应商'" width="440px" @update:open="supplierDialogOpen = $event">
       <div class="space-y-3.5">
-        <Input v-model="supplierForm.name" label="名称" required placeholder="如：得力官方旗舰店" />
+        <Input v-model="supplierForm.name" label="名称" required placeholder="如：得力官方旗舰店" :error="supplierErrors.name" />
         <div class="grid grid-cols-2 gap-3">
           <Input v-model="supplierForm.contact" label="联系人" />
-          <Input v-model="supplierForm.phone" label="电话" />
+          <Input v-model="supplierForm.phone" label="电话" type="tel" />
         </div>
         <Input v-model="supplierForm.note" label="备注" />
       </div>
@@ -291,9 +365,14 @@ function fmtTime(dt: string): string {
     <!-- 价格记录对话框 -->
     <Dialog :open="priceDialogOpen" title="记一笔价格" width="440px" @update:open="priceDialogOpen = $event">
       <div class="space-y-3.5">
-        <Select v-model="priceForm.supplierId" label="供应商" :options="supplierOptions" required />
-        <Input v-model="priceForm.itemName" label="品名" required placeholder="与台账品名保持一致可自动比价" />
-        <Input v-model="priceForm.unitPrice" label="单价" type="number" min="0" step="any" required />
+        <div>
+          <Select v-model="priceForm.supplierId" label="供应商" :options="supplierOptions" required />
+          <p v-if="priceErrors.supplierId" class="mt-1 flex items-center gap-1 text-xs text-red">
+            <Icon name="alert" :size="12" />{{ priceErrors.supplierId }}
+          </p>
+        </div>
+        <Input v-model="priceForm.itemName" label="品名" required placeholder="与台账品名保持一致可自动比价" :error="priceErrors.itemName" />
+        <Input v-model="priceForm.unitPrice" label="单价" type="number" min="0" step="any" required :error="priceErrors.unitPrice" />
         <Input v-model="priceForm.purchaseLink" label="商品链接" placeholder="https://…" />
       </div>
       <template #footer>

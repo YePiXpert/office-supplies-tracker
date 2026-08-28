@@ -6,12 +6,17 @@ import Icon from '@/components/ui/Icon.vue';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
 import Badge from '@/components/ui/Badge.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
-import { itemsApi, http, downloadFile, type ItemRow } from '@/api';
+import { attachmentsApi, itemsApi, downloadFile, type AttachmentRow, type ItemRow } from '@/api';
 import { useToastStore } from '@/stores/toast';
 import { apiError } from '@/api/client';
+import { formatDateTime } from '@/utils/datetime';
+import { formatBytes, formatCurrency } from '@/utils/format';
 import {
+  ATTACHMENT_KIND_LABELS,
+  ITEM_FIELD_LABELS,
   ITEM_STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
+  type AttachmentKind,
   type ItemStatus,
   type PaymentStatus,
 } from '@procure-lite/shared';
@@ -22,32 +27,33 @@ interface HistoryRow {
   changedFields: string | null;
   createdAt: string;
 }
-interface AttachmentRow {
-  id: number;
-  kind: string;
-  filename: string;
-  createdAt: string;
-}
 
 const props = defineProps<{ open: boolean; item: ItemRow | null }>();
-const emit = defineEmits<{ 'update:open': [v: boolean]; changed: [] }>();
+const emit = defineEmits<{ 'update:open': [v: boolean]; changed: []; edit: [item: ItemRow] }>();
 
 const toast = useToastStore();
 const history = ref<HistoryRow[]>([]);
 const attachments = ref<AttachmentRow[]>([]);
 const rollbackTarget = ref<HistoryRow | null>(null);
+const deleteAttachment = ref<AttachmentRow | null>(null);
+const uploading = ref(false);
+const uploadKind = ref<'INVOICE' | 'SIGNOFF'>('INVOICE');
+
+const MAX_ATTACHMENT_MB = 20;
 
 watch(
   () => [props.open, props.item?.id],
   async () => {
     if (!props.open || !props.item) return;
     history.value = await itemsApi.history(props.item.id).catch(() => []);
-    attachments.value = await http
-      .get<AttachmentRow[]>('/attachments', { params: { itemId: props.item.id } })
-      .then((r) => r.data)
-      .catch(() => []);
+    await loadAttachments();
   },
 );
+
+async function loadAttachments(): Promise<void> {
+  if (!props.item) return;
+  attachments.value = await attachmentsApi.list({ itemId: props.item.id }).catch(() => []);
+}
 
 const ACTION_LABELS: Record<string, string> = {
   CREATE: '创建',
@@ -63,15 +69,38 @@ const ACTION_LABELS: Record<string, string> = {
   RESTORE: '恢复',
 };
 
-const changedSummary = computed(() => (row: HistoryRow) => {
-  if (!row.changedFields) return '';
+/** 把存进历史的原始值翻成人话 */
+function displayValue(field: string, value: unknown): string {
+  if (value == null || value === '') return '空';
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (field === 'status') return ITEM_STATUS_LABELS[value as ItemStatus] ?? String(value);
+  if (field === 'paymentStatus') return PAYMENT_STATUS_LABELS[value as PaymentStatus] ?? String(value);
+  if (field === 'unitPrice') return formatCurrency(Number(value));
+  return String(value);
+}
+
+interface FieldChange {
+  label: string;
+  before: string;
+  after: string;
+}
+
+/** 普通函数，不是 computed 返回函数：后者对每行都会重跑且完全没有缓存 */
+function changesOf(row: HistoryRow): FieldChange[] {
+  if (!row.changedFields) return [];
   try {
     const changed = JSON.parse(row.changedFields) as Record<string, [unknown, unknown]>;
-    return Object.keys(changed).join('、');
+    return Object.entries(changed)
+      .filter(([field]) => field !== 'supplierId') // 与 supplierName 重复，只留可读的那个
+      .map(([field, [before, after]]) => ({
+        label: ITEM_FIELD_LABELS[field] ?? field,
+        before: displayValue(field, before),
+        after: displayValue(field, after),
+      }));
   } catch {
-    return '';
+    return [];
   }
-});
+}
 
 async function doRollback(): Promise<void> {
   if (!props.item || !rollbackTarget.value) return;
@@ -90,28 +119,47 @@ async function uploadAttachment(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file || !props.item) return;
-  const form = new FormData();
-  form.append('file', file);
-  form.append('kind', 'INVOICE');
+  if (file.size > MAX_ATTACHMENT_MB * 1024 * 1024) {
+    toast.error(`附件不能超过 ${MAX_ATTACHMENT_MB}MB（当前 ${formatBytes(file.size)}）`);
+    input.value = '';
+    return;
+  }
+  uploading.value = true;
   try {
-    await http.post(`/attachments/items/${props.item.id}`, form, { headers: { 'content-type': 'multipart/form-data' } });
+    await attachmentsApi.uploadForItem(props.item.id, file, uploadKind.value);
     toast.success('附件已上传');
-    attachments.value = await http
-      .get<AttachmentRow[]>('/attachments', { params: { itemId: props.item.id } })
-      .then((r) => r.data);
+    await loadAttachments();
   } catch (err) {
     toast.error(apiError(err));
   } finally {
+    uploading.value = false;
     input.value = '';
   }
 }
 
-function fmt(dt: string | Date | null | undefined): string {
-  if (!dt) return '—';
-  const d = new Date(dt);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+async function removeAttachment(): Promise<void> {
+  const target = deleteAttachment.value;
+  if (!target) return;
+  try {
+    await attachmentsApi.remove(target.id);
+    toast.success('附件已删除');
+    deleteAttachment.value = null;
+    await loadAttachments();
+  } catch (e) {
+    toast.error(apiError(e));
+  }
 }
+
+function download(a: AttachmentRow): void {
+  downloadFile(`/attachments/${a.id}/download`, a.filename).catch((err) => toast.error(apiError(err)));
+}
+
+const kindTone = (kind: string) =>
+  kind === 'OA_DOC' ? 'blue' : kind === 'SIGNOFF' ? 'teal' : 'gray';
+
+const amount = computed(() =>
+  props.item?.unitPrice != null ? formatCurrency(props.item.unitPrice * props.item.quantity) : '—',
+);
 </script>
 
 <template>
@@ -123,10 +171,18 @@ function fmt(dt: string | Date | null | undefined): string {
     @update:open="emit('update:open', $event)"
   >
     <template v-if="props.item">
-      <div class="flex items-center gap-2 mb-4">
+      <div class="flex flex-wrap items-center gap-2 mb-4">
         <StatusBadge :status="props.item.status" />
         <Badge tone="gray">{{ PAYMENT_STATUS_LABELS[props.item.paymentStatus as PaymentStatus] ?? props.item.paymentStatus }}</Badge>
         <Badge v-if="props.item.invoiceIssued" tone="teal">已开票</Badge>
+        <Button
+          size="sm"
+          variant="ghost"
+          class="ml-auto"
+          @click="emit('edit', props.item); emit('update:open', false)"
+        >
+          <Icon name="edit" :size="12" /> 编辑
+        </Button>
       </div>
 
       <dl class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5 text-sm">
@@ -134,13 +190,13 @@ function fmt(dt: string | Date | null | undefined): string {
         <div><dt class="text-xs text-faint">经办人</dt><dd>{{ props.item.handler }}</dd></div>
         <div><dt class="text-xs text-faint">申请日期</dt><dd class="num">{{ props.item.requestDate }}</dd></div>
         <div><dt class="text-xs text-faint">数量</dt><dd class="num">{{ props.item.quantity }}{{ props.item.unit ?? '' }}</dd></div>
-        <div><dt class="text-xs text-faint">单价</dt><dd class="num">{{ props.item.unitPrice != null ? `¥${props.item.unitPrice}` : '—' }}</dd></div>
+        <div><dt class="text-xs text-faint">单价 / 金额</dt><dd class="num">{{ formatCurrency(props.item.unitPrice) }} / {{ amount }}</dd></div>
         <div><dt class="text-xs text-faint">供应商</dt><dd>{{ props.item.supplierName ?? '—' }}</dd></div>
         <div><dt class="text-xs text-faint">到货日期</dt><dd class="num">{{ props.item.arrivalDate ?? '—' }}</dd></div>
         <div><dt class="text-xs text-faint">发放日期</dt><dd class="num">{{ props.item.distributionDate ?? '—' }}</dd></div>
         <div class="col-span-2 sm:col-span-3">
           <dt class="text-xs text-faint">采购链接</dt>
-          <dd class="truncate">
+          <dd>
             <a v-if="props.item.purchaseLink" :href="props.item.purchaseLink" target="_blank" rel="noopener" class="text-primary hover:underline break-all">{{ props.item.purchaseLink }}</a>
             <template v-else>—</template>
           </dd>
@@ -149,26 +205,45 @@ function fmt(dt: string | Date | null | undefined): string {
           <dt class="text-xs text-faint">签收信息</dt><dd>{{ props.item.signoffNote }}</dd>
         </div>
         <div v-if="props.item.note" class="col-span-2 sm:col-span-3">
-          <dt class="text-xs text-faint">备注</dt><dd>{{ props.item.note }}</dd>
+          <dt class="text-xs text-faint">备注</dt><dd class="break-words">{{ props.item.note }}</dd>
         </div>
       </dl>
 
       <!-- 附件 -->
       <div class="mt-5 pt-4 border-t border-line">
-        <div class="flex items-center justify-between mb-2">
-          <h3 class="text-xs font-bold text-muted">发票附件</h3>
-          <label class="inline-flex items-center gap-1 text-xs text-primary cursor-pointer hover:underline">
-            <Icon name="upload" :size="12" /> 上传
-            <input type="file" accept=".pdf,.png,.jpg,.jpeg" class="hidden" @change="uploadAttachment" />
-          </label>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 class="text-xs font-bold text-muted">附件</h3>
+          <div class="flex items-center gap-2">
+            <label class="flex items-center gap-1 text-meta text-muted cursor-pointer">
+              <input v-model="uploadKind" type="radio" value="INVOICE" class="accent-[#2563EB]" /> 发票
+            </label>
+            <label class="flex items-center gap-1 text-meta text-muted cursor-pointer">
+              <input v-model="uploadKind" type="radio" value="SIGNOFF" class="accent-[#2563EB]" /> 签收单
+            </label>
+            <label
+              class="inline-flex items-center gap-1 text-xs cursor-pointer hover:underline"
+              :class="uploading ? 'text-faint pointer-events-none' : 'text-primary'"
+            >
+              <Icon name="upload" :size="12" /> {{ uploading ? '上传中…' : '上传' }}
+              <input type="file" accept=".pdf,.png,.jpg,.jpeg" class="hidden" :disabled="uploading" @change="uploadAttachment" />
+            </label>
+          </div>
         </div>
-        <p v-if="attachments.length === 0" class="text-xs text-faint">暂无附件</p>
+        <p v-if="attachments.length === 0" class="text-xs text-faint">
+          暂无附件（从 OA 导入的单据会自动留存原件）
+        </p>
         <ul v-else class="space-y-1">
-          <li v-for="a in attachments" :key="a.id" class="flex items-center justify-between gap-2 text-sm">
-            <button class="truncate text-primary hover:underline cursor-pointer" @click="downloadFile(`/attachments/${a.id}/download`, a.filename).catch((err) => toast.error(apiError(err)))">
-              <Icon name="file" :size="12" class="inline mr-1" />{{ a.filename }}
+          <li v-for="a in attachments" :key="a.id" class="flex items-center gap-2 text-sm">
+            <Badge :tone="kindTone(a.kind)" class="shrink-0">
+              {{ ATTACHMENT_KIND_LABELS[a.kind as AttachmentKind] ?? a.kind }}
+            </Badge>
+            <button class="min-w-0 truncate text-primary hover:underline cursor-pointer" :title="a.filename" @click="download(a)">
+              <Icon :name="a.mimeType.startsWith('image/') ? 'image' : 'file'" :size="12" class="inline mr-1" />{{ a.filename }}
             </button>
-            <span class="text-[11px] text-faint shrink-0">{{ fmt(a.createdAt) }}</span>
+            <span class="ml-auto text-meta text-faint shrink-0 num">{{ formatBytes(a.sizeBytes) }} · {{ formatDateTime(a.createdAt) }}</span>
+            <button class="shrink-0 p-1 text-faint hover:text-red cursor-pointer" title="删除附件" @click="deleteAttachment = a">
+              <Icon name="trash" :size="13" />
+            </button>
           </li>
         </ul>
       </div>
@@ -177,19 +252,25 @@ function fmt(dt: string | Date | null | undefined): string {
       <div class="mt-5 pt-4 border-t border-line">
         <h3 class="text-xs font-bold text-muted mb-2">修改历史（可回滚）</h3>
         <p v-if="history.length === 0" class="text-xs text-faint">暂无历史</p>
-        <ul v-else class="space-y-1 max-h-56 overflow-y-auto">
+        <ul v-else class="space-y-1.5 max-h-64 overflow-y-auto">
           <li
             v-for="h in history"
             :key="h.id"
-            class="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-canvas/60 text-sm"
+            class="flex items-start justify-between gap-2 px-2.5 py-2 rounded-lg bg-canvas/60 text-sm"
           >
             <div class="min-w-0">
-              <p class="font-medium">{{ ACTION_LABELS[h.action] ?? h.action }}
-                <span v-if="changedSummary(h)" class="text-faint font-normal text-xs">· 改了 {{ changedSummary(h) }}</span>
-              </p>
-              <p class="text-[11px] text-faint num">{{ fmt(h.createdAt) }}</p>
+              <p class="font-medium">{{ ACTION_LABELS[h.action] ?? h.action }}</p>
+              <ul v-if="changesOf(h).length > 0" class="mt-1 space-y-0.5">
+                <li v-for="c in changesOf(h)" :key="c.label" class="text-meta text-muted">
+                  <span class="text-faint">{{ c.label }}</span>
+                  <span class="mx-1 line-through opacity-60">{{ c.before }}</span>
+                  <Icon name="chevron-right" :size="9" class="inline text-faint" />
+                  <span class="ml-1 font-medium text-ink">{{ c.after }}</span>
+                </li>
+              </ul>
+              <p class="mt-0.5 text-meta text-faint num">{{ formatDateTime(h.createdAt) }}</p>
             </div>
-            <Button v-if="h.action !== 'DELETE'" size="sm" variant="ghost" @click="rollbackTarget = h">回滚到此</Button>
+            <Button v-if="h.action !== 'DELETE'" size="sm" variant="ghost" class="shrink-0" @click="rollbackTarget = h">回滚到此</Button>
           </li>
         </ul>
       </div>
@@ -199,9 +280,18 @@ function fmt(dt: string | Date | null | undefined): string {
   <ConfirmDialog
     :open="!!rollbackTarget"
     title="回滚确认"
-    :message="`将把该记录恢复到「${rollbackTarget ? fmt(rollbackTarget.createdAt) : ''}」时的状态，此操作本身也会记入历史。`"
+    :message="`将把该记录恢复到「${rollbackTarget ? formatDateTime(rollbackTarget.createdAt) : ''}」时的状态，此操作本身也会记入历史。`"
     confirm-text="回滚"
     @update:open="rollbackTarget = null"
     @confirm="doRollback"
+  />
+  <ConfirmDialog
+    :open="!!deleteAttachment"
+    title="删除附件"
+    :message="`「${deleteAttachment?.filename}」将被删除，不可恢复。`"
+    confirm-text="删除"
+    danger
+    @update:open="deleteAttachment = null"
+    @confirm="removeAttachment"
   />
 </template>

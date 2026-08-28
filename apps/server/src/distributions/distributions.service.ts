@@ -188,7 +188,8 @@ export class DistributionsService {
       if (query.dateFrom) where.date.gte = query.dateFrom;
       if (query.dateTo) where.date.lte = query.dateTo;
     }
-    if (query.department) where.department = query.department;
+    // 与领用人一致用模糊匹配：部门名是手填的，前端给的是搜索框而不是固定下拉
+    if (query.department) where.department = { contains: query.department };
     if (query.recipient || query.search) {
       const recipient = query.recipient ?? query.search;
       where.lines = { some: { recipient: { contains: recipient } } };

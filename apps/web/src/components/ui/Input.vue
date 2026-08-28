@@ -1,5 +1,7 @@
 <script setup lang="ts">
-const props = withDefaults(
+import Icon from './Icon.vue';
+
+withDefaults(
   defineProps<{
     modelValue?: string | number | null;
     label?: string;
@@ -8,17 +10,24 @@ const props = withDefaults(
     disabled?: boolean;
     required?: boolean;
     hint?: string;
+    /** 字段级错误：有值时输入框转红并在下方给出原因 */
+    error?: string;
     min?: string | number;
     max?: string | number;
     step?: string | number;
+    autocomplete?: string;
+    /** 输入建议来源（datalist），如历史领用人、部门 */
+    suggestions?: string[];
   }>(),
   { type: 'text' },
 );
-const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
+const emit = defineEmits<{
+  'update:modelValue': [value: string];
+  blur: [e: FocusEvent];
+  enter: [];
+}>();
 
-function onInput(e: Event): void {
-  emit('update:modelValue', (e.target as HTMLInputElement).value);
-}
+const listId = `dl-${Math.random().toString(36).slice(2, 9)}`;
 </script>
 
 <template>
@@ -35,10 +44,24 @@ function onInput(e: Event): void {
       :min="min"
       :max="max"
       :step="step"
+      :autocomplete="autocomplete"
+      :list="suggestions?.length ? listId : undefined"
       :aria-label="label"
-      class="w-full h-9.5 px-3 text-sm bg-surface border border-line-strong rounded-(--radius-control) placeholder:text-faint disabled:bg-canvas disabled:cursor-not-allowed focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 transition-colors"
-      @input="onInput"
+      :aria-invalid="error ? 'true' : undefined"
+      class="w-full h-9.5 px-3 text-sm bg-surface border rounded-(--radius-control) placeholder:text-faint disabled:bg-canvas disabled:cursor-not-allowed focus:outline-none focus:ring-2 transition-colors"
+      :class="error
+        ? 'border-red focus:border-red focus:ring-red/15'
+        : 'border-line-strong focus:border-primary focus:ring-primary/15'"
+      @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+      @blur="emit('blur', $event)"
+      @keyup.enter="emit('enter')"
     />
-    <span v-if="hint" class="block mt-1 text-xs text-faint">{{ hint }}</span>
+    <datalist v-if="suggestions?.length" :id="listId">
+      <option v-for="s in suggestions" :key="s" :value="s" />
+    </datalist>
+    <span v-if="error" class="mt-1 flex items-start gap-1 text-xs text-red">
+      <Icon name="alert" :size="12" class="mt-0.5 shrink-0" />{{ error }}
+    </span>
+    <span v-else-if="hint" class="block mt-1 text-xs text-faint">{{ hint }}</span>
   </label>
 </template>

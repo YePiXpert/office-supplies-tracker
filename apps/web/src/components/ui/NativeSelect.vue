@@ -1,0 +1,46 @@
+<script setup lang="ts">
+import Icon from './Icon.vue';
+import type { SelectOption } from './types';
+
+/**
+ * 原生 select 的统一皮肤。
+ *
+ * 表格行内、批量工具条这类高密度、可能同屏几十个的位置用它：
+ * reka-ui 的 Select 每个都要挂 portal，成本不划算，而原生控件在移动端的
+ * 滚轮选择器体验反而更好。表单里的单个选择仍然用 Select.vue。
+ */
+withDefaults(
+  defineProps<{
+    modelValue?: string | null;
+    options: SelectOption[];
+    placeholder?: string;
+    size?: 'sm' | 'md';
+    disabled?: boolean;
+    ariaLabel?: string;
+  }>(),
+  { size: 'md' },
+);
+const emit = defineEmits<{ 'update:modelValue': [v: string] }>();
+</script>
+
+<template>
+  <div class="relative inline-flex">
+    <select
+      :value="modelValue ?? ''"
+      :disabled="disabled"
+      :aria-label="ariaLabel"
+      class="appearance-none w-full bg-surface border border-line-strong rounded-(--radius-control) text-text cursor-pointer hover:border-primary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      :class="size === 'sm' ? 'h-7 pl-2 pr-6 text-xs' : 'h-9.5 pl-3 pr-8 text-sm'"
+      @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
+    >
+      <option v-if="placeholder" value="">{{ placeholder }}</option>
+      <option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option>
+    </select>
+    <Icon
+      name="chevron-down"
+      :size="size === 'sm' ? 11 : 14"
+      class="absolute top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+      :class="size === 'sm' ? 'right-1.5' : 'right-2.5'"
+    />
+  </div>
+</template>

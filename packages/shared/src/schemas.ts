@@ -34,13 +34,31 @@ export const itemCreateSchema = z.object({
 });
 export type ItemCreateInput = z.infer<typeof itemCreateSchema>;
 
+/**
+ * 更新语义：字段缺省 = 不改动；显式传 null = 清空。
+ * 可空字段必须声明 .nullable()，否则前端清空后只能传 undefined，
+ * Prisma 会当成「不改」而静默丢弃这次修改。
+ */
 export const itemUpdateSchema = itemCreateSchema.partial().extend({
+  unit: z.string().trim().max(16).nullish(),
+  purchaseLink: z.string().trim().max(500).nullish(),
+  unitPrice: nonNegativeNumber.nullish(),
+  note: z.string().trim().max(500).nullish(),
   paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
   invoiceIssued: z.boolean().optional(),
-  arrivalDate: dateString.optional(),
-  distributionDate: dateString.optional().nullable(),
+  arrivalDate: dateString.nullish(),
+  distributionDate: dateString.nullish(),
 });
 export type ItemUpdateInput = z.infer<typeof itemUpdateSchema>;
+
+/** 台账可清空字段：编辑表单据此把空串转成 null 而不是 undefined */
+export const ITEM_CLEARABLE_FIELDS = [
+  'unit',
+  'purchaseLink',
+  'unitPrice',
+  'note',
+  'arrivalDate',
+] as const;
 
 export const itemQuerySchema = z.object({
   search: z.string().trim().max(100).optional(),
@@ -193,6 +211,8 @@ export const parseResultSchema = z.object({
 export type ParseResult = z.infer<typeof parseResultSchema>;
 
 export const importConfirmSchema = z.object({
+  /** 来源解析任务：用于把 OA 原件转存为台账附件（手工录入时可空） */
+  taskId: z.string().trim().max(64).optional(),
   serialNumber: z.string().trim().min(1, '流水号不能为空').max(64),
   department: z.string().trim().min(1, '部门不能为空').max(64),
   handler: z.string().trim().min(1, '经办人不能为空').max(64),

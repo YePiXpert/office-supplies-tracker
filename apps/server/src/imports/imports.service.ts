@@ -16,6 +16,15 @@ import type { ImportConfirmInput, ParseResult } from '@procure-lite/shared';
 
 const ALLOWED_EXTS = ['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.bmp'];
 
+const MIME_BY_EXT: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+};
+
 export interface ImportTaskView {
   id: string;
   filename: string;
@@ -57,16 +66,17 @@ export class ImportsService implements OnModuleInit {
       throw new BadRequestException(`文件超过 ${Math.floor(config.maxUploadBytes / 1024 / 1024)}MB 限制`);
     }
 
-    // 顺带清理 30 天前的导入任务记录，防止无限增长
-    await this.prisma.importTask
-      .deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 30 * 86400_000) } } })
-      .catch(() => undefined);
+    await this.sweepStaleTasks();
 
     const id = randomUUID();
-    const stored = path.join(config.uploadsDir, `${id}${ext}`);
+    const relative = path.join('imports', `${id}${ext}`);
+    const stored = path.join(config.uploadsDir, relative);
+    fs.mkdirSync(path.dirname(stored), { recursive: true });
     fs.writeFileSync(stored, file.buffer);
 
-    await this.prisma.importTask.create({ data: { id, filename, status: 'RUNNING' } });
+    await this.prisma.importTask.create({
+      data: { id, filename, status: 'RUNNING', storagePath: relative },
+    });
     await this.audit.log('IMPORT_UPLOAD', { entity: 'importTask', entityId: undefined, detail: { id, filename }, ip });
 
     // 异步执行，不阻塞响应
@@ -75,10 +85,33 @@ export class ImportsService implements OnModuleInit {
     return { taskId: id };
   }
 
-  private async runParse(taskId: string, filePath: string, filename: string): Promise<void> {
-    let result: Awaited<ReturnType<OcrClient['parse']>> | undefined;
+  /** 清理 30 天前的任务记录及其未被确认导入的原件，防止 uploads 无限增长 */
+  private async sweepStaleTasks(): Promise<void> {
     try {
-      result = await this.ocr.parse(fs.readFileSync(filePath), filename);
+      const stale = await this.prisma.importTask.findMany({
+        where: { createdAt: { lt: new Date(Date.now() - 30 * 86400_000) } },
+        select: { id: true, storagePath: true },
+      });
+      if (stale.length === 0) return;
+      await this.prisma.importTask.deleteMany({ where: { id: { in: stale.map((t) => t.id) } } });
+      for (const task of stale) {
+        if (!task.storagePath) continue;
+        // 已转为附件的原件由附件表接管，不能在这里删
+        const referenced = await this.prisma.attachment.count({
+          where: { storagePath: task.storagePath },
+        });
+        if (referenced === 0) {
+          fs.rm(path.join(config.uploadsDir, task.storagePath), { force: true }, () => undefined);
+        }
+      }
+    } catch {
+      // 清理失败不应阻塞上传
+    }
+  }
+
+  private async runParse(taskId: string, filePath: string, filename: string): Promise<void> {
+    try {
+      const result = await this.ocr.parse(fs.readFileSync(filePath), filename);
       await this.prisma.importTask.update({
         where: { id: taskId },
         data: { status: 'DONE', result: JSON.stringify(result), finishedAt: new Date() },
@@ -92,9 +125,11 @@ export class ImportsService implements OnModuleInit {
           data: { status: 'FAILED', error: message, finishedAt: new Date() },
         })
         .catch(() => undefined);
-    } finally {
-      // 暂存原件用完即删（解析结果 JSON 已留痕），避免 uploads 无限膨胀
+      // 解析失败的原件立即回收，成功的留到确认导入时转为附件
       fs.rm(filePath, { force: true }, () => undefined);
+      await this.prisma.importTask
+        .update({ where: { id: taskId }, data: { storagePath: null } })
+        .catch(() => undefined);
     }
   }
 
@@ -200,6 +235,8 @@ export class ImportsService implements OnModuleInit {
       return { created, merged, skipped, ids };
     });
 
+    const attached = await this.attachOriginal(input.taskId, result.ids);
+
     await this.audit.log('IMPORT_CONFIRM', {
       entity: 'import',
       detail: {
@@ -210,6 +247,42 @@ export class ImportsService implements OnModuleInit {
       },
       ip,
     });
-    return result;
+    return { ...result, attached };
+  }
+
+  /**
+   * 把解析用的 OA 原件挂到本次入库的每条台账上（kind = OA_DOC）。
+   * 多条记录共用同一个物理文件，删除时由附件服务按引用计数回收。
+   */
+  private async attachOriginal(taskId: string | undefined, itemIds: number[]): Promise<number> {
+    if (!taskId || itemIds.length === 0) return 0;
+    const task = await this.prisma.importTask.findUnique({ where: { id: taskId } });
+    if (!task?.storagePath) return 0;
+
+    const absolute = path.join(config.uploadsDir, task.storagePath);
+    if (!fs.existsSync(absolute)) return 0;
+
+    const size = fs.statSync(absolute).size;
+    const ext = path.extname(task.storagePath).toLowerCase();
+    const mimeType = MIME_BY_EXT[ext] ?? 'application/octet-stream';
+
+    try {
+      await this.prisma.attachment.createMany({
+        data: itemIds.map((itemId) => ({
+          kind: 'OA_DOC',
+          itemId,
+          filename: task.filename,
+          storagePath: task.storagePath!,
+          mimeType,
+          sizeBytes: size,
+        })),
+      });
+      // 原件已由附件表接管，任务不再持有它
+      await this.prisma.importTask.update({ where: { id: taskId }, data: { storagePath: null } });
+      return itemIds.length;
+    } catch (e) {
+      this.logger.warn(`OA 原件转附件失败: ${e instanceof Error ? e.message : String(e)}`);
+      return 0;
+    }
   }
 }

@@ -22,18 +22,35 @@ export const router = createRouter({
         { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { title: '系统设置', icon: 'settings' } },
       ],
     },
-    { path: '/:pathMatch(.*)*', redirect: '/dashboard' },
+    { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFoundView.vue'), meta: { public: true } },
   ],
+  // 换页回到顶部；浏览器前进后退时恢复原来的位置
+  scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
 });
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   if (!auth.checked) await auth.refresh();
+
+  // 后端不可达时不要把用户卡在空白页：放行到登录页由它展示重试入口
+  if (auth.unreachable) return to.path === '/login' ? true : { path: '/login' };
+
   if (to.meta.public) {
-    return auth.loggedIn ? { path: '/dashboard' } : true;
+    return auth.loggedIn && to.path === '/login' ? { path: '/dashboard' } : true;
   }
   // 未初始化时强制先走初始化流程；已初始化但未登录 → 登录页
   if (!auth.isInitialized) return { path: '/login' };
   if (!auth.loggedIn) return { path: '/login', query: { redirect: to.fullPath } };
   return true;
+});
+
+/**
+ * 发布新版本后，仍开着旧页面的用户去加载已被替换掉的路由分片会 404。
+ * PWA 用的是 autoUpdate，Service Worker 已经换成新版本，这里刷一次即可拿到新壳子。
+ */
+router.onError((error, to) => {
+  const message = String((error as Error)?.message ?? error);
+  if (/dynamically imported module|Importing a module script failed|Failed to fetch/i.test(message)) {
+    window.location.assign(to.fullPath);
+  }
 });

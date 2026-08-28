@@ -36,7 +36,7 @@ const tones = {
       <p class="text-xl font-bold text-ink num leading-tight">
         {{ value }}<span v-if="unit" class="ml-1 text-xs font-medium text-faint">{{ unit }}</span>
       </p>
-      <p v-if="hint" class="text-[11px] text-faint truncate mt-0.5">{{ hint }}</p>
+      <p v-if="hint" class="text-meta text-faint truncate mt-0.5">{{ hint }}</p>
     </div>
   </component>
 </template>

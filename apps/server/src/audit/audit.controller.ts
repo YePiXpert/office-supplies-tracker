@@ -22,7 +22,8 @@ export class AuditController {
     query: { action?: string; search?: string; page: number; pageSize: number },
   ) {
     const where = {
-      ...(query.action ? { action: { contains: query.action } } : {}),
+      // 精确匹配：前端是固定下拉，contains 会让 AUTH_LOGIN 误中 AUTH_LOGIN_FAILED
+      ...(query.action ? { action: query.action } : {}),
       ...(query.search
         ? { OR: [{ action: { contains: query.search } }, { detail: { contains: query.search } }] }
         : {}),

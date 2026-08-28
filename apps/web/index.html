@@ -4,11 +4,70 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#14213D" />
+    <meta name="description" content="办公用品采购台账：OA 导入、采购执行、库存与领用发放" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Procure Lite 采购台账</title>
+    <style>
+      /* 首屏占位：路由守卫要等 /auth/status 回来才渲染，没有这段就是一片白 */
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #f3f5f8;
+        font-family: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
+      }
+      #boot .mark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: #14213d;
+        color: #fff;
+        font-weight: 700;
+        font-size: 18px;
+        letter-spacing: -0.5px;
+      }
+      #boot .spin {
+        width: 18px;
+        height: 18px;
+        border: 2px solid rgba(37, 99, 235, 0.2);
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        animation: boot-spin 0.7s linear infinite;
+      }
+      #boot p {
+        margin: 0;
+        color: #5b6880;
+        font-size: 13px;
+      }
+      @keyframes boot-spin {
+        to { transform: rotate(360deg); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot .spin { animation-duration: 2s; }
+      }
+      /* 应用挂载后由 main.ts 移除 */
+      .app-ready #boot { display: none; }
+    </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="boot">
+      <div class="mark">PL</div>
+      <div class="spin"></div>
+      <p>正在启动 Procure Lite…</p>
+    </div>
+    <noscript>
+      <p style="padding: 24px; font-family: system-ui, sans-serif; color: #172033">
+        本系统需要启用 JavaScript 才能使用。
+      </p>
+    </noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

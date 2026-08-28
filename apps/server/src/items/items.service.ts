@@ -256,7 +256,44 @@ export class ItemsService {
     return item;
   }
 
-  async purge(id: number, ip?: string) {
+  /** 回收站批量恢复；唯一键冲突的逐条跳过并回报，不让整批失败 */
+  async batchRestore(ids: number[], ip?: string) {
+    let restored = 0;
+    const conflicts: number[] = [];
+    for (const id of ids) {
+      try {
+        await this.prisma.item.update({
+          where: { id },
+          data: { deletedAt: null },
+        });
+        restored += 1;
+      } catch {
+        conflicts.push(id);
+      }
+    }
+    await this.audit.log('ITEM_RESTORE', { entity: 'item', detail: { ids, restored }, ip });
+    return { restored, conflicts };
+  }
+
+  /** 清空回收站（或批量彻底删除选中项） */
+  async batchPurge(ids: number[] | 'all', ip?: string) {
+    const targets = await this.prisma.item.findMany({
+      where: {
+        deletedAt: { not: null },
+        ...(ids === 'all' ? {} : { id: { in: ids } }),
+      },
+      select: { id: true },
+    });
+    let purged = 0;
+    for (const t of targets) {
+      await this.purge(t.id, ip, false);
+      purged += 1;
+    }
+    await this.audit.log('ITEM_PURGE', { entity: 'item', detail: { scope: ids === 'all' ? 'all' : ids, purged }, ip });
+    return { purged };
+  }
+
+  async purge(id: number, ip?: string, writeAudit = true) {
     // 仅回收站中的记录可彻底删除，避免在线数据被误清
     const target = await this.prisma.item.findFirst({ where: { id } });
     if (!target) throw new NotFoundException('记录不存在');
@@ -270,10 +307,14 @@ export class ItemsService {
     // 级联清理：历史随记录删除；领用明细保留但解除引用
     await this.prisma.distributionLine.updateMany({ where: { itemId: id }, data: { itemId: null } });
     await this.prisma.item.delete({ where: { id } });
+    // 附件行已随台账级联删除，此时仍有引用的说明是共享文件（如同批导入的 OA 原件），不能删盘
     for (const a of attachments) {
-      fs.rm(path.join(config.uploadsDir, a.storagePath), { force: true }, () => undefined);
+      const referenced = await this.prisma.attachment.count({ where: { storagePath: a.storagePath } });
+      if (referenced === 0) {
+        fs.rm(path.join(config.uploadsDir, a.storagePath), { force: true }, () => undefined);
+      }
     }
-    await this.audit.log('ITEM_PURGE', { entity: 'item', entityId: id, ip });
+    if (writeAudit) await this.audit.log('ITEM_PURGE', { entity: 'item', entityId: id, ip });
     return { ok: true };
   }
 

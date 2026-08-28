@@ -29,6 +29,25 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 app.use(router);
+
+// 首屏骨架由 index.html 提供，等首个路由解析完再撤掉，避免闪一帧空白
+void router.isReady().finally(() => {
+  document.documentElement.classList.add('app-ready');
+  document.getElementById('boot')?.remove();
+});
+
 app.mount('#app');
 
-registerSW({ immediate: true });
+/**
+ * PWA 更新：不再静默换版本。
+ * 新版本就绪时提示用户，由他决定什么时候刷新——填到一半的表单不该被自动重载吞掉。
+ */
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    useToastStore(pinia).success('有新版本可用', {
+      label: '立即更新',
+      run: () => updateSW(true),
+    });
+  },
+});

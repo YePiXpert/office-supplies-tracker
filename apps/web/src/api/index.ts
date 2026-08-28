@@ -67,6 +67,11 @@ export const itemsApi = {
   batchUpdate: (body: BatchUpdateInput) => http.post('/items/batch-update', body).then((r) => r.data),
   batchDelete: (ids: number[]) =>
     http.post<{ deleted: number }>('/items/batch-delete', { ids }).then((r) => r.data),
+  batchRestore: (ids: number[]) =>
+    http.post<{ restored: number; conflicts: number[] }>('/items/batch-restore', { ids }).then((r) => r.data),
+  /** 不传 ids 表示清空整个回收站 */
+  batchPurge: (ids?: number[]) =>
+    http.post<{ purged: number }>('/items/batch-purge', ids ? { ids } : {}).then((r) => r.data),
   facets: () => http.get<{ departments: string[]; handlers: string[] }>('/items/facets').then((r) => r.data),
 };
 
@@ -91,7 +96,46 @@ export const importsApi = {
   checkDuplicates: (body: { serialNumber: string; handler: string; itemNames: string[] }) =>
     http.post<DuplicatePreview[]>('/imports/check-duplicates', body).then((r) => r.data),
   confirm: (body: ImportConfirmInput) =>
-    http.post<{ created: number; merged: number; skipped: number }>('/imports/confirm', body).then((r) => r.data),
+    http
+      .post<{ created: number; merged: number; skipped: number; attached: number }>('/imports/confirm', body)
+      .then((r) => r.data),
+};
+
+/* ---------------------------------- 附件 ---------------------------------- */
+export interface AttachmentRow {
+  id: number;
+  kind: string;
+  itemId: number | null;
+  distributionId: number | null;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+export const attachmentsApi = {
+  list: (params: { itemId?: number; distributionId?: number }) =>
+    http.get<AttachmentRow[]>('/attachments', { params }).then((r) => r.data),
+  uploadForItem: (itemId: number, file: File, kind: 'INVOICE' | 'SIGNOFF' = 'INVOICE') => {
+    const form = new FormData();
+    form.append('file', file);
+    // kind 走 query：服务端是 @Query 读的，塞在 FormData 里会被忽略
+    return http
+      .post<AttachmentRow>(`/attachments/items/${itemId}`, form, {
+        params: { kind },
+        headers: { 'content-type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  },
+  uploadForDistribution: (distributionId: number, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return http
+      .post<AttachmentRow>(`/attachments/distributions/${distributionId}`, form, {
+        headers: { 'content-type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  },
+  remove: (id: number) => http.delete(`/attachments/${id}`).then((r) => r.data),
 };
 
 /* ---------------------------------- 发放 ---------------------------------- */

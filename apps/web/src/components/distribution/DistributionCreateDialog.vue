@@ -5,8 +5,9 @@ import Button from '@/components/ui/Button.vue';
 import Icon from '@/components/ui/Icon.vue';
 import Input from '@/components/ui/Input.vue';
 import Select from '@/components/ui/Select.vue';
-import { distributionsApi, inventoryApi, itemsApi, type ItemRow, type ProductRow } from '@/api';
+import { distributionsApi, itemsApi, type ItemRow, type ProductRow } from '@/api';
 import { useToastStore } from '@/stores/toast';
+import { useCatalogStore } from '@/stores/catalog';
 import { apiError } from '@/api/client';
 import type { DistributionSource } from '@procure-lite/shared';
 import { todayString } from '@/utils/datetime';
@@ -22,10 +23,14 @@ const props = withDefaults(
 const emit = defineEmits<{ 'update:open': [v: boolean]; created: [] }>();
 
 const toast = useToastStore();
+const catalog = useCatalogStore();
 const saving = ref(false);
+const loading = ref(false);
+const loadError = ref('');
 const mode = ref<DistributionSource>('DIRECT');
 const pendingItems = ref<ItemRow[]>([]);
 const products = ref<ProductRow[]>([]);
+const knownRecipients = ref<string[]>([]);
 
 const form = reactive({
   date: todayString(),
@@ -45,6 +50,10 @@ interface LineDraft {
 }
 const lines = ref<LineDraft[]>([]);
 
+function emptyLine(): LineDraft {
+  return { itemName: '', recipient: '', quantity: '1', signoffNote: '' };
+}
+
 watch(
   () => props.open,
   async (open) => {
@@ -52,32 +61,49 @@ watch(
     form.date = todayString();
     form.note = '';
     mode.value = 'DIRECT';
-    const [items, prods] = await Promise.all([
-      itemsApi.list({ status: 'PENDING_DISTRIBUTION', pageSize: 100 }),
-      inventoryApi.products().catch(() => []),
-    ]);
-    pendingItems.value = items.items;
-    products.value = prods.filter((p) => p.stockQty > 0);
+    lines.value = [];
+    loadError.value = '';
+    loading.value = true;
+    try {
+      // 任一请求失败都要让用户看见，之前这里没有 catch，失败就静默留个空表单
+      const [items, prods, recipients] = await Promise.all([
+        itemsApi.list({ status: 'PENDING_DISTRIBUTION', pageSize: 100 }),
+        catalog.ensureProducts(true),
+        distributionsApi.recipients({}).catch(() => []),
+      ]);
+      pendingItems.value = items.items;
+      products.value = prods.filter((p) => p.stockQty > 0);
+      knownRecipients.value = [...new Set(recipients.map((r) => r.recipient))];
 
-    if (props.presetItems.length > 0) {
-      form.department = props.presetItems[0].department;
-      lines.value = props.presetItems.map((it) => ({
-        itemId: it.id,
-        itemName: it.itemName,
-        remaining: it.quantity,
-        recipient: it.handler,
-        quantity: String(it.quantity),
-        signoffNote: '',
-      }));
-    } else {
-      form.department = '';
+      if (props.presetItems.length > 0) {
+        form.department = props.presetItems[0].department;
+        lines.value = props.presetItems.map((it) => ({
+          itemId: it.id,
+          itemName: it.itemName,
+          remaining: it.quantity,
+          recipient: it.handler,
+          quantity: String(it.quantity),
+          signoffNote: '',
+        }));
+      } else {
+        form.department = '';
+        lines.value = [emptyLine()];
+      }
+    } catch (e) {
+      loadError.value = apiError(e);
       lines.value = [emptyLine()];
+    } finally {
+      loading.value = false;
     }
   },
 );
 
-function emptyLine(): LineDraft {
-  return { itemName: '', recipient: '', quantity: '1', signoffNote: '' };
+/** 切换发放来源时清空明细：留着上一模式选的 itemId/productId 会变成半合法状态 */
+function switchMode(next: DistributionSource): void {
+  if (mode.value === next) return;
+  mode.value = next;
+  lines.value = [emptyLine()];
+  form.department = '';
 }
 
 const itemOptions = computed(() =>
@@ -117,16 +143,16 @@ const validation = computed<string | null>(() => {
   const productSums = new Map<number, number>();
   for (const l of lines.value) {
     const qty = Number(l.quantity);
+    if (mode.value === 'DIRECT' && !l.itemId) return '请为每条明细选择台账记录';
+    if (mode.value === 'STOCK' && !l.productId) return '请为每条明细选择库存物品';
     if (!l.recipient.trim()) return '请填写每条明细的领用人';
     if (!Number.isFinite(qty) || qty <= 0) return '领用数量必须大于 0';
     if (mode.value === 'DIRECT') {
-      if (!l.itemId || !l.itemName) return '请为每条明细选择台账记录';
       if (l.remaining != null && qty > l.remaining) return `「${l.itemName}」发放数量超过台账数量（余 ${l.remaining}）`;
-      itemSums.set(l.itemId, (itemSums.get(l.itemId) ?? 0) + qty);
+      itemSums.set(l.itemId!, (itemSums.get(l.itemId!) ?? 0) + qty);
     } else {
-      if (!l.productId) return '请为每条明细选择库存物品';
       if (l.stock != null && qty > l.stock) return `「${l.itemName}」超过库存（余 ${l.stock}）`;
-      productSums.set(l.productId, (productSums.get(l.productId) ?? 0) + qty);
+      productSums.set(l.productId!, (productSums.get(l.productId!) ?? 0) + qty);
     }
   }
   if (mode.value === 'DIRECT') {
@@ -147,6 +173,12 @@ const validation = computed<string | null>(() => {
   return null;
 });
 
+const totalQuantity = computed(() =>
+  lines.value.reduce((sum, l) => sum + (Number(l.quantity) || 0), 0),
+);
+
+const dirty = computed(() => lines.value.some((l) => l.itemName || l.recipient.trim() || l.signoffNote.trim()));
+
 async function submit(): Promise<void> {
   if (validation.value) return toast.error(validation.value);
   saving.value = true;
@@ -166,6 +198,8 @@ async function submit(): Promise<void> {
       })),
     });
     toast.success('发放登记完成');
+    lines.value = []; // 清掉 dirty，避免关闭时又弹一次确认
+    catalog.invalidateProducts();
     emit('update:open', false);
     emit('created');
   } catch (e) {
@@ -181,75 +215,107 @@ async function submit(): Promise<void> {
     :open="props.open"
     title="发放登记"
     description="记录谁领了多少；直发未发完的部分会自动转入库存"
-    width="680px"
+    width="720px"
+    :dirty="dirty && !saving"
     @update:open="emit('update:open', $event)"
   >
-    <div class="grid grid-cols-2 gap-3 mb-4">
-      <Input v-model="form.date" label="发放日期" type="date" required />
-      <Input v-model="form.department" label="领用部门（可空）" placeholder="默认取申领部门" />
-    </div>
+    <div v-if="loading" class="py-10 text-center text-sm text-faint">加载可发放清单…</div>
 
-    <!-- 模式切换 -->
-    <div class="flex gap-2 mb-3">
-      <button
-        v-for="m in [{ key: 'DIRECT', label: '从台账直发' }, { key: 'STOCK', label: '从库存发放' }]"
-        :key="m.key"
-        class="h-8 px-3 rounded-(--radius-control) text-xs font-medium border cursor-pointer transition-colors"
-        :class="mode === m.key ? 'bg-primary text-white border-primary' : 'bg-surface text-muted border-line-strong hover:border-primary'"
-        @click="mode = m.key as DistributionSource"
-      >
-        {{ m.label }}
-      </button>
-    </div>
+    <template v-else>
+      <p v-if="loadError" class="mb-3 flex items-start gap-1.5 px-3 py-2 bg-red-soft border border-red/25 rounded-(--radius-control) text-xs text-red">
+        <Icon name="alert" :size="13" class="mt-px shrink-0" />{{ loadError }}
+      </p>
 
-    <!-- 明细行 -->
-    <div class="space-y-2">
-      <div v-for="(line, i) in lines" :key="i" class="p-3 bg-canvas/60 border border-line rounded-(--radius-control) grid grid-cols-12 gap-2 items-end">
-        <div class="col-span-12 sm:col-span-5">
-          <Select
-            v-if="mode === 'DIRECT'"
-            :model-value="line.itemId ? String(line.itemId) : ''"
-            :options="itemOptions"
-            placeholder="选择待分发台账记录"
-            @update:model-value="(v) => onPickItem(i, v)"
-          />
-          <Select
-            v-else
-            :model-value="line.productId ? String(line.productId) : ''"
-            :options="productOptions"
-            placeholder="选择库存物品"
-            @update:model-value="(v) => onPickProduct(i, v)"
-          />
-        </div>
-        <div class="col-span-4 sm:col-span-3">
-          <input v-model="line.recipient" placeholder="领用人" class="w-full h-9.5 px-2.5 text-sm bg-surface border border-line-strong rounded-(--radius-control) focus:border-primary focus:outline-none" />
-        </div>
-        <div class="col-span-3 sm:col-span-2">
-          <input v-model="line.quantity" type="number" min="0" step="any" placeholder="数量" class="w-full h-9.5 px-2.5 text-sm num bg-surface border border-line-strong rounded-(--radius-control) focus:border-primary focus:outline-none" />
-        </div>
-        <div class="col-span-4 sm:col-span-1 flex justify-end">
-          <button
-            class="p-2 text-faint hover:text-red cursor-pointer"
-            :aria-label="`删除明细 ${i + 1}`"
-            :disabled="lines.length === 1"
-            @click="lines.splice(i, 1)"
-          >
-            <Icon name="close" :size="14" />
-          </button>
-        </div>
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <Input v-model="form.date" label="发放日期" type="date" required />
+        <Input v-model="form.department" label="领用部门（可空）" placeholder="默认取申领部门" />
       </div>
-      <Button variant="ghost" size="sm" @click="lines.push(emptyLine())">
-        <Icon name="plus" :size="13" /> 添加领用明细
-      </Button>
-    </div>
 
-    <div class="mt-4">
-      <Input v-model="form.note" label="备注（可空）" placeholder="如：第二次集中发放" />
-    </div>
+      <!-- 模式切换 -->
+      <div class="flex gap-2 mb-3">
+        <button
+          v-for="m in [{ key: 'DIRECT', label: '从台账直发' }, { key: 'STOCK', label: '从库存发放' }]"
+          :key="m.key"
+          type="button"
+          class="h-8 px-3 rounded-(--radius-control) text-xs font-medium border cursor-pointer transition-colors"
+          :class="mode === m.key ? 'bg-primary text-white border-primary' : 'bg-surface text-muted border-line-strong hover:border-primary'"
+          @click="switchMode(m.key as DistributionSource)"
+        >
+          {{ m.label }}
+        </button>
+      </div>
+
+      <p v-if="mode === 'DIRECT' && pendingItems.length === 0" class="mb-3 text-xs text-faint">
+        当前没有「待分发」状态的台账记录。可以先在看板里确认到货，或改用「从库存发放」。
+      </p>
+      <p v-if="mode === 'STOCK' && products.length === 0" class="mb-3 text-xs text-faint">
+        库存里暂时没有可发放的物品。可以在库存页登记入库，或从看板把采购单整单入库。
+      </p>
+
+      <!-- 明细行 -->
+      <div class="space-y-2">
+        <div v-for="(line, i) in lines" :key="i" class="p-3 bg-canvas/60 border border-line rounded-(--radius-control) space-y-2">
+          <div class="grid grid-cols-12 gap-2 items-end">
+            <div class="col-span-12 sm:col-span-5">
+              <Select
+                v-if="mode === 'DIRECT'"
+                :model-value="line.itemId ? String(line.itemId) : ''"
+                :options="itemOptions"
+                placeholder="选择待分发台账记录"
+                @update:model-value="(v) => onPickItem(i, v)"
+              />
+              <Select
+                v-else
+                :model-value="line.productId ? String(line.productId) : ''"
+                :options="productOptions"
+                placeholder="选择库存物品"
+                @update:model-value="(v) => onPickProduct(i, v)"
+              />
+            </div>
+            <div class="col-span-5 sm:col-span-3">
+              <Input v-model="line.recipient" placeholder="领用人" :suggestions="knownRecipients" />
+            </div>
+            <div class="col-span-4 sm:col-span-3">
+              <Input v-model="line.quantity" type="number" min="0" step="any" placeholder="数量" />
+            </div>
+            <div class="col-span-3 sm:col-span-1 flex justify-end pb-1">
+              <button
+                type="button"
+                class="p-2 text-faint rounded-md transition-colors"
+                :class="lines.length === 1
+                  ? 'opacity-30 cursor-not-allowed'
+                  : 'hover:text-red hover:bg-red-soft cursor-pointer'"
+                :aria-label="`删除明细 ${i + 1}`"
+                :disabled="lines.length === 1"
+                @click="lines.splice(i, 1)"
+              >
+                <Icon name="close" :size="14" />
+              </button>
+            </div>
+          </div>
+          <!-- 签收备注：字段一直在提交，之前只是没有输入框 -->
+          <Input v-model="line.signoffNote" placeholder="签收备注（可空，如：本人签收 / 代领）" />
+        </div>
+
+        <Button variant="ghost" size="sm" @click="lines.push(emptyLine())">
+          <Icon name="plus" :size="13" /> 添加领用明细
+        </Button>
+      </div>
+
+      <div class="mt-4">
+        <Input v-model="form.note" label="备注（可空）" placeholder="如：第二次集中发放" />
+      </div>
+    </template>
 
     <template #footer>
+      <p v-if="validation" class="mr-auto self-center flex items-center gap-1 text-xs text-red">
+        <Icon name="alert" :size="12" class="shrink-0" />{{ validation }}
+      </p>
+      <p v-else class="mr-auto self-center text-xs text-muted">
+        共 {{ lines.length }} 笔 · 合计 <b class="num text-ink">{{ totalQuantity }}</b> 件
+      </p>
       <Button variant="ghost" @click="emit('update:open', false)">取消</Button>
-      <Button variant="primary" :loading="saving" @click="submit">确认发放</Button>
+      <Button variant="primary" :loading="saving" :disabled="!!validation || loading" @click="submit">确认发放</Button>
     </template>
   </Dialog>
 </template>

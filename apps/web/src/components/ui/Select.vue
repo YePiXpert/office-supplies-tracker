@@ -12,11 +12,7 @@ import {
   SelectViewport,
 } from 'reka-ui';
 import Icon from './Icon.vue';
-
-export interface SelectOption {
-  label: string;
-  value: string;
-}
+import type { SelectOption } from './types';
 
 const props = withDefaults(
   defineProps<{

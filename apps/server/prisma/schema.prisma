@@ -191,13 +191,15 @@ model Attachment {
 
 /* OA 导入任务（持久化，重启不丢） */
 model ImportTask {
-  id         String    @id
-  filename   String
-  status     String // PENDING | RUNNING | DONE | FAILED
-  result     String? // JSON ParseResult
-  error      String?
-  createdAt  DateTime  @default(now())
-  finishedAt DateTime?
+  id          String    @id
+  filename    String
+  status      String // PENDING | RUNNING | DONE | FAILED
+  result      String? // JSON ParseResult
+  error       String?
+  /** 原件相对 uploads 的路径；确认导入后转为台账附件，未确认的由定期清理回收 */
+  storagePath String?
+  createdAt   DateTime  @default(now())
+  finishedAt  DateTime?
 }
 
 /* 单管理员安全状态 */

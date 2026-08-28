@@ -106,15 +106,24 @@ export class AttachmentsService implements OnModuleDestroy {
   async remove(id: number, ip?: string) {
     const record = await this.prisma.attachment.findUnique({ where: { id } });
     if (!record) throw new NotFoundException('附件不存在');
-    const filePath = path.join(config.uploadsDir, record.storagePath);
-    fs.rmSync(filePath, { force: true });
     await this.prisma.attachment.delete({ where: { id } });
+    await this.releaseFile(record.storagePath);
     await this.audit.log('ATTACHMENT_DELETE', {
       entity: 'attachment',
       entityId: id,
       ip,
     });
     return { ok: true };
+  }
+
+  /**
+   * 按引用计数回收物理文件：OA 原件会被同一批导入的多条台账共享，
+   * 只有最后一条引用消失时才能真正删盘。
+   */
+  async releaseFile(storagePath: string): Promise<void> {
+    const remaining = await this.prisma.attachment.count({ where: { storagePath } });
+    if (remaining > 0) return;
+    fs.rmSync(path.join(config.uploadsDir, storagePath), { force: true });
   }
 
   onModuleDestroy(): void {

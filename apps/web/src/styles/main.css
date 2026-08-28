@@ -17,7 +17,8 @@
   --color-surface: #ffffff;
   --color-text: #172033;
   --color-muted: #526078;
-  --color-faint: #64748b;
+  /* 次要文字大量用在 11-12px 上，比原来的 #64748B 加深一档换对比度（白底 5.4:1 / 灰底 5.0:1） */
+  --color-faint: #5b6880;
   --color-line: #dfe5ed;
   --color-line-strong: #c6d0dd;
 
@@ -66,8 +67,9 @@
   .table-base {
     @apply w-full border-collapse text-sm;
   }
+  /* 不透明：sticky 表头下滚动的行不能透上来 */
   .table-base th {
-    @apply text-left font-semibold text-muted bg-canvas/80 border-b border-line px-3 py-2.5 whitespace-nowrap;
+    @apply text-left font-semibold text-muted bg-canvas border-b border-line px-3 py-2.5 whitespace-nowrap;
   }
   .table-base td {
     @apply border-b border-line/70 px-3 py-2.5 align-middle;
@@ -76,7 +78,27 @@
     @apply bg-canvas/50;
   }
 
+  /* 长表格滚动时表头钉住，配合外层容器的 max-height + overflow-auto 使用 */
+  .table-sticky thead th {
+    @apply sticky top-0 z-10;
+  }
+
   .num {
     @apply font-mono tabular-nums;
+  }
+
+  /*
+   * 元信息文字（表格副行、时间戳、辅助说明）。
+   * 之前是散落在 30 多处的 text-[11px]，天天录入的场景下偏小；
+   * 收成一个类后既统一到 12px，以后要再调也只改这一处。
+   */
+  .text-meta {
+    font-size: 0.75rem;
+    line-height: 1.125rem;
+  }
+
+  /* 表单字段级错误：校验不再只靠 toast */
+  .field-error {
+    @apply mt-1 flex items-start gap-1 text-xs text-red;
   }
 }

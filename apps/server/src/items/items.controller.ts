@@ -76,6 +76,31 @@ export class ItemsController {
     return this.items.batchUpdate(body, clientIp(req));
   }
 
+  @Post('batch-restore')
+  @HttpCode(200)
+  batchRestore(
+    @Body(new ZodValidationPipe(z.object({ ids: z.array(z.coerce.number().int().positive()).min(1) })))
+    body: { ids: number[] },
+    @Req() req: FastifyRequest,
+  ) {
+    return this.items.batchRestore(body.ids, clientIp(req));
+  }
+
+  /** ids 省略表示清空整个回收站 */
+  @Post('batch-purge')
+  @HttpCode(200)
+  batchPurge(
+    @Body(
+      new ZodValidationPipe(
+        z.object({ ids: z.array(z.coerce.number().int().positive()).min(1).optional() }),
+      ),
+    )
+    body: { ids?: number[] },
+    @Req() req: FastifyRequest,
+  ) {
+    return this.items.batchPurge(body.ids ?? 'all', clientIp(req));
+  }
+
   @Get(':id')
   get(@Param('id', ParseIntPipe) id: number) {
     return this.items.get(id);

@@ -60,3 +60,51 @@ export const ITEM_STATUS_TONES: Record<ItemStatus, 'blue' | 'amber' | 'teal' | '
   DISTRIBUTED: 'teal',
   STOCKED: 'gray',
 };
+
+/** 附件类型：OA_DOC 为导入时留存的审批单原件 */
+export const ATTACHMENT_KINDS = ['INVOICE', 'SIGNOFF', 'OA_DOC'] as const;
+export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
+
+export const ATTACHMENT_KIND_LABELS: Record<AttachmentKind, string> = {
+  INVOICE: '发票',
+  SIGNOFF: '签收单',
+  OA_DOC: 'OA 原件',
+};
+
+/** 台账排序维度（表头点击排序用） */
+export const LEDGER_SORTS = [
+  'createdAt_desc',
+  'createdAt_asc',
+  'requestDate_desc',
+  'requestDate_asc',
+] as const;
+export type LedgerSort = (typeof LEDGER_SORTS)[number];
+
+export const LEDGER_SORT_LABELS: Record<LedgerSort, string> = {
+  createdAt_desc: '最近录入在前',
+  createdAt_asc: '最早录入在前',
+  requestDate_desc: '申请日期新→旧',
+  requestDate_asc: '申请日期旧→新',
+};
+
+/** 台账字段中文名：修改历史「改了什么」与审计详情展示用 */
+export const ITEM_FIELD_LABELS: Record<string, string> = {
+  serialNumber: '流水号',
+  department: '申领部门',
+  handler: '经办人',
+  requestDate: '申请日期',
+  itemName: '品名',
+  quantity: '数量',
+  unit: '单位',
+  purchaseLink: '采购链接',
+  unitPrice: '单价',
+  supplierId: '供应商 ID',
+  supplierName: '供应商',
+  status: '状态',
+  invoiceIssued: '开票',
+  paymentStatus: '付款状态',
+  arrivalDate: '到货日期',
+  distributionDate: '发放日期',
+  signoffNote: '签收信息',
+  note: '备注',
+};
