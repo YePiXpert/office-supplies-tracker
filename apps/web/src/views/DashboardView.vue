@@ -8,6 +8,8 @@ import StatusBadge from '@/components/ui/StatusBadge.vue';
 import Button from '@/components/ui/Button.vue';
 import Icon from '@/components/ui/Icon.vue';
 import EChart from '@/components/charts/EChart.vue';
+import PatternGrid from '@/components/illustrations/PatternGrid.vue';
+import Skeleton from '@/components/ui/Skeleton.vue';
 import { AXIS_STYLE, CHART_COLORS, TOOLTIP_STYLE } from '@/components/charts/chartTheme';
 import { reportsApi, inventoryApi, itemsApi, type DashboardData } from '@/api';
 import { apiError } from '@/api/client';
@@ -96,7 +98,16 @@ const hasChartData = computed(() => (data.value?.statusSlices ?? []).some((s) =>
 </script>
 
 <template>
-  <div v-if="loading" class="py-20 text-center text-sm text-faint">加载中…</div>
+  <div v-if="loading" class="space-y-5">
+    <Skeleton class="h-20 w-full" />
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <Skeleton v-for="i in 4" :key="i" class="h-[76px]" />
+    </div>
+    <div class="grid lg:grid-cols-5 gap-5">
+      <Skeleton class="h-72 lg:col-span-2" />
+      <Skeleton class="h-72 lg:col-span-3" />
+    </div>
+  </div>
 
   <!-- 之前这里只有 v-if/v-else-if，接口一挂就是整页空白 -->
   <ErrorState
@@ -109,7 +120,8 @@ const hasChartData = computed(() => (data.value?.statusSlices ?? []).some((s) =>
 
   <div v-else class="space-y-5">
     <!-- 今日概览 -->
-    <div class="card px-5 py-4 bg-gradient-to-r from-ink to-ink-soft text-white border-ink">
+    <div class="card relative overflow-hidden px-5 py-4 bg-gradient-to-r from-ink to-ink-soft text-white border-ink">
+      <PatternGrid class="text-white/[0.07]" />
       <div class="flex items-start justify-between gap-3">
         <p class="text-xs text-white/60">今日工作概览 · {{ data.today.date }}</p>
         <button
@@ -127,7 +139,7 @@ const hasChartData = computed(() => (data.value?.statusSlices ?? []).some((s) =>
         <p class="text-sm">未付 <b class="text-lg num">{{ formatCurrencyCompact(data.payment.unpaidAmount) }}</b>（{{ data.payment.unpaidCount }} 笔）</p>
         <p v-if="data.payment.noInvoiceCount > 0" class="text-sm text-white/70">未开票 {{ data.payment.noInvoiceCount }} 笔</p>
       </div>
-      <p v-if="lastUpdated" class="mt-2 text-[10px] text-white/40 num">更新于 {{ lastUpdated }}</p>
+      <p v-if="lastUpdated" class="mt-2 text-meta text-white/40 num">更新于 {{ lastUpdated }}</p>
     </div>
 
     <!-- 流程指标 -->
@@ -143,7 +155,7 @@ const hasChartData = computed(() => (data.value?.statusSlices ?? []).some((s) =>
       <div class="card p-4 lg:col-span-2">
         <h2 class="text-sm font-bold text-ink mb-1">台账状态分布</h2>
         <EChart v-if="hasChartData" :option="donutOption" height="260px" />
-        <EmptyState v-else icon="ledger" title="还没有台账数据" description="导入 OA 单据后这里会有分布图" />
+        <EmptyState v-else illustration="chart" title="还没有台账数据" description="导入 OA 单据后这里会有分布图" />
       </div>
       <!-- 近 7 天趋势 -->
       <div class="card p-4 lg:col-span-3">
@@ -159,7 +171,7 @@ const hasChartData = computed(() => (data.value?.statusSlices ?? []).some((s) =>
           <h2 class="text-sm font-bold text-ink">库存预警</h2>
           <router-link to="/inventory" class="text-xs text-primary hover:underline">管理库存</router-link>
         </div>
-        <EmptyState v-if="lowStock.length === 0" icon="check" title="库存充足" description="没有低于阈值的物品" />
+        <EmptyState v-if="lowStock.length === 0" illustration="box" tone="teal" title="库存充足" description="没有低于阈值的物品" />
         <template v-else>
           <ul class="divide-y divide-line">
             <li v-for="p in lowStock.slice(0, 6)" :key="p.id" class="flex items-center justify-between py-2.5">
@@ -183,7 +195,7 @@ const hasChartData = computed(() => (data.value?.statusSlices ?? []).some((s) =>
           <h2 class="text-sm font-bold text-ink">最近台账</h2>
           <router-link to="/ledger" class="text-xs text-primary hover:underline">查看全部</router-link>
         </div>
-        <EmptyState v-if="recent.length === 0" icon="ledger" title="还没有记录" description="从导入 OA 单据开始">
+        <EmptyState v-if="recent.length === 0" illustration="ledger" title="还没有记录" description="从导入 OA 单据开始">
           <router-link to="/import" class="text-xs text-primary hover:underline">去导入</router-link>
         </EmptyState>
         <ul v-else class="divide-y divide-line">

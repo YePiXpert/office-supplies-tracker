@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input.vue';
 import Badge from '@/components/ui/Badge.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import ErrorState from '@/components/ui/ErrorState.vue';
+import Skeleton from '@/components/ui/Skeleton.vue';
 import Dialog from '@/components/ui/Dialog.vue';
 import { systemApi, downloadFile, http, aiApi, type BackupInfo, type SystemStatus } from '@/api';
 import { useToastStore } from '@/stores/toast';
@@ -306,7 +307,12 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
 </script>
 
 <template>
-  <div v-if="loading" class="py-16 text-center text-sm text-faint">加载中…</div>
+  <div v-if="loading" class="grid lg:grid-cols-2 gap-5 items-start">
+    <Skeleton class="h-96" />
+    <Skeleton class="h-96" />
+    <Skeleton class="h-80 lg:col-span-2" />
+    <Skeleton class="h-72 lg:col-span-2" />
+  </div>
   <ErrorState v-else-if="loadError && !status" :message="loadError" @retry="load" />
 
   <div v-else class="grid lg:grid-cols-2 gap-5 items-start">
@@ -396,7 +402,7 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
       </p>
       <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <label class="flex items-center gap-2 text-sm sm:col-span-2 lg:col-span-4 cursor-pointer select-none w-fit">
-          <input v-model="aiForm.enabled" type="checkbox" class="size-4 accent-[#2563EB]" />
+          <input v-model="aiForm.enabled" type="checkbox" class="size-4 accent-primary" />
           启用 AI 能力（问答 / 智能搜索 / OCR 校对）
         </label>
         <Input
@@ -420,7 +426,7 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
           :error="aiErrors.model"
         />
         <label class="flex items-center gap-2 text-sm cursor-pointer select-none self-end pb-2 w-fit">
-          <input v-model="aiForm.semanticSearch" type="checkbox" class="size-4 accent-[#2563EB]" />
+          <input v-model="aiForm.semanticSearch" type="checkbox" class="size-4 accent-primary" />
           搜索时启用同义词扩展
         </label>
       </div>
@@ -441,7 +447,7 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
       <p class="text-xs text-faint mb-4">定期打包数据库与附件，保留最近 N 份</p>
       <div class="flex flex-wrap items-start gap-3 max-w-md">
         <label class="flex items-center gap-2 text-sm mt-7 cursor-pointer select-none">
-          <input v-model="backupForm.enabled" type="checkbox" class="size-4 accent-[#2563EB]" />
+          <input v-model="backupForm.enabled" type="checkbox" class="size-4 accent-primary" />
           启用
         </label>
         <Input
@@ -509,7 +515,7 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
     </div>
 
     <!-- 恢复码结果 -->
-    <Dialog :open="!!recoveryCodeIssued" title="新的恢复码" width="420px" persistent @update:open="() => undefined">
+    <Dialog :open="!!recoveryCodeIssued" title="新的恢复码" width="420px" persistent>
       <p class="text-sm text-muted">请立即保存，只显示这一次：</p>
       <p class="mt-3 px-4 py-3 bg-canvas border border-line rounded-(--radius-control) text-center font-mono text-base tracking-widest select-all break-all">
         {{ recoveryCodeIssued }}

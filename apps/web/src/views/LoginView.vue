@@ -7,6 +7,8 @@ import Input from '@/components/ui/Input.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useToastStore } from '@/stores/toast';
 import { apiError } from '@/api/client';
+import IlluFlow from '@/components/illustrations/IlluFlow.vue';
+import PatternGrid from '@/components/illustrations/PatternGrid.vue';
 
 type Mode = 'login' | 'setup' | 'recover';
 
@@ -115,18 +117,20 @@ const subheading = computed(() =>
 <template>
   <div class="min-h-dvh flex flex-col lg:flex-row">
     <!-- 左侧品牌区 -->
-    <div class="lg:w-2/5 bg-ink text-white flex flex-col justify-between p-8 lg:p-12 lg:min-h-dvh">
-      <div class="flex items-center gap-2.5">
+    <div class="relative overflow-hidden lg:w-2/5 bg-ink text-white flex flex-col justify-between p-8 lg:p-12 lg:min-h-dvh">
+      <PatternGrid class="text-white/[0.07]" />
+      <div class="relative flex items-center gap-2.5">
         <div class="flex items-center justify-center size-8 rounded-lg bg-primary">
           <Icon name="inventory" :size="16" />
         </div>
         <p class="text-sm font-bold">Procure Lite</p>
       </div>
-      <div class="my-10 lg:my-0 max-w-sm">
+      <div class="relative my-10 lg:my-0 max-w-sm">
         <h1 class="text-2xl lg:text-3xl font-bold leading-snug">让每一笔采购<br />都有下文</h1>
         <p class="mt-3 text-sm text-white/60 leading-relaxed">
           OA 单据导入 · 采购执行 · 库存与领用发放，一台服务器安静运行。
         </p>
+        <IlluFlow class="hidden lg:block mt-12" :width="330" />
       </div>
       <p class="text-meta text-white/35">本地部署 · 数据自持 · v2.0</p>
     </div>

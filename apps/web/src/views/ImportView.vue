@@ -4,6 +4,7 @@ import { todayString } from '@/utils/datetime';
 import { useRouter } from 'vue-router';
 import Button from '@/components/ui/Button.vue';
 import Icon from '@/components/ui/Icon.vue';
+import IlluScan from '@/components/illustrations/IlluScan.vue';
 import Input from '@/components/ui/Input.vue';
 import Select from '@/components/ui/Select.vue';
 import Badge from '@/components/ui/Badge.vue';
@@ -415,9 +416,7 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
         @dragleave.prevent="dragging = false"
         @drop.prevent="onDrop"
       >
-        <div class="flex items-center justify-center size-14 rounded-2xl bg-canvas border border-line text-ink">
-          <Icon name="upload" :size="22" />
-        </div>
+        <IlluScan :size="150" />
         <div>
           <p class="text-sm font-semibold text-ink">{{ dragging ? '松开即可上传' : '点击选择，或把 OA 单据拖到这里' }}</p>
           <p class="mt-1 text-xs text-faint">支持 PDF / PNG / JPG / WebP，最大 {{ MAX_UPLOAD_MB }}MB</p>
@@ -526,7 +525,7 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
           </div>
         </div>
 
-        <EmptyState v-if="lines.length === 0" icon="file" title="没有识别到物品" description="手动添加明细，或重新上传更清晰的单据" />
+        <EmptyState v-if="lines.length === 0" illustration="scan" title="没有识别到物品" description="手动添加明细，或重新上传更清晰的单据" />
 
         <div v-else class="space-y-2">
           <div

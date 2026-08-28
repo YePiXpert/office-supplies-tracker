@@ -9,6 +9,7 @@ import StatCard from '@/components/ui/StatCard.vue';
 import EChart from '@/components/charts/EChart.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import ErrorState from '@/components/ui/ErrorState.vue';
+import Skeleton from '@/components/ui/Skeleton.vue';
 import { AXIS_STYLE, CHART_COLORS, TOOLTIP_STYLE } from '@/components/charts/chartTheme';
 import { reportsApi, distributionsApi } from '@/api';
 import { useToastStore } from '@/stores/toast';
@@ -27,6 +28,7 @@ const range = reactive({ ...DEFAULTS });
 useUrlState(range, DEFAULTS);
 
 const loading = ref(true);
+const refreshing = ref(false);
 const loadError = ref('');
 const loaded = ref(false);
 
@@ -41,9 +43,10 @@ function clean(): { dateFrom?: string; dateTo?: string } {
   return out;
 }
 
-async function load(): Promise<void> {
+async function load(silent = false): Promise<void> {
   const isCurrent = guard.begin();
-  loading.value = true;
+  if (silent) refreshing.value = true;
+  else loading.value = !loaded.value;
   try {
     const params = { ...clean() };
     const [ops, amount, recips] = await Promise.all([
@@ -60,8 +63,13 @@ async function load(): Promise<void> {
   } catch (e) {
     if (!isCurrent()) return;
     loadError.value = apiError(e);
+    // 数据已在页面上时，刷新失败需要 toast 提示
+    if (silent && loaded.value) toast.error(loadError.value);
   } finally {
-    if (isCurrent()) loading.value = false;
+    if (isCurrent()) {
+      loading.value = false;
+      refreshing.value = false;
+    }
   }
 }
 
@@ -86,7 +94,7 @@ function setQuickRange(kind: 'thisMonth' | 'lastMonth' | 'thisYear' | 'all'): vo
     range.dateFrom = `${now.getFullYear()}-01-01`;
     range.dateTo = todayString();
   }
-  void load();
+  void load(true);
 }
 
 const totalAmount = computed(() => points.value.reduce((sum, p) => sum + p.amount, 0));
@@ -171,9 +179,9 @@ const hasRange = computed(() => !!(range.dateFrom || range.dateTo));
     <!-- 筛选 -->
     <div class="card p-3.5 space-y-3">
       <div class="flex flex-wrap items-end gap-3">
-        <Input v-model="range.dateFrom" type="date" label="申请日期从" class="w-40" @change="load" />
-        <Input v-model="range.dateTo" type="date" label="至" class="w-40" @change="load" />
-        <Select v-model="range.groupBy" label="统计维度" :options="groupOptions" class="w-36" @update:model-value="load" />
+        <Input v-model="range.dateFrom" type="date" label="申请日期从" class="w-40" @change="load(true)" />
+        <Input v-model="range.dateTo" type="date" label="至" class="w-40" @change="load(true)" />
+        <Select v-model="range.groupBy" label="统计维度" :options="groupOptions" class="w-36" @update:model-value="load(true)" />
         <Button v-if="hasRange" variant="ghost" size="sm" class="mb-0.5" @click="setQuickRange('all')">
           <Icon name="close" :size="12" /> 全部时间
         </Button>
@@ -195,7 +203,7 @@ const hasRange = computed(() => !!(range.dateFrom || range.dateTo));
 
     <template v-else>
       <!-- 执行漏斗 -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3" :class="loading ? 'opacity-50' : ''">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3" :class="refreshing ? 'opacity-50' : ''">
         <StatCard label="范围申领总量" :value="funnel.total" unit="条" icon="ledger" tone="gray" />
         <StatCard label="待采购" :value="funnel.pendingPurchase" unit="条" icon="kanban" tone="blue" />
         <StatCard label="已到货" :value="funnel.arrived" unit="条" icon="box" tone="amber" />
@@ -218,7 +226,7 @@ const hasRange = computed(() => !!(range.dateFrom || range.dateTo));
             </Button>
           </div>
         </div>
-        <div v-if="loading" class="py-14 text-center text-sm text-faint">加载中…</div>
+        <Skeleton v-if="loading" class="h-[300px]" />
         <EmptyState v-else-if="points.length === 0" icon="report" title="所选范围内没有数据" description="换个时间区间或统计维度试试" />
         <EChart v-else :option="barOption" height="300px" />
       </div>
@@ -231,8 +239,10 @@ const hasRange = computed(() => !!(range.dateFrom || range.dateTo));
             <Icon name="download" :size="13" /> 导出全部 {{ recipients.length }} 人
           </Button>
         </div>
-        <div v-if="loading" class="py-8 text-center text-xs text-faint">加载中…</div>
-        <p v-else-if="recipients.length === 0" class="py-8 text-center text-xs text-faint">所选范围内暂无领用记录</p>
+        <div v-if="loading" class="p-3 space-y-2">
+          <Skeleton v-for="i in 8" :key="i" class="h-10" />
+        </div>
+        <EmptyState v-else-if="recipients.length === 0" illustration="chart" title="还没有领用数据" />
         <div v-else class="overflow-x-auto">
           <table class="table-base min-w-[520px]">
             <thead>

@@ -8,6 +8,7 @@ import SearchInput from '@/components/ui/SearchInput.vue';
 import Badge from '@/components/ui/Badge.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import ErrorState from '@/components/ui/ErrorState.vue';
+import Skeleton from '@/components/ui/Skeleton.vue';
 import Dialog from '@/components/ui/Dialog.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import { suppliersApi, type PriceRecordRow, type SupplierRow } from '@/api';
@@ -52,6 +53,8 @@ const priceErrors = reactive<Record<string, string>>({});
 
 const deleteTarget = ref<SupplierRow | null>(null);
 const deletePriceTarget = ref<PriceRecordRow | null>(null);
+const removingSupplierId = ref<number | null>(null);
+const removingPriceId = ref<number | null>(null);
 const saving = ref(false);
 
 /* 采购建议 */
@@ -176,6 +179,7 @@ async function savePrice(): Promise<void> {
 
 async function removeSupplier(): Promise<void> {
   if (!deleteTarget.value) return;
+  removingSupplierId.value = deleteTarget.value.id;
   try {
     await suppliersApi.remove(deleteTarget.value.id);
     toast.success('供应商已删除');
@@ -184,11 +188,14 @@ async function removeSupplier(): Promise<void> {
     await loadSuppliers();
   } catch (e) {
     toast.error(apiError(e));
+  } finally {
+    removingSupplierId.value = null;
   }
 }
 
 async function removePrice(): Promise<void> {
   if (!deletePriceTarget.value) return;
+  removingPriceId.value = deletePriceTarget.value.id;
   try {
     await suppliersApi.removePriceRecord(deletePriceTarget.value.id);
     toast.success('价格记录已删除');
@@ -196,6 +203,8 @@ async function removePrice(): Promise<void> {
     await Promise.all([loadPrices(), loadSuppliers()]);
   } catch (e) {
     toast.error(apiError(e));
+  } finally {
+    removingPriceId.value = null;
   }
 }
 
@@ -219,7 +228,7 @@ async function runSuggest(): Promise<void> {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="h-full flex flex-col space-y-4">
     <!-- 采购建议 -->
     <div class="card p-4">
       <h2 class="text-sm font-bold text-ink mb-1">比价建议</h2>
@@ -235,11 +244,14 @@ async function runSuggest(): Promise<void> {
         <Button variant="primary" size="md" :loading="suggestLoading" @click="runSuggest">查价</Button>
       </div>
 
-      <p v-if="suggestedFor && suggestions.length === 0 && !suggestLoading" class="mt-3 text-xs text-faint">
-        「{{ suggestedFor }}」还没有报价记录。品名需要与记价时完全一致才能匹配上。
-      </p>
+      <EmptyState
+        v-if="suggestedFor && suggestions.length === 0 && !suggestLoading"
+        illustration="search"
+        :title="`「${suggestedFor}」还没有报价记录`"
+        description="品名需要与记价时完全一致才能匹配上。"
+      />
       <div v-else-if="suggestions.length > 0" class="mt-3 overflow-x-auto">
-        <table class="table-base min-w-[560px]">
+        <table class="table-base table-sticky min-w-[560px]">
           <thead><tr><th>供应商</th><th class="text-right">单价</th><th>链接</th><th>报价时间</th></tr></thead>
           <tbody>
             <tr v-for="(s, i) in suggestions" :key="s.id">
@@ -259,7 +271,7 @@ async function runSuggest(): Promise<void> {
       </div>
     </div>
 
-    <div class="card overflow-hidden">
+    <div class="card overflow-hidden flex-1 min-h-0 flex flex-col">
       <div class="flex border-b border-line px-3 pt-2 gap-1">
         <button
           v-for="t in [{ key: 'suppliers', label: '供应商' }, { key: 'prices', label: '价格记忆' }]"
@@ -280,12 +292,16 @@ async function runSuggest(): Promise<void> {
         </div>
       </div>
 
+      <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
       <!-- 供应商列表 -->
       <template v-if="tab === 'suppliers'">
-        <div v-if="loading" class="py-14 text-center text-sm text-faint">加载中…</div>
+        <div class="h-full flex flex-col">
+        <div v-if="loading" class="p-3 space-y-2">
+          <Skeleton v-for="i in 8" :key="i" class="h-10" />
+        </div>
         <ErrorState v-else-if="loadError" :message="loadError" @retry="loadSuppliers" />
-        <EmptyState v-else-if="suppliers.length === 0" icon="supplier" title="还没有供应商" description="把常用的几家加进来，采购时快速选择" />
-        <div v-else class="overflow-x-auto max-h-[calc(100dvh-420px)]">
+        <EmptyState v-else-if="suppliers.length === 0" illustration="truck" title="还没有供应商" description="把常用的几家加进来，采购时快速选择" />
+        <div v-else class="flex-1 min-h-0 overflow-auto">
           <table class="table-base table-sticky min-w-[640px]">
             <thead><tr><th>名称</th><th>联系人</th><th>电话</th><th class="text-right">关联台账</th><th class="text-right">报价数</th><th class="w-24">操作</th></tr></thead>
             <tbody>
@@ -301,29 +317,41 @@ async function runSuggest(): Promise<void> {
                 <td>
                   <div class="flex items-center gap-0.5">
                     <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="编辑" @click="openSupplierDialog(s)"><Icon name="edit" :size="14" /></button>
-                    <button class="p-1.5 text-faint hover:text-red cursor-pointer" title="删除" @click="deleteTarget = s"><Icon name="trash" :size="14" /></button>
+                    <button
+                      class="p-1.5 text-faint hover:text-red cursor-pointer disabled:opacity-50"
+                      title="删除"
+                      :disabled="removingSupplierId === s.id"
+                      @click="deleteTarget = s"
+                    >
+                      <template v-if="removingSupplierId === s.id">删除中…</template>
+                      <Icon v-else name="trash" :size="14" />
+                    </button>
                   </div>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
+        </div>
       </template>
 
       <!-- 价格记录 -->
       <template v-else>
+        <div class="h-full flex flex-col">
         <div class="flex items-center gap-2.5 px-4 py-3 border-b border-line">
           <SearchInput v-model="state.priceSearch" class="flex-1 max-w-xs" placeholder="按品名过滤" @search="loadPrices" />
           <p v-if="prices.length >= 200" class="text-xs text-amber">仅显示最近 200 条，请用品名过滤</p>
         </div>
-        <div v-if="loadingPrices" class="py-14 text-center text-sm text-faint">加载中…</div>
+        <div v-if="loadingPrices" class="p-3 space-y-2">
+          <Skeleton v-for="i in 8" :key="i" class="h-10" />
+        </div>
         <EmptyState
           v-else-if="prices.length === 0"
-          icon="supplier"
+          :illustration="state.priceSearch ? 'search' : 'empty'"
           :title="state.priceSearch ? '没有匹配的价格记录' : '暂无价格记录'"
           description="下单时顺手记下单价，下次自动比价"
         />
-        <div v-else class="overflow-x-auto max-h-[calc(100dvh-420px)]">
+        <div v-else class="flex-1 min-h-0 overflow-auto">
           <table class="table-base table-sticky min-w-[640px]">
             <thead><tr><th>品名</th><th>供应商</th><th class="text-right">单价</th><th>链接</th><th>时间</th><th class="w-16" /></tr></thead>
             <tbody>
@@ -337,13 +365,23 @@ async function runSuggest(): Promise<void> {
                 </td>
                 <td class="text-xs text-faint num">{{ formatDate(p.createdAt) }}</td>
                 <td>
-                  <button class="p-1.5 text-faint hover:text-red cursor-pointer" title="删除" @click="deletePriceTarget = p"><Icon name="trash" :size="14" /></button>
+                  <button
+                    class="p-1.5 text-faint hover:text-red cursor-pointer disabled:opacity-50"
+                    title="删除"
+                    :disabled="removingPriceId === p.id"
+                    @click="deletePriceTarget = p"
+                  >
+                    <template v-if="removingPriceId === p.id">删除中…</template>
+                    <Icon v-else name="trash" :size="14" />
+                  </button>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
+        </div>
       </template>
+    </div>
     </div>
 
     <!-- 供应商对话框 -->
@@ -365,12 +403,7 @@ async function runSuggest(): Promise<void> {
     <!-- 价格记录对话框 -->
     <Dialog :open="priceDialogOpen" title="记一笔价格" width="440px" @update:open="priceDialogOpen = $event">
       <div class="space-y-3.5">
-        <div>
-          <Select v-model="priceForm.supplierId" label="供应商" :options="supplierOptions" required />
-          <p v-if="priceErrors.supplierId" class="mt-1 flex items-center gap-1 text-xs text-red">
-            <Icon name="alert" :size="12" />{{ priceErrors.supplierId }}
-          </p>
-        </div>
+        <Select v-model="priceForm.supplierId" label="供应商" :options="supplierOptions" required :error="priceErrors.supplierId" />
         <Input v-model="priceForm.itemName" label="品名" required placeholder="与台账品名保持一致可自动比价" :error="priceErrors.itemName" />
         <Input v-model="priceForm.unitPrice" label="单价" type="number" min="0" step="any" required :error="priceErrors.unitPrice" />
         <Input v-model="priceForm.purchaseLink" label="商品链接" placeholder="https://…" />
@@ -381,7 +414,7 @@ async function runSuggest(): Promise<void> {
       </template>
     </Dialog>
 
-    <ConfirmDialog :open="!!deleteTarget" title="删除供应商" :message="`「${deleteTarget?.name}」将被删除。已关联台账记录的供应商无法删除。`" confirm-text="删除" danger @update:open="deleteTarget = null" @confirm="removeSupplier" />
-    <ConfirmDialog :open="!!deletePriceTarget" title="删除价格记录" :message="`「${deletePriceTarget?.itemName}」在 ${deletePriceTarget?.supplier?.name} 的报价将被删除。`" confirm-text="删除" danger @update:open="deletePriceTarget = null" @confirm="removePrice" />
+    <ConfirmDialog :open="!!deleteTarget" title="删除供应商" :message="`「${deleteTarget?.name}」将被删除。已关联台账记录的供应商无法删除。`" confirm-text="删除" danger :loading="removingSupplierId !== null" @update:open="deleteTarget = null" @confirm="removeSupplier" />
+    <ConfirmDialog :open="!!deletePriceTarget" title="删除价格记录" :message="`「${deletePriceTarget?.itemName}」在 ${deletePriceTarget?.supplier?.name} 的报价将被删除。`" confirm-text="删除" danger :loading="removingPriceId !== null" @update:open="deletePriceTarget = null" @confirm="removePrice" />
   </div>
 </template>

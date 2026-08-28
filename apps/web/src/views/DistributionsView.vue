@@ -9,6 +9,7 @@ import Badge from '@/components/ui/Badge.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import ErrorState from '@/components/ui/ErrorState.vue';
+import Skeleton from '@/components/ui/Skeleton.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import DistributionCreateDialog from '@/components/distribution/DistributionCreateDialog.vue';
 import {
@@ -69,6 +70,8 @@ const deleteAttachment = ref<AttachmentRow | null>(null);
 
 const createOpen = ref(false);
 const revokeTarget = ref<DistributionRow | null>(null);
+const revokingId = ref<number | null>(null);
+const removingAttachmentId = ref<number | null>(null);
 
 const hasFilters = computed(
   () => !!(filters.recipient || filters.department || filters.dateFrom || filters.dateTo),
@@ -173,6 +176,7 @@ async function uploadSignoff(e: Event, d: DistributionRow): Promise<void> {
 async function removeAttachment(): Promise<void> {
   const target = deleteAttachment.value;
   if (!target) return;
+  removingAttachmentId.value = target.id;
   try {
     await attachmentsApi.remove(target.id);
     toast.success('附件已删除');
@@ -180,11 +184,14 @@ async function removeAttachment(): Promise<void> {
     deleteAttachment.value = null;
   } catch (e) {
     toast.error(apiError(e));
+  } finally {
+    removingAttachmentId.value = null;
   }
 }
 
 async function revoke(): Promise<void> {
   if (!revokeTarget.value) return;
+  revokingId.value = revokeTarget.value.id;
   try {
     await distributionsApi.remove(revokeTarget.value.id);
     toast.success('发放单已作废，台账与库存已回滚');
@@ -193,6 +200,8 @@ async function revoke(): Promise<void> {
     if (tab.value === 'recipients') await loadStats();
   } catch (e) {
     toast.error(apiError(e));
+  } finally {
+    revokingId.value = null;
   }
 }
 
@@ -258,11 +267,13 @@ function exportStats(): void {
           <span v-if="refreshing" class="inline-block size-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
         </div>
 
-        <div v-if="loading" class="py-14 text-center text-sm text-faint">加载中…</div>
+        <div v-if="loading" class="p-3 space-y-2">
+          <Skeleton v-for="i in 8" :key="i" class="h-10" />
+        </div>
         <ErrorState v-else-if="loadError" :message="loadError" @retry="load" />
         <EmptyState
           v-else-if="rows.length === 0"
-          icon="distribution"
+          :illustration="hasFilters ? 'search' : 'empty'"
           :title="hasFilters ? '没有符合条件的发放单' : '还没有发放记录'"
           :description="hasFilters ? '试试放宽筛选条件' : '在看板或本页发起发放登记'"
         />
@@ -298,11 +309,13 @@ function exportStats(): void {
                 <p class="text-meta text-faint">{{ formatDateTime(d.createdAt) }}</p>
               </div>
               <button
-                class="p-1.5 text-faint hover:text-red cursor-pointer shrink-0"
+                class="p-1.5 text-faint hover:text-red cursor-pointer shrink-0 disabled:opacity-50"
                 title="作废此发放单"
+                :disabled="revokingId === d.id"
                 @click.stop="revokeTarget = d"
               >
-                <Icon name="trash" :size="14" />
+                <template v-if="revokingId === d.id">撤销中…</template>
+                <Icon v-else name="trash" :size="14" />
               </button>
             </div>
 
@@ -347,8 +360,14 @@ function exportStats(): void {
                       <Icon :name="a.mimeType.startsWith('image/') ? 'image' : 'file'" :size="12" class="inline mr-1" />{{ a.filename }}
                     </button>
                     <span class="ml-auto text-meta text-faint shrink-0 num">{{ formatBytes(a.sizeBytes) }}</span>
-                    <button class="shrink-0 p-1 text-faint hover:text-red cursor-pointer" title="删除附件" @click="deleteAttachment = a">
-                      <Icon name="trash" :size="13" />
+                    <button
+                      class="shrink-0 p-1 text-faint hover:text-red cursor-pointer disabled:opacity-50"
+                      title="删除附件"
+                      :disabled="removingAttachmentId === a.id"
+                      @click="deleteAttachment = a"
+                    >
+                      <template v-if="removingAttachmentId === a.id">删除中…</template>
+                      <Icon v-else name="trash" :size="13" />
                     </button>
                   </li>
                 </ul>
@@ -413,6 +432,7 @@ function exportStats(): void {
       :message="`将删除该发放单并回滚相关台账状态与库存（${revokeTarget?.date} · ${revokeTarget?.lines.length} 笔）。若相关库存已被消耗则无法作废。`"
       confirm-text="作废并回滚"
       danger
+      :loading="revokingId !== null"
       @update:open="revokeTarget = null"
       @confirm="revoke"
     />
@@ -422,6 +442,7 @@ function exportStats(): void {
       :message="`「${deleteAttachment?.filename}」将被删除，不可恢复。`"
       confirm-text="删除"
       danger
+      :loading="removingAttachmentId !== null"
       @update:open="deleteAttachment = null"
       @confirm="removeAttachment"
     />

@@ -36,6 +36,7 @@ const history = ref<HistoryRow[]>([]);
 const attachments = ref<AttachmentRow[]>([]);
 const rollbackTarget = ref<HistoryRow | null>(null);
 const deleteAttachment = ref<AttachmentRow | null>(null);
+const removingAttachmentId = ref<number | null>(null);
 const uploading = ref(false);
 const uploadKind = ref<'INVOICE' | 'SIGNOFF'>('INVOICE');
 
@@ -140,6 +141,7 @@ async function uploadAttachment(e: Event): Promise<void> {
 async function removeAttachment(): Promise<void> {
   const target = deleteAttachment.value;
   if (!target) return;
+  removingAttachmentId.value = target.id;
   try {
     await attachmentsApi.remove(target.id);
     toast.success('附件已删除');
@@ -147,6 +149,8 @@ async function removeAttachment(): Promise<void> {
     await loadAttachments();
   } catch (e) {
     toast.error(apiError(e));
+  } finally {
+    removingAttachmentId.value = null;
   }
 }
 
@@ -215,10 +219,10 @@ const amount = computed(() =>
           <h3 class="text-xs font-bold text-muted">附件</h3>
           <div class="flex items-center gap-2">
             <label class="flex items-center gap-1 text-meta text-muted cursor-pointer">
-              <input v-model="uploadKind" type="radio" value="INVOICE" class="accent-[#2563EB]" /> 发票
+              <input v-model="uploadKind" type="radio" value="INVOICE" class="accent-primary" /> 发票
             </label>
             <label class="flex items-center gap-1 text-meta text-muted cursor-pointer">
-              <input v-model="uploadKind" type="radio" value="SIGNOFF" class="accent-[#2563EB]" /> 签收单
+              <input v-model="uploadKind" type="radio" value="SIGNOFF" class="accent-primary" /> 签收单
             </label>
             <label
               class="inline-flex items-center gap-1 text-xs cursor-pointer hover:underline"
@@ -241,8 +245,14 @@ const amount = computed(() =>
               <Icon :name="a.mimeType.startsWith('image/') ? 'image' : 'file'" :size="12" class="inline mr-1" />{{ a.filename }}
             </button>
             <span class="ml-auto text-meta text-faint shrink-0 num">{{ formatBytes(a.sizeBytes) }} · {{ formatDateTime(a.createdAt) }}</span>
-            <button class="shrink-0 p-1 text-faint hover:text-red cursor-pointer" title="删除附件" @click="deleteAttachment = a">
-              <Icon name="trash" :size="13" />
+            <button
+              class="shrink-0 p-1 text-faint hover:text-red cursor-pointer disabled:opacity-50"
+              title="删除附件"
+              :disabled="removingAttachmentId === a.id"
+              @click="deleteAttachment = a"
+            >
+              <template v-if="removingAttachmentId === a.id">删除中…</template>
+              <Icon v-else name="trash" :size="13" />
             </button>
           </li>
         </ul>
@@ -291,6 +301,7 @@ const amount = computed(() =>
     :message="`「${deleteAttachment?.filename}」将被删除，不可恢复。`"
     confirm-text="删除"
     danger
+    :loading="removingAttachmentId !== null"
     @update:open="deleteAttachment = null"
     @confirm="removeAttachment"
   />

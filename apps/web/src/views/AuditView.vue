@@ -8,6 +8,7 @@ import SearchInput from '@/components/ui/SearchInput.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import ErrorState from '@/components/ui/ErrorState.vue';
+import Skeleton from '@/components/ui/Skeleton.vue';
 import { auditApi, type AuditRow } from '@/api';
 import { apiError } from '@/api/client';
 import { useToastStore } from '@/stores/toast';
@@ -73,7 +74,7 @@ const actionOptions = computed(() =>
     .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN')),
 );
 
-async function load(): Promise<void> {
+async function load(silent = false): Promise<void> {
   const isCurrent = guard.begin();
   loading.value = logs.value.length === 0;
   try {
@@ -90,7 +91,8 @@ async function load(): Promise<void> {
   } catch (e) {
     if (!isCurrent()) return;
     loadError.value = apiError(e);
-    toast.error(loadError.value);
+    // 首次加载失败时页面上有 ErrorState，不必再弹 toast
+    if (silent) toast.error(loadError.value);
   } finally {
     if (isCurrent()) loading.value = false;
   }
@@ -99,7 +101,7 @@ onMounted(load);
 
 function applyFilters(): void {
   filters.page = 1;
-  void load();
+  void load(true);
 }
 
 /**
@@ -176,7 +178,7 @@ const hasFilters = computed(() => !!(filters.search || filters.action));
 </script>
 
 <template>
-  <div class="card overflow-hidden">
+  <div class="card overflow-hidden h-full flex flex-col">
     <div class="flex flex-wrap items-center gap-2.5 px-4 py-3 border-b border-line">
       <SearchInput v-model="filters.search" class="flex-1 max-w-sm" placeholder="搜索详情内容" @search="applyFilters" />
       <NativeSelect
@@ -193,18 +195,21 @@ const hasFilters = computed(() => !!(filters.search || filters.action));
       <p class="ml-auto text-xs text-faint">共 {{ total }} 条</p>
     </div>
 
-    <div v-if="loading" class="py-14 text-center text-sm text-faint">加载中…</div>
-    <ErrorState v-else-if="loadError" :message="loadError" @retry="load" />
-    <EmptyState
-      v-else-if="logs.length === 0"
-      icon="audit"
-      :title="hasFilters ? '没有符合条件的记录' : '暂无审计记录'"
-      :description="hasFilters ? '试试换个操作类型或关键词' : ''"
-    />
+    <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+      <div v-if="loading" class="p-3 space-y-2">
+        <Skeleton v-for="i in 8" :key="i" class="h-10" />
+      </div>
+      <ErrorState v-else-if="loadError" :message="loadError" @retry="load" />
+      <EmptyState
+        v-else-if="logs.length === 0"
+        :illustration="hasFilters ? 'search' : 'empty'"
+        :title="hasFilters ? '没有符合条件的记录' : '暂无审计记录'"
+        :description="hasFilters ? '试试换个操作类型或关键词' : ''"
+      />
 
-    <div v-else class="overflow-x-auto max-h-[calc(100dvh-260px)]">
-      <table class="table-base table-sticky min-w-[760px]">
-        <thead><tr><th class="w-40">时间</th><th class="w-28">操作</th><th class="w-28">对象</th><th>详情</th><th class="w-32">来源 IP</th></tr></thead>
+      <div v-else class="flex-1 min-h-0 overflow-auto">
+        <table class="table-base table-sticky min-w-[760px]">
+          <thead><tr><th class="w-40">时间</th><th class="w-28">操作</th><th class="w-28">对象</th><th>详情</th><th class="w-32">来源 IP</th></tr></thead>
         <tbody>
           <tr
             v-for="log in logs"
@@ -237,9 +242,10 @@ const hasFilters = computed(() => !!(filters.search || filters.action));
         </tbody>
       </table>
     </div>
+    </div>
 
     <div v-if="!loading && !loadError && logs.length > 0" class="px-4 py-3 border-t border-line">
-      <Pagination :page="filters.page" :page-size="pageSize" :total="total" @change="(p) => { filters.page = p; load(); }" />
+      <Pagination :page="filters.page" :page-size="pageSize" :total="total" @change="(p) => { filters.page = p; load(true); }" />
     </div>
   </div>
 </template>

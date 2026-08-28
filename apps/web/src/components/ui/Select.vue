@@ -22,6 +22,9 @@ const props = withDefaults(
     placeholder?: string;
     disabled?: boolean;
     clearable?: boolean;
+    required?: boolean;
+    /** 字段级错误：有值时触发框转红并在下方给出原因（与 Input 对齐） */
+    error?: string;
   }>(),
   { placeholder: '请选择' },
 );
@@ -30,7 +33,9 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 
 <template>
   <div class="block">
-    <span v-if="label" class="block mb-1.5 text-xs font-semibold text-muted">{{ label }}</span>
+    <span v-if="label" class="block mb-1.5 text-xs font-semibold text-muted">
+      {{ label }}<span v-if="required" class="text-red ml-0.5">*</span>
+    </span>
     <SelectRoot
       :model-value="modelValue ?? undefined"
       @update:model-value="(v) => emit('update:modelValue', v === null ? '' : String(v))"
@@ -38,10 +43,16 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
       <!-- 清除按钮独立于 trigger 之外，避免 button 嵌套 button 的非法 DOM -->
       <div class="relative">
         <SelectTrigger
-          class="inline-flex w-full h-9.5 items-center justify-between gap-2 px-3 text-sm bg-surface border border-line-strong rounded-(--radius-control) data-[placeholder]:text-faint focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-          :class="clearable && modelValue ? 'pr-7' : ''"
+          class="inline-flex w-full h-9.5 items-center justify-between gap-2 px-3 text-sm bg-surface border rounded-(--radius-control) data-[placeholder]:text-faint focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          :class="[
+            clearable && modelValue ? 'pr-7' : '',
+            error
+              ? 'border-red focus:border-red focus:ring-red/15'
+              : 'border-line-strong focus:border-primary focus:ring-primary/15',
+          ]"
           :disabled="disabled"
           :aria-label="label"
+          :aria-invalid="error ? 'true' : undefined"
         >
           <span class="truncate">
             <SelectValue :placeholder="placeholder" />
@@ -57,6 +68,9 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
           @click.prevent.stop="emit('update:modelValue', '')"
         >×</button>
       </div>
+      <span v-if="error" class="mt-1 flex items-start gap-1 text-xs text-red">
+        <Icon name="alert" :size="12" class="mt-0.5 shrink-0" />{{ error }}
+      </span>
       <SelectPortal>
         <SelectContent
           position="popper"

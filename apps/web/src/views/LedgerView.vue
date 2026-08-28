@@ -10,6 +10,7 @@ import Badge from '@/components/ui/Badge.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import ErrorState from '@/components/ui/ErrorState.vue';
+import Skeleton from '@/components/ui/Skeleton.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
 import ItemEditDialog from '@/components/ledger/ItemEditDialog.vue';
@@ -322,7 +323,7 @@ async function exportXlsx(): Promise<void> {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="h-full flex flex-col space-y-4">
     <!-- 工具栏 -->
     <div class="card p-3.5 space-y-3">
       <div class="flex flex-wrap items-center gap-2.5">
@@ -407,7 +408,7 @@ async function exportXlsx(): Promise<void> {
     </div>
 
     <!-- 台账 / 回收站 -->
-    <div class="card overflow-hidden">
+    <div class="card overflow-hidden flex-1 min-h-0 flex flex-col">
       <div class="flex items-center border-b border-line px-3 pt-2 gap-1">
         <button
           v-for="t in [{ key: 'active', label: '台账' }, { key: 'recycle', label: '回收站' }]"
@@ -429,121 +430,125 @@ async function exportXlsx(): Promise<void> {
         </Button>
       </div>
 
-      <div v-if="loading" class="py-16 text-center text-sm text-faint">加载中…</div>
+      <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div v-if="loading" class="p-3 space-y-2">
+          <Skeleton v-for="i in 8" :key="i" class="h-10" />
+        </div>
 
-      <ErrorState v-else-if="loadError" :message="loadError" @retry="load" />
+        <ErrorState v-else-if="loadError" :message="loadError" @retry="load" />
 
-      <EmptyState
-        v-else-if="rows.length === 0"
-        icon="ledger"
-        :title="tab === 'recycle' ? '回收站是空的' : hasFilters ? '没有符合条件的记录' : '没有台账记录'"
-        :description="hasFilters ? '试试放宽筛选条件' : '从 OA 单据导入，或点击右上角手工新增'"
-      >
-        <button v-if="hasFilters" class="text-xs text-primary hover:underline cursor-pointer" @click="resetFilters">清除筛选</button>
-        <router-link v-else-if="tab === 'active'" to="/import" class="text-xs text-primary hover:underline">去导入 OA 单</router-link>
-      </EmptyState>
+        <EmptyState
+          v-else-if="rows.length === 0"
+          :illustration="tab === 'recycle' ? 'empty' : hasFilters ? 'search' : 'ledger'"
+          :title="tab === 'recycle' ? '回收站是空的' : hasFilters ? '没有符合条件的记录' : '没有台账记录'"
+          :description="hasFilters ? '试试放宽筛选条件' : '从 OA 单据导入，或点击右上角手工新增'"
+        >
+          <button v-if="hasFilters" class="text-xs text-primary hover:underline cursor-pointer" @click="resetFilters">清除筛选</button>
+          <router-link v-else-if="tab === 'active'" to="/import" class="text-xs text-primary hover:underline">去导入 OA 单</router-link>
+        </EmptyState>
 
-      <!-- 表格 -->
-      <div v-else class="overflow-x-auto max-h-[calc(100dvh-330px)]">
-        <table class="table-base table-sticky min-w-[1080px]">
-          <thead>
-            <tr>
-              <th class="w-10">
-                <input
-                  type="checkbox"
-                  class="size-3.5 accent-[#2563EB] cursor-pointer"
-                  :checked="allChecked"
-                  aria-label="全选本页"
-                  @change="toggleAll"
-                />
-              </th>
-              <th>流水号</th>
-              <th>品名</th>
-              <th>部门 / 经办人</th>
-              <th class="text-right">数量</th>
-              <th class="text-right">金额</th>
-              <th>供应商</th>
-              <th>状态</th>
-              <th>付款</th>
-              <th class="w-24">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in rows" :key="row.id" :class="selected.has(row.id) ? 'bg-primary-soft/40' : ''">
-              <td>
-                <input
-                  v-model="selected"
-                  :value="row.id"
-                  type="checkbox"
-                  class="size-3.5 accent-[#2563EB] cursor-pointer"
-                  :aria-label="`选择 ${row.itemName}`"
-                />
-              </td>
-              <td class="num text-xs text-muted">{{ row.serialNumber }}</td>
-              <td>
-                <button class="font-medium hover:text-primary cursor-pointer text-left" @click="detailTarget = row; detailOpen = true">
-                  {{ row.itemName }}
-                </button>
-                <p class="text-meta text-faint num">{{ row.requestDate }}</p>
-              </td>
-              <td class="text-xs">
-                <p>{{ row.department }}</p>
-                <p class="text-faint">{{ row.handler }}</p>
-              </td>
-              <td class="text-right num">{{ row.quantity }}<span v-if="row.unit" class="text-meta text-faint">{{ row.unit }}</span></td>
-              <td class="text-right num">
-                {{ formatAmount(row.unitPrice, row.quantity) }}
-                <p v-if="row.unitPrice != null" class="text-meta text-faint">单价 {{ formatCurrency(row.unitPrice) }}</p>
-              </td>
-              <td class="text-xs">{{ row.supplierName ?? '—' }}</td>
-              <td>
-                <NativeSelect
-                  v-if="tab === 'active'"
-                  size="sm"
-                  :model-value="row.status"
-                  :options="statusOptions"
-                  :aria-label="`修改 ${row.itemName} 状态`"
-                  @update:model-value="(v) => quickChange(row, { status: v as ItemStatus }, `「${ITEM_STATUS_LABELS[v as ItemStatus]}」`)"
-                />
-                <StatusBadge v-else :status="row.status" />
-              </td>
-              <td>
-                <NativeSelect
-                  v-if="tab === 'active'"
-                  size="sm"
-                  :model-value="row.paymentStatus"
-                  :options="paymentOptions"
-                  :aria-label="`修改 ${row.itemName} 付款状态`"
-                  @update:model-value="(v) => quickChange(row, { paymentStatus: v as PaymentStatus }, `「${PAYMENT_STATUS_LABELS[v as PaymentStatus]}」`)"
-                />
-                <Badge v-else tone="gray">{{ PAYMENT_STATUS_LABELS[row.paymentStatus as PaymentStatus] }}</Badge>
-              </td>
-              <td>
-                <div class="flex items-center gap-0.5">
-                  <template v-if="tab === 'active'">
-                    <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="详情" @click="detailTarget = row; detailOpen = true">
-                      <Icon name="search" :size="14" />
-                    </button>
-                    <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="编辑" @click="editTarget = row; editOpen = true">
-                      <Icon name="edit" :size="14" />
-                    </button>
-                    <button class="p-1.5 text-faint hover:text-red cursor-pointer" title="移入回收站" @click="deleteTargets = [row]">
-                      <Icon name="trash" :size="14" />
-                    </button>
-                  </template>
-                  <template v-else>
-                    <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="恢复" @click="restoreSelected([row])">
-                      <Icon name="restore" :size="14" />
-                    </button>
-                    <button class="p-1.5 text-faint hover:text-red cursor-pointer" title="彻底删除" @click="purgeTargets = [row]">
-                      <Icon name="trash" :size="14" />
-                    </button>
-                  </template>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <!-- 表格 -->
+        <div v-else class="flex-1 min-h-0 overflow-auto">
+          <table class="table-base table-sticky min-w-[1080px]">
+            <thead>
+              <tr>
+                <th class="w-10">
+                  <input
+                    type="checkbox"
+                    class="size-3.5 accent-primary cursor-pointer"
+                    :checked="allChecked"
+                    aria-label="全选本页"
+                    @change="toggleAll"
+                  />
+                </th>
+                <th>流水号</th>
+                <th>品名</th>
+                <th>部门 / 经办人</th>
+                <th class="text-right">数量</th>
+                <th class="text-right">金额</th>
+                <th>供应商</th>
+                <th>状态</th>
+                <th>付款</th>
+                <th class="w-24">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in rows" :key="row.id" :class="selected.has(row.id) ? 'bg-primary-soft/40' : ''">
+                <td>
+                  <input
+                    v-model="selected"
+                    :value="row.id"
+                    type="checkbox"
+                    class="size-3.5 accent-primary cursor-pointer"
+                    :aria-label="`选择 ${row.itemName}`"
+                  />
+                </td>
+                <td class="num text-xs text-muted">{{ row.serialNumber }}</td>
+                <td>
+                  <button class="font-medium hover:text-primary cursor-pointer text-left" @click="detailTarget = row; detailOpen = true">
+                    {{ row.itemName }}
+                  </button>
+                  <p class="text-meta text-faint num">{{ row.requestDate }}</p>
+                </td>
+                <td class="text-xs">
+                  <p>{{ row.department }}</p>
+                  <p class="text-faint">{{ row.handler }}</p>
+                </td>
+                <td class="text-right num">{{ row.quantity }}<span v-if="row.unit" class="text-meta text-faint">{{ row.unit }}</span></td>
+                <td class="text-right num">
+                  {{ formatAmount(row.unitPrice, row.quantity) }}
+                  <p v-if="row.unitPrice != null" class="text-meta text-faint">单价 {{ formatCurrency(row.unitPrice) }}</p>
+                </td>
+                <td class="text-xs">{{ row.supplierName ?? '—' }}</td>
+                <td>
+                  <NativeSelect
+                    v-if="tab === 'active'"
+                    size="sm"
+                    :model-value="row.status"
+                    :options="statusOptions"
+                    :aria-label="`修改 ${row.itemName} 状态`"
+                    @update:model-value="(v) => quickChange(row, { status: v as ItemStatus }, `「${ITEM_STATUS_LABELS[v as ItemStatus]}」`)"
+                  />
+                  <StatusBadge v-else :status="row.status" />
+                </td>
+                <td>
+                  <NativeSelect
+                    v-if="tab === 'active'"
+                    size="sm"
+                    :model-value="row.paymentStatus"
+                    :options="paymentOptions"
+                    :aria-label="`修改 ${row.itemName} 付款状态`"
+                    @update:model-value="(v) => quickChange(row, { paymentStatus: v as PaymentStatus }, `「${PAYMENT_STATUS_LABELS[v as PaymentStatus]}」`)"
+                  />
+                  <Badge v-else tone="gray">{{ PAYMENT_STATUS_LABELS[row.paymentStatus as PaymentStatus] }}</Badge>
+                </td>
+                <td>
+                  <div class="flex items-center gap-0.5">
+                    <template v-if="tab === 'active'">
+                      <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="详情" @click="detailTarget = row; detailOpen = true">
+                        <Icon name="search" :size="14" />
+                      </button>
+                      <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="编辑" @click="editTarget = row; editOpen = true">
+                        <Icon name="edit" :size="14" />
+                      </button>
+                      <button class="p-1.5 text-faint hover:text-red cursor-pointer" title="移入回收站" @click="deleteTargets = [row]">
+                        <Icon name="trash" :size="14" />
+                      </button>
+                    </template>
+                    <template v-else>
+                      <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="恢复" @click="restoreSelected([row])">
+                        <Icon name="restore" :size="14" />
+                      </button>
+                      <button class="p-1.5 text-faint hover:text-red cursor-pointer" title="彻底删除" @click="purgeTargets = [row]">
+                        <Icon name="trash" :size="14" />
+                      </button>
+                    </template>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div v-if="!loading && !loadError && rows.length > 0" class="px-4 py-3 border-t border-line">

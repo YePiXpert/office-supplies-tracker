@@ -4,6 +4,7 @@ import Icon from '@/components/ui/Icon.vue';
 import Button from '@/components/ui/Button.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import ErrorState from '@/components/ui/ErrorState.vue';
+import Skeleton from '@/components/ui/Skeleton.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import DistributionCreateDialog from '@/components/distribution/DistributionCreateDialog.vue';
 import PurchaseDialog from '@/components/kanban/PurchaseDialog.vue';
@@ -142,13 +143,19 @@ const truncated = computed(() =>
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div v-if="loading" class="py-16 text-center text-sm text-faint">加载中…</div>
+  <div class="space-y-4 lg:h-full lg:flex lg:flex-col">
+    <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div v-for="i in 3" :key="i" class="card flex flex-col space-y-2.5 p-3 min-h-80">
+        <Skeleton class="h-9 w-24" />
+        <Skeleton class="h-28" />
+        <Skeleton class="h-28" />
+      </div>
+    </div>
 
     <ErrorState v-else-if="loadError && Object.keys(columns).length === 0" :message="loadError" @retry="load()" />
 
-    <div v-else class="grid lg:grid-cols-3 gap-4">
-      <section v-for="status in KANBAN_STATUSES" :key="status" class="card flex flex-col min-h-80" :aria-label="ITEM_STATUS_LABELS[status]">
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:flex-1 lg:min-h-0">
+      <section v-for="status in KANBAN_STATUSES" :key="status" class="card flex flex-col min-h-80 lg:h-full lg:min-h-0" :aria-label="ITEM_STATUS_LABELS[status]">
         <header class="flex items-center justify-between px-4 pt-3.5 pb-2.5 border-b border-line">
           <div class="flex items-center gap-2">
             <span class="inline-flex items-center h-6 px-2 rounded-full border text-xs font-semibold" :class="COLUMN_META[status].tone">
@@ -169,7 +176,7 @@ const truncated = computed(() =>
           </router-link>
         </p>
 
-        <div class="flex-1 p-3 space-y-2.5 overflow-y-auto max-h-[calc(100dvh-320px)]">
+        <div class="p-3 space-y-2.5 max-h-[60dvh] overflow-y-auto lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto">
           <EmptyState
             v-if="!columns[status]?.length"
             :icon="status === 'PENDING_PURCHASE' ? 'kanban' : 'box'"

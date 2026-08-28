@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import {
+  DialogContent,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui';
 import Icon from '@/components/ui/Icon.vue';
 import AiPanel from '@/components/ai/AiPanel.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -58,23 +65,11 @@ const moreItems = computed(() => allItems.value.filter((i) => !mobileItems.some(
 
 const moreOpen = ref(false);
 const aiOpen = ref(false);
-// 路由一变就收起面板
-watch(() => route.path, () => (moreOpen.value = false));
-
-function onEscape(e: KeyboardEvent): void {
-  if (e.key === 'Escape') moreOpen.value = false;
-}
-
-// 打开时锁滚动并接管 Esc（原来是手搓面板，这两样都没有）
-watch(moreOpen, (open) => {
-  document.body.style.overflow = open ? 'hidden' : '';
-  if (open) window.addEventListener('keydown', onEscape);
-  else window.removeEventListener('keydown', onEscape);
-});
-
-onBeforeUnmount(() => {
-  document.body.style.overflow = '';
-  window.removeEventListener('keydown', onEscape);
+const mainEl = ref<HTMLElement>();
+// 路由一变就收起面板，并把页面滚动容器回到顶部
+watch(() => route.path, () => {
+  moreOpen.value = false;
+  mainEl.value?.scrollTo({ top: 0 });
 });
 
 const pageTitle = computed(
@@ -95,21 +90,21 @@ async function logout(): Promise<void> {
 </script>
 
 <template>
-  <div class="min-h-dvh lg:flex">
+  <div class="h-dvh overflow-hidden lg:flex">
     <!-- 桌面侧边栏 -->
-    <aside class="hidden lg:flex w-58 shrink-0 flex-col bg-ink text-white sticky top-0 h-dvh">
+    <aside class="hidden lg:flex w-58 shrink-0 flex-col bg-ink text-white h-dvh">
       <div class="flex items-center gap-2.5 px-5 h-14 border-b border-white/10">
         <div class="flex items-center justify-center size-7 rounded-lg bg-primary">
           <Icon name="inventory" :size="15" class="text-white" />
         </div>
         <div class="leading-tight">
           <p class="text-sm font-bold">Procure Lite</p>
-          <p class="text-[10px] text-white/50">采购台账 v2</p>
+          <p class="text-meta text-white/50">采购台账 v2</p>
         </div>
       </div>
       <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-4">
         <div v-for="group in groups" :key="group.label">
-          <p class="px-2.5 mb-1.5 text-[10px] font-semibold tracking-widest text-white/40">{{ group.label }}</p>
+          <p class="px-2.5 mb-1.5 text-meta font-semibold tracking-widest text-white/40">{{ group.label }}</p>
           <router-link
             v-for="item in group.items"
             :key="item.path"
@@ -137,9 +132,9 @@ async function logout(): Promise<void> {
     </aside>
 
     <!-- 主区域 -->
-    <div class="flex-1 flex flex-col min-w-0">
+    <div class="flex-1 flex flex-col min-w-0 min-h-0 h-dvh">
       <!-- 顶栏 -->
-      <header class="sticky top-0 z-30 flex items-center gap-3 h-13 px-4 lg:px-6 bg-surface/90 backdrop-blur border-b border-line">
+      <header class="flex items-center gap-3 h-13 px-4 lg:px-6 bg-surface/90 backdrop-blur border-b border-line">
         <div class="flex items-center justify-center size-7 rounded-lg bg-ink lg:hidden shrink-0">
           <Icon name="inventory" :size="14" class="text-white" />
         </div>
@@ -164,7 +159,7 @@ async function logout(): Promise<void> {
         </div>
       </header>
 
-      <main class="flex-1 px-4 lg:px-6 py-5 pb-20 lg:pb-6 max-w-[1600px] w-full mx-auto">
+      <main ref="mainEl" class="flex-1 min-h-0 overflow-y-auto px-4 lg:px-6 py-5 pb-20 lg:pb-6 max-w-[1600px] w-full mx-auto">
         <router-view />
       </main>
 
@@ -174,7 +169,7 @@ async function logout(): Promise<void> {
           v-for="item in mobileItems"
           :key="item.path"
           :to="item.path"
-          class="flex flex-col items-center justify-center gap-0.5 text-[10px] text-faint"
+          class="flex flex-col items-center justify-center gap-0.5 text-meta text-faint"
           active-class="text-primary font-semibold"
         >
           <Icon :name="item.icon" :size="18" />
@@ -182,7 +177,7 @@ async function logout(): Promise<void> {
         </router-link>
         <button
           type="button"
-          class="flex flex-col items-center justify-center gap-0.5 text-[10px] cursor-pointer"
+          class="flex flex-col items-center justify-center gap-0.5 text-meta cursor-pointer"
           :class="moreOpen ? 'text-primary font-semibold' : 'text-faint'"
           :aria-expanded="moreOpen"
           @click="moreOpen = true"
@@ -193,54 +188,44 @@ async function logout(): Promise<void> {
       </nav>
 
       <!-- 移动端「更多」面板 -->
-      <Teleport to="body">
-        <Transition
-          enter-active-class="transition duration-200 ease-out"
-          enter-from-class="opacity-0"
-          leave-active-class="transition duration-150 ease-in"
-          leave-to-class="opacity-0"
-        >
-          <div
-            v-if="moreOpen"
-            class="lg:hidden fixed inset-0 z-50 flex items-end"
-            role="dialog"
-            aria-modal="true"
+      <DialogRoot :open="moreOpen" @update:open="(v) => (moreOpen = v)">
+        <DialogPortal>
+          <DialogOverlay class="lg:hidden fixed inset-0 z-50 bg-ink/40 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+          <DialogContent
             aria-label="更多功能"
+            class="lg:hidden fixed inset-x-0 bottom-0 z-50 bg-surface rounded-t-2xl p-4 pb-8 max-h-[70vh] overflow-y-auto focus:outline-none"
           >
-            <div class="absolute inset-0 bg-ink/40" @click="moreOpen = false" />
-            <div class="relative w-full bg-surface rounded-t-2xl p-4 pb-8 max-h-[70vh] overflow-y-auto">
-              <div class="flex items-center justify-between mb-3">
-                <p class="text-sm font-bold text-ink">更多功能</p>
-                <button class="p-1.5 text-faint cursor-pointer" aria-label="关闭" @click="moreOpen = false">
-                  <Icon name="close" :size="16" />
-                </button>
-              </div>
-              <div class="grid grid-cols-4 gap-3">
-                <router-link
-                  v-for="item in moreItems"
-                  :key="item.path"
-                  :to="item.path"
-                  class="flex flex-col items-center gap-1.5 p-2 rounded-(--radius-card) text-xs text-muted active:bg-canvas"
-                >
-                  <span class="flex items-center justify-center size-10 rounded-xl bg-canvas border border-line text-ink">
-                    <Icon :name="item.icon" :size="17" />
-                  </span>
-                  {{ item.title }}
-                </router-link>
-                <button
-                  class="flex flex-col items-center gap-1.5 p-2 rounded-(--radius-card) text-xs text-red cursor-pointer"
-                  @click="logout()"
-                >
-                  <span class="flex items-center justify-center size-10 rounded-xl bg-red-soft border border-red/20">
-                    <Icon name="logout" :size="17" />
-                  </span>
-                  退出
-                </button>
-              </div>
+            <div class="flex items-center justify-between mb-3">
+              <DialogTitle class="text-sm font-bold text-ink">更多功能</DialogTitle>
+              <button class="p-1.5 text-faint cursor-pointer" aria-label="关闭" @click="moreOpen = false">
+                <Icon name="close" :size="16" />
+              </button>
             </div>
-          </div>
-        </Transition>
-      </Teleport>
+            <div class="grid grid-cols-4 gap-3">
+              <router-link
+                v-for="item in moreItems"
+                :key="item.path"
+                :to="item.path"
+                class="flex flex-col items-center gap-1.5 p-2 rounded-(--radius-card) text-xs text-muted active:bg-canvas"
+              >
+                <span class="flex items-center justify-center size-10 rounded-xl bg-canvas border border-line text-ink">
+                  <Icon :name="item.icon" :size="17" />
+                </span>
+                {{ item.title }}
+              </router-link>
+              <button
+                class="flex flex-col items-center gap-1.5 p-2 rounded-(--radius-card) text-xs text-red cursor-pointer"
+                @click="logout()"
+              >
+                <span class="flex items-center justify-center size-10 rounded-xl bg-red-soft border border-red/20">
+                  <Icon name="logout" :size="17" />
+                </span>
+                退出
+              </button>
+            </div>
+          </DialogContent>
+        </DialogPortal>
+      </DialogRoot>
 
       <!-- 全局 AI 助手抽屉 -->
       <AiPanel :open="aiOpen" @close="aiOpen = false" />

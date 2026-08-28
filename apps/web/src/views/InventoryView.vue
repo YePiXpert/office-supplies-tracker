@@ -10,6 +10,7 @@ import Badge from '@/components/ui/Badge.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import ErrorState from '@/components/ui/ErrorState.vue';
+import Skeleton from '@/components/ui/Skeleton.vue';
 import Dialog from '@/components/ui/Dialog.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import { inventoryApi, type MovementRow, type ProductRow } from '@/api';
@@ -66,6 +67,8 @@ const movementForm = reactive({ productId: '', type: 'INBOUND' as MovementType, 
 const movementErrors = reactive<Record<string, string>>({});
 const deleteTarget = ref<ProductRow | null>(null);
 const deleteMovementTarget = ref<MovementRow | null>(null);
+const removingProductId = ref<number | null>(null);
+const removingMovementId = ref<number | null>(null);
 const saving = ref(false);
 
 const movementTypeOptions = (['INBOUND', 'ADJUSTMENT'] as const).map((t) => ({
@@ -222,6 +225,7 @@ async function saveMovement(): Promise<void> {
 
 async function removeProduct(): Promise<void> {
   if (!deleteTarget.value) return;
+  removingProductId.value = deleteTarget.value.id;
   try {
     await inventoryApi.deleteProduct(deleteTarget.value.id);
     toast.success('物品已删除');
@@ -230,11 +234,14 @@ async function removeProduct(): Promise<void> {
     await loadProducts();
   } catch (e) {
     toast.error(apiError(e));
+  } finally {
+    removingProductId.value = null;
   }
 }
 
 async function removeMovement(): Promise<void> {
   if (!deleteMovementTarget.value) return;
+  removingMovementId.value = deleteMovementTarget.value.id;
   try {
     await inventoryApi.removeMovement(deleteMovementTarget.value.id);
     toast.success('流水已删除并回冲');
@@ -243,6 +250,8 @@ async function removeMovement(): Promise<void> {
     await Promise.all([loadProducts(), loadMovements()]);
   } catch (e) {
     toast.error(apiError(e));
+  } finally {
+    removingMovementId.value = null;
   }
 }
 
@@ -253,8 +262,8 @@ function toggleLow(): void {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="card overflow-hidden">
+  <div class="h-full flex flex-col space-y-4">
+    <div class="card overflow-hidden flex-1 min-h-0 flex flex-col">
       <div class="flex flex-wrap items-center gap-1 border-b border-line px-3 pt-2">
         <button
           v-for="t in [{ key: 'products', label: '库存物品' }, { key: 'movements', label: '库存流水' }]"
@@ -275,8 +284,10 @@ function toggleLow(): void {
         </div>
       </div>
 
+      <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
       <!-- 物品 -->
       <template v-if="tab === 'products'">
+        <div class="h-full flex flex-col">
         <div class="flex flex-wrap items-center gap-2.5 px-4 py-3 border-b border-line">
           <SearchInput v-model="state.search" class="flex-1 min-w-44" placeholder="搜索物品名" @search="loadProducts" />
           <button
@@ -291,16 +302,18 @@ function toggleLow(): void {
           </p>
         </div>
 
-        <div v-if="loadingProducts" class="py-14 text-center text-sm text-faint">加载中…</div>
+        <div v-if="loadingProducts" class="p-3 space-y-2">
+          <Skeleton v-for="i in 8" :key="i" class="h-10" />
+        </div>
         <ErrorState v-else-if="productError" :message="productError" @retry="loadProducts" />
         <EmptyState
           v-else-if="products.length === 0"
-          icon="inventory"
+          :illustration="state.search || state.low ? 'search' : 'box'"
           :title="state.search || state.low ? '没有符合条件的物品' : '暂无库存物品'"
           :description="state.search || state.low ? '试试清除筛选条件' : '台账入库或手动新增后出现在这里'"
         />
 
-        <div v-else class="overflow-x-auto max-h-[calc(100dvh-330px)]">
+        <div v-else class="flex-1 min-h-0 overflow-auto">
           <table class="table-base table-sticky min-w-[760px]">
             <thead>
               <tr>
@@ -320,8 +333,14 @@ function toggleLow(): void {
                     <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="编辑" @click="openProductDialog(p)">
                       <Icon name="edit" :size="14" />
                     </button>
-                    <button class="p-1.5 text-faint hover:text-red cursor-pointer" title="删除" @click="deleteTarget = p">
-                      <Icon name="trash" :size="14" />
+                    <button
+                      class="p-1.5 text-faint hover:text-red cursor-pointer disabled:opacity-50"
+                      title="删除"
+                      :disabled="removingProductId === p.id"
+                      @click="deleteTarget = p"
+                    >
+                      <template v-if="removingProductId === p.id">删除中…</template>
+                      <Icon v-else name="trash" :size="14" />
                     </button>
                   </div>
                 </td>
@@ -329,10 +348,12 @@ function toggleLow(): void {
             </tbody>
           </table>
         </div>
+        </div>
       </template>
 
       <!-- 流水 -->
       <template v-else>
+        <div class="h-full flex flex-col">
         <div class="flex items-center gap-2.5 px-4 py-3 border-b border-line">
           <Select
             v-model="state.movementType"
@@ -342,11 +363,13 @@ function toggleLow(): void {
           />
         </div>
 
-        <div v-if="loadingMovements" class="py-14 text-center text-sm text-faint">加载中…</div>
+        <div v-if="loadingMovements" class="p-3 space-y-2">
+          <Skeleton v-for="i in 8" :key="i" class="h-10" />
+        </div>
         <ErrorState v-else-if="movementError" :message="movementError" @retry="loadMovements" />
-        <EmptyState v-else-if="movements.length === 0" icon="inventory" title="暂无库存流水" />
+        <EmptyState v-else-if="movements.length === 0" illustration="empty" title="暂无库存流水" />
 
-        <div v-else class="overflow-x-auto max-h-[calc(100dvh-330px)]">
+        <div v-else class="flex-1 min-h-0 overflow-auto">
           <table class="table-base table-sticky min-w-[680px]">
             <thead>
               <tr><th>时间</th><th>物品</th><th>类型</th><th class="text-right">数量变动</th><th>说明</th><th class="w-16" /></tr>
@@ -374,11 +397,13 @@ function toggleLow(): void {
                 <td>
                   <button
                     v-if="!m.relatedItemId && !m.relatedDistributionId"
-                    class="p-1.5 text-faint hover:text-red cursor-pointer"
+                    class="p-1.5 text-faint hover:text-red cursor-pointer disabled:opacity-50"
                     title="删除并回冲"
+                    :disabled="removingMovementId === m.id"
                     @click="deleteMovementTarget = m"
                   >
-                    <Icon name="trash" :size="14" />
+                    <template v-if="removingMovementId === m.id">删除中…</template>
+                    <Icon v-else name="trash" :size="14" />
                   </button>
                   <span v-else class="text-meta text-faint" title="由台账入库或发放自动产生，请从来源处作废">系统</span>
                 </td>
@@ -394,7 +419,9 @@ function toggleLow(): void {
             @change="(p) => { state.movementPage = p; loadMovements(); }"
           />
         </div>
+        </div>
       </template>
+    </div>
     </div>
 
     <!-- 物品编辑 -->
@@ -424,12 +451,7 @@ function toggleLow(): void {
     <!-- 手动流水 -->
     <Dialog :open="movementDialogOpen" title="登记库存流水" description="入库或盘点调整；出库请走发放登记" width="480px" @update:open="movementDialogOpen = $event">
       <div class="space-y-3.5">
-        <div>
-          <Select v-model="movementForm.productId" label="物品" :options="productOptions" required />
-          <p v-if="movementErrors.productId" class="mt-1 flex items-center gap-1 text-xs text-red">
-            <Icon name="alert" :size="12" />{{ movementErrors.productId }}
-          </p>
-        </div>
+        <Select v-model="movementForm.productId" label="物品" :options="productOptions" required :error="movementErrors.productId" />
         <Select v-model="movementForm.type" label="类型" :options="movementTypeOptions" />
         <Input
           v-model="movementForm.quantity"
@@ -454,7 +476,7 @@ function toggleLow(): void {
       </template>
     </Dialog>
 
-    <ConfirmDialog :open="!!deleteTarget" title="删除物品" :message="`「${deleteTarget?.name}」将被删除。仅允许删除库存为零且无领用记录的物品。`" confirm-text="删除" danger @update:open="deleteTarget = null" @confirm="removeProduct" />
-    <ConfirmDialog :open="!!deleteMovementTarget" title="删除流水" :message="`该流水将被删除且库存回冲（${deleteMovementTarget?.product?.name} ${(deleteMovementTarget?.quantity ?? 0) >= 0 ? '+' : ''}${deleteMovementTarget?.quantity}）。`" confirm-text="删除并回冲" danger @update:open="deleteMovementTarget = null" @confirm="removeMovement" />
+    <ConfirmDialog :open="!!deleteTarget" title="删除物品" :message="`「${deleteTarget?.name}」将被删除。仅允许删除库存为零且无领用记录的物品。`" confirm-text="删除" danger :loading="removingProductId !== null" @update:open="deleteTarget = null" @confirm="removeProduct" />
+    <ConfirmDialog :open="!!deleteMovementTarget" title="删除流水" :message="`该流水将被删除且库存回冲（${deleteMovementTarget?.product?.name} ${(deleteMovementTarget?.quantity ?? 0) >= 0 ? '+' : ''}${deleteMovementTarget?.quantity}）。`" confirm-text="删除并回冲" danger :loading="removingMovementId !== null" @update:open="deleteMovementTarget = null" @confirm="removeMovement" />
   </div>
 </template>

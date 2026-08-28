@@ -25,7 +25,7 @@ const tones = {
   <component
     :is="to ? RouterLink : 'div'"
     :to="to"
-    class="card flex items-center gap-3.5 px-4 py-3.5 transition-colors"
+    class="card group flex items-center gap-3.5 px-4 py-3.5 transition-colors"
     :class="to ? 'hover:border-primary/40' : ''"
   >
     <span class="flex items-center justify-center size-10 rounded-(--radius-card) shrink-0" :class="tones[tone ?? 'gray']">
@@ -38,5 +38,12 @@ const tones = {
       </p>
       <p v-if="hint" class="text-meta text-faint truncate mt-0.5">{{ hint }}</p>
     </div>
+    <!-- 可点击卡片：hover 时箭头滑入，给出「能点进去」的明示 -->
+    <Icon
+      v-if="to"
+      name="chevron-right"
+      :size="15"
+      class="ml-auto shrink-0 -translate-x-1 text-faint opacity-0 transition-all group-hover:translate-x-0 group-hover:text-primary group-hover:opacity-100"
+    />
   </component>
 </template>

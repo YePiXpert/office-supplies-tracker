@@ -139,18 +139,15 @@ async function submit(markOrdered: boolean): Promise<void> {
             @click="applySuggestion(s)"
           >
             <span class="flex-1 truncate">{{ s.supplier.name }}</span>
-            <span v-if="i === 0" class="text-[10px] text-teal font-semibold">最低价</span>
+            <span v-if="i === 0" class="text-meta text-teal font-semibold">最低价</span>
             <span class="num font-semibold shrink-0">{{ formatCurrency(s.unitPrice) }}</span>
-            <span class="text-[10px] text-faint num shrink-0">{{ formatDate(s.createdAt) }}</span>
+            <span class="text-meta text-faint num shrink-0">{{ formatDate(s.createdAt) }}</span>
           </button>
         </div>
       </div>
       <p v-else class="text-xs text-faint">这个品名还没有历史报价，这次填的会成为下次的比价基准。</p>
 
-      <Select v-model="form.supplierId" label="供应商" :options="supplierOptions" clearable />
-      <p v-if="errors.supplierId" class="-mt-2 flex items-center gap-1 text-xs text-red">
-        <Icon name="alert" :size="12" />{{ errors.supplierId }}
-      </p>
+      <Select v-model="form.supplierId" label="供应商" :options="supplierOptions" clearable :error="errors.supplierId" />
 
       <div class="grid grid-cols-2 gap-3">
         <Input
@@ -173,7 +170,7 @@ async function submit(markOrdered: boolean): Promise<void> {
       <Input v-model="form.purchaseLink" label="采购链接" placeholder="https://…（可空）" />
 
       <label class="flex items-center gap-2 text-xs text-muted cursor-pointer select-none">
-        <input v-model="form.rememberPrice" type="checkbox" class="size-3.5 accent-[#2563EB]" />
+        <input v-model="form.rememberPrice" type="checkbox" class="size-3.5 accent-primary" />
         把这次单价记入比价库（下次采购同一品名时自动提示）
       </label>
     </div>

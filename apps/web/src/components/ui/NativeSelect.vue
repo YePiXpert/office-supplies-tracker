@@ -17,6 +17,8 @@ withDefaults(
     size?: 'sm' | 'md';
     disabled?: boolean;
     ariaLabel?: string;
+    /** 字段级错误：有值时下拉框转红并在下方给出原因 */
+    error?: string;
   }>(),
   { size: 'md' },
 );
@@ -24,23 +26,34 @@ const emit = defineEmits<{ 'update:modelValue': [v: string] }>();
 </script>
 
 <template>
-  <div class="relative inline-flex">
-    <select
-      :value="modelValue ?? ''"
-      :disabled="disabled"
-      :aria-label="ariaLabel"
-      class="appearance-none w-full bg-surface border border-line-strong rounded-(--radius-control) text-text cursor-pointer hover:border-primary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      :class="size === 'sm' ? 'h-7 pl-2 pr-6 text-xs' : 'h-9.5 pl-3 pr-8 text-sm'"
-      @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
-    >
-      <option v-if="placeholder" value="">{{ placeholder }}</option>
-      <option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option>
-    </select>
-    <Icon
-      name="chevron-down"
-      :size="size === 'sm' ? 11 : 14"
-      class="absolute top-1/2 -translate-y-1/2 text-muted pointer-events-none"
-      :class="size === 'sm' ? 'right-1.5' : 'right-2.5'"
-    />
+  <div class="inline-flex flex-col">
+    <div class="relative inline-flex">
+      <select
+        :value="modelValue ?? ''"
+        :disabled="disabled"
+        :aria-label="ariaLabel"
+        :aria-invalid="error ? 'true' : undefined"
+        class="appearance-none w-full bg-surface border rounded-(--radius-control) text-text cursor-pointer focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        :class="[
+          size === 'sm' ? 'h-7 pl-2 pr-6 text-xs' : 'h-9.5 pl-3 pr-8 text-sm',
+          error
+            ? 'border-red focus:border-red focus:ring-red/15'
+            : 'border-line-strong hover:border-primary focus:border-primary focus:ring-primary/15',
+        ]"
+        @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
+      >
+        <option v-if="placeholder" value="">{{ placeholder }}</option>
+        <option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option>
+      </select>
+      <Icon
+        name="chevron-down"
+        :size="size === 'sm' ? 11 : 14"
+        class="absolute top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+        :class="size === 'sm' ? 'right-1.5' : 'right-2.5'"
+      />
+    </div>
+    <span v-if="error" class="mt-1 flex items-start gap-1 text-xs text-red">
+      <Icon name="alert" :size="12" class="mt-0.5 shrink-0" />{{ error }}
+    </span>
   </div>
 </template>

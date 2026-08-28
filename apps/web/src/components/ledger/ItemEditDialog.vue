@@ -294,7 +294,7 @@ async function save(): Promise<void> {
             >
               <span>{{ s.supplier.name }}</span>
               <span class="num font-semibold">{{ formatCurrency(s.unitPrice) }}</span>
-              <span v-if="i === 0" class="text-[10px] text-teal">最低</span>
+              <span v-if="i === 0" class="text-meta text-teal">最低</span>
             </button>
           </div>
         </div>
@@ -329,7 +329,7 @@ async function save(): Promise<void> {
       <Select v-model="form.paymentStatus" label="付款状态" :options="paymentOptions" />
       <Input v-model="form.arrivalDate" label="到货日期" type="date" hint="留空表示未到货" />
       <label class="flex items-center gap-2 mt-6 text-sm text-muted cursor-pointer select-none">
-        <input v-model="form.invoiceIssued" type="checkbox" class="size-4 accent-[#2563EB]" />
+        <input v-model="form.invoiceIssued" type="checkbox" class="size-4 accent-primary" />
         已开票
       </label>
       <div class="sm:col-span-2">
