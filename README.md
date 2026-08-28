@@ -78,10 +78,16 @@ bash deploy/deploy.sh          # 默认 8080 端口；自定义：bash deploy/de
 
 脚本自动完成：生成 `.env`（随机 OCR_API_KEY）→ 从 GHCR 拉镜像并启动（拉取失败自动回退本地构建）→ 健康检查。首次访问 `http://<服务器IP>:8080` 设置管理员密码。
 
-**版本升级**：
+**版本升级**（一行命令，任意目录执行；自动定位 `/opt/procure-lite` 或 `~/procure-lite`）：
 
 ```bash
-bash deploy/upgrade.sh             # git pull + 拉新镜像 → 备份数据 → 滚动升级
+curl -fsSL https://raw.githubusercontent.com/YePiXpert/procure-lite/main/deploy/upgrade.sh | bash
+```
+
+仓库在其他位置时指定目录（`PROCURE_REPO` 环境变量也行）；在仓库内则直接 `bash deploy/upgrade.sh`，两者等价：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YePiXpert/procure-lite/main/deploy/upgrade.sh | bash -s -- /path/to/procure-lite
 bash deploy/upgrade.sh --build     # 不等 CI，直接本地构建（--full 连 OCR 一起）
 bash deploy/upgrade.sh --no-pull   # 只更新镜像，不动代码
 ```

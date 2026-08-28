@@ -93,4 +93,5 @@ info "部署完成 ✓  访问 http://<服务器IP>:${WEB_PORT} 设置管理员�
 info "常用命令："
 info "  docker compose logs -f          # 看日志"
 info "  docker compose restart server   # 重启 API"
-info "  bash deploy/upgrade.sh          # 升级版本（拉新镜像）"
+info "  curl -fsSL https://raw.githubusercontent.com/YePiXpert/procure-lite/main/deploy/upgrade.sh | bash"
+info "                                  # 一行升级（任意目录；仓库不在 ~/procure-lite 时用 bash -s -- <目录> 指定）"

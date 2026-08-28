@@ -1,12 +1,35 @@
 #!/usr/bin/env bash
 # Procure Lite 升级脚本：拉代码 → 拉新镜像 → 备份数据 → 滚动升级 → 健康检查
-# 用法：
-#   bash deploy/upgrade.sh            # 默认：git pull + docker compose pull（GHCR 镜像）
-#   bash deploy/upgrade.sh --build    # 本地构建镜像（改了代码且不等 CI 时用；加 --full 连 OCR 一起构建）
-#   bash deploy/upgrade.sh --no-pull  # 跳过 git pull，只更新镜像
+# 用法（任意目录均可执行）：
+#   bash deploy/upgrade.sh             # 仓库内执行（按脚本位置定位仓库根）
+#   curl -fsSL https://raw.githubusercontent.com/YePiXpert/procure-lite/main/deploy/upgrade.sh | bash
+#                                      # 一行升级：自动找 /opt/procure-lite、~/procure-lite
+#   curl -fsSL …/upgrade.sh | bash -s -- /path/to/repo
+#                                      # 仓库在别处时指定目录（或用环境变量 PROCURE_REPO）
+# 可选参数：--build 本地构建（--full 连 OCR 一起）；--no-pull 跳过 git pull
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+info() { printf '\033[1;34m[升级]\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m[警告]\033[0m %s\n' "$*"; }
+die()  { printf '\033[1;31m[错误]\033[0m %s\n' "$*" >&2; exit 1; }
+
+# ---------- 定位仓库目录 ----------
+# 优先级：首个非 -- 参数 > 环境变量 PROCURE_REPO > 脚本自身位置（curl|bash 时 $0 是 bash，自动跳过）> 常规安装路径
+REPO_DIR="${PROCURE_REPO:-}"
+if [ $# -gt 0 ] && [ "${1:0:2}" != "--" ]; then REPO_DIR="$1"; shift; fi
+if [ -z "$REPO_DIR" ] && [ -f "$0" ] && [ -f "$(dirname "$0")/../docker-compose.yml" ]; then
+  REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+fi
+if [ -z "$REPO_DIR" ]; then
+  for d in /opt/procure-lite "$HOME/procure-lite"; do
+    if [ -f "$d/docker-compose.yml" ]; then REPO_DIR="$d"; break; fi
+  done
+fi
+[ -n "$REPO_DIR" ] || die "找不到仓库目录：用参数指定（curl … | bash -s -- /path/to/procure-lite），或设置环境变量 PROCURE_REPO"
+[ -d "$REPO_DIR" ] || die "仓库目录不存在：$REPO_DIR"
+cd "$REPO_DIR"
+info "仓库目录：$REPO_DIR"
+
 BUILD=0
 FULL=0
 GIT_PULL=1
@@ -18,10 +41,6 @@ for arg in "$@"; do
     *) echo "未知参数：$arg（支持 --build / --full / --no-pull）" >&2; exit 1 ;;
   esac
 done
-
-info() { printf '\033[1;34m[升级]\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m[警告]\033[0m %s\n' "$*"; }
-die()  { printf '\033[1;31m[错误]\033[0m %s\n' "$*" >&2; exit 1; }
 
 command -v docker >/dev/null 2>&1 || die "缺少 docker"
 docker compose version >/dev/null 2>&1 || die "缺少 docker compose 插件"
