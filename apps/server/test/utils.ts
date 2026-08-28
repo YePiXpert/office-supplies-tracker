@@ -1,4 +1,4 @@
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import {
   FastifyAdapter,
   type NestFastifyApplication,
@@ -23,8 +23,12 @@ export interface TestApp {
 }
 
 /** 创建测试应用并完成初始化 + 登录，返回带会话 Cookie 的 inject */
-export async function createApp(opts: { login?: boolean } = {}): Promise<TestApp> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+export async function createApp(
+  opts: { login?: boolean; override?: (builder: TestingModuleBuilder) => TestingModuleBuilder } = {},
+): Promise<TestApp> {
+  let builder = Test.createTestingModule({ imports: [AppModule] });
+  if (opts.override) builder = opts.override(builder);
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication(new FastifyAdapter()) as NestFastifyApplication;
   await configureApp(app);
   await app.init();

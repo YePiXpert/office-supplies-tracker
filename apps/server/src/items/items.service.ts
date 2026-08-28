@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import { config } from '../config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AiSearchService } from '../ai/ai-search.service';
 import type {
   BatchUpdateInput,
   ItemCreateInput,
@@ -60,12 +61,13 @@ export class ItemsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly aiSearch: AiSearchService,
   ) {}
 
   /* --------------------------------- 查询 --------------------------------- */
 
   async list(query: ItemQuery) {
-    const where = this.buildWhere(query);
+    const where = await this.buildWhere(query);
     const [items, total] = await this.prisma.$transaction([
       this.prisma.item.findMany({
         where,
@@ -79,18 +81,21 @@ export class ItemsService {
     return { items, total, page: query.page, pageSize: query.pageSize };
   }
 
-  private buildWhere(query: ItemQuery): Prisma.ItemWhereInput {
+  private async buildWhere(query: ItemQuery): Promise<Prisma.ItemWhereInput> {
     const where: Prisma.ItemWhereInput = {};
     if (query.deleted === 'only') where.deletedAt = { not: null };
     else if (query.deleted !== 'include') where.deletedAt = null;
 
     if (query.search) {
       const s = query.search;
+      // 语义扩展：同义词只命中品名字段（对部门/经办人做同义扩展只会引入噪音）
+      const synonyms = await this.aiSearch.synonyms(s);
       where.OR = [
         { serialNumber: { contains: s } },
         { itemName: { contains: s } },
         { handler: { contains: s } },
         { department: { contains: s } },
+        ...synonyms.map((t) => ({ itemName: { contains: t } })),
       ];
     }
     if (query.status) where.status = query.status;
@@ -382,8 +387,8 @@ export class ItemsService {
   /* --------------------------------- 导出 --------------------------------- */
 
   /** 供报表/看板复用的列表查询（不分页限制） */
-  findManyForExport(query: ItemQuery) {
-    const where = this.buildWhere({ ...query, deleted: query.deleted ?? undefined, page: 1, pageSize: 1 });
+  async findManyForExport(query: ItemQuery) {
+    const where = await this.buildWhere({ ...query, deleted: query.deleted ?? undefined, page: 1, pageSize: 1 });
     return this.prisma.item.findMany({
       where,
       include: { supplier: { select: { name: true } } },

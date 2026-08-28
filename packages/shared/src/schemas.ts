@@ -265,3 +265,81 @@ export const autoBackupConfigSchema = z.object({
   keepCount: z.coerce.number().int().min(1).max(100),
 });
 export type AutoBackupConfig = z.infer<typeof autoBackupConfigSchema>;
+
+/* ----------------------------------- AI ----------------------------------- */
+
+/** OpenAI 兼容 LLM 服务配置（存 Setting 表，设置页可随时改） */
+export const aiConfigSchema = z.object({
+  enabled: z.boolean(),
+  /** 如 https://open.bigmodel.cn/api/paas/v4 */
+  baseUrl: z.string().trim().url('接口地址应为合法 URL').max(200),
+  /** 留空 = 保留已保存的 Key */
+  apiKey: z.string().trim().max(200).optional(),
+  model: z.string().trim().min(1, '模型名不能为空').max(64),
+  /** 台账/库存搜索启用 AI 同义词扩展（关闭则退回普通关键字匹配） */
+  semanticSearch: z.boolean(),
+});
+export type AiConfigInput = z.infer<typeof aiConfigSchema>;
+
+/** GET 返回的配置视图：不回传 apiKey 明文 */
+export interface AiConfigView {
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  semanticSearch: boolean;
+  apiKeySet: boolean;
+}
+
+export const aiAskSchema = z.object({
+  question: z.string().trim().min(1, '问题不能为空').max(500),
+  /** 近几轮对话（不含本次问题），服务端拼接为上下文 */
+  history: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string().max(4000),
+      }),
+    )
+    .max(10)
+    .optional(),
+});
+export type AiAskInput = z.infer<typeof aiAskSchema>;
+
+/** 问答过程中的一次工具调用记录（前端折叠展示） */
+export interface AiToolStep {
+  name: string;
+  args: Record<string, unknown>;
+  count: number;
+}
+
+export interface AiAskResponse {
+  answer: string;
+  steps: AiToolStep[];
+  model: string;
+}
+
+export const aiOcrReviewSchema = z.object({
+  taskId: z.string().trim().min(1).max(64),
+});
+export type AiOcrReviewInput = z.infer<typeof aiOcrReviewSchema>;
+
+/** OCR 校对建议：只包含与当前值不同的字段，前端逐项应用 */
+export const aiOcrReviewResultSchema = z.object({
+  serialNumber: z.string().optional(),
+  department: z.string().optional(),
+  handler: z.string().optional(),
+  requestDate: dateString.optional(),
+  lines: z
+    .array(
+      z.object({
+        index: z.number().int().min(0),
+        itemName: z.string().optional(),
+        quantity: z.number().positive().optional(),
+        unitPrice: z.number().nonnegative().optional(),
+        reason: z.string().max(200).optional(),
+      }),
+    )
+    .max(100),
+  warnings: z.array(z.string()).max(20),
+});
+export type AiOcrReviewResult = z.infer<typeof aiOcrReviewResultSchema>;

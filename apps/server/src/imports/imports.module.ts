@@ -6,6 +6,6 @@ import { OcrClient } from './ocr.client';
 @Module({
   controllers: [ImportsController],
   providers: [ImportsService, OcrClient],
-  exports: [OcrClient],
+  exports: [OcrClient, ImportsService],
 })
 export class ImportsModule {}

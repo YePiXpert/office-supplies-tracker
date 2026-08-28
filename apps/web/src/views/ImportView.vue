@@ -8,12 +8,12 @@ import Input from '@/components/ui/Input.vue';
 import Select from '@/components/ui/Select.vue';
 import Badge from '@/components/ui/Badge.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
-import { importsApi } from '@/api';
+import { importsApi, aiApi } from '@/api';
 import { useToastStore } from '@/stores/toast';
 import { useCatalogStore } from '@/stores/catalog';
 import { apiError } from '@/api/client';
 import { formatBytes, formatCurrency } from '@/utils/format';
-import type { DuplicatePreview } from '@procure-lite/shared';
+import type { AiOcrReviewResult, DuplicatePreview } from '@procure-lite/shared';
 
 type Step = 'upload' | 'parsing' | 'review' | 'done';
 
@@ -64,6 +64,11 @@ interface DraftLine {
 const lines = ref<DraftLine[]>([]);
 
 const fileInput = ref<HTMLInputElement | null>(null);
+
+/* AI 校对 */
+const aiEnabled = ref(false);
+const aiReviewing = ref(false);
+const aiReview = ref<AiOcrReviewResult | null>(null);
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let elapsedTimer: ReturnType<typeof setInterval> | null = null;
@@ -189,6 +194,11 @@ async function poll(): Promise<void> {
     }
     await catalog.ensureSuppliers().catch(() => []);
     await checkDuplicates();
+    // AI 开关只查一次；查失败按未启用处理，不阻塞校对流程
+    aiApi
+      .config()
+      .then((cfg) => (aiEnabled.value = cfg.enabled && cfg.apiKeySet))
+      .catch(() => (aiEnabled.value = false));
     step.value = 'review';
   } catch (e) {
     // 连续失败 5 次（约 8 秒）才判死；单次抖动继续等
@@ -237,6 +247,75 @@ const newCount = computed(() => lines.value.length - dupLines.value.length);
 
 function setAllDuplicateActions(action: 'skip' | 'merge'): void {
   dupLines.value.forEach((l) => (l.action = action));
+}
+
+/* --------------------------------- AI 校对 -------------------------------- */
+
+type AiHeaderKey = 'serialNumber' | 'department' | 'handler' | 'requestDate';
+
+const aiHeaderFields = computed<{ key: AiHeaderKey; label: string; value: string }[]>(() => {
+  const r = aiReview.value;
+  if (!r) return [];
+  const entries: { key: AiHeaderKey; label: string; value: string }[] = [];
+  if (r.serialNumber && r.serialNumber !== form.serialNumber) entries.push({ key: 'serialNumber', label: '流水号', value: r.serialNumber });
+  if (r.department && r.department !== form.department) entries.push({ key: 'department', label: '申领部门', value: r.department });
+  if (r.handler && r.handler !== form.handler) entries.push({ key: 'handler', label: '经办人', value: r.handler });
+  if (r.requestDate && r.requestDate !== form.requestDate) entries.push({ key: 'requestDate', label: '申请日期', value: r.requestDate });
+  return entries;
+});
+
+const aiSuggestionCount = computed(() => aiHeaderFields.value.length + (aiReview.value?.lines.length ?? 0));
+
+function aiLineSuggestion(i: number) {
+  return aiReview.value?.lines.find((l) => l.index === i) ?? null;
+}
+
+async function runAiReview(): Promise<void> {
+  if (!taskId.value || aiReviewing.value) return;
+  aiReviewing.value = true;
+  aiReview.value = null;
+  try {
+    aiReview.value = await aiApi.ocrReview(taskId.value);
+    if (aiSuggestionCount.value === 0 && aiReview.value.warnings.length === 0) {
+      toast.info('AI 没有发现需要修改的地方');
+    } else {
+      toast.success(`AI 给出 ${aiSuggestionCount.value} 条建议，请逐项确认后应用`);
+    }
+  } catch (e) {
+    toast.error(apiError(e));
+  } finally {
+    aiReviewing.value = false;
+  }
+}
+
+function applyAiHeaderField(key: 'serialNumber' | 'department' | 'handler' | 'requestDate'): void {
+  const r = aiReview.value;
+  if (!r?.[key]) return;
+  form[key] = r[key] as string;
+  delete r[key];
+  void checkDuplicates();
+}
+
+function applyAiLine(index: number): void {
+  const r = aiReview.value;
+  if (!r) return;
+  const s = r.lines.find((l) => l.index === index);
+  const line = lines.value[index];
+  if (!s || !line) return;
+  if (s.itemName) line.itemName = s.itemName;
+  if (s.quantity != null) line.quantity = String(s.quantity);
+  if (s.unitPrice != null) line.unitPrice = String(s.unitPrice);
+  r.lines = r.lines.filter((l) => l.index !== index);
+  void checkDuplicates();
+}
+
+function applyAiAll(): void {
+  const r = aiReview.value;
+  if (!r) return;
+  for (const f of aiHeaderFields.value) applyAiHeaderField(f.key);
+  for (const s of [...r.lines]) applyAiLine(s.index);
+  aiReview.value = null;
+  toast.success('已应用全部 AI 建议');
 }
 
 function addLine(): void {
@@ -299,6 +378,7 @@ function reset(): void {
   taskError.value = '';
   taskId.value = '';
   uploadedName.value = '';
+  aiReview.value = null;
   Object.keys(errors).forEach((k) => delete errors[k]);
 }
 
@@ -373,7 +453,44 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
     <!-- 3. 校对 -->
     <template v-else-if="step === 'review'">
       <div class="card p-5">
-        <h2 class="text-sm font-bold text-ink mb-3.5">单据信息</h2>
+        <div class="flex items-center justify-between mb-3.5">
+          <h2 class="text-sm font-bold text-ink">单据信息</h2>
+          <Button v-if="aiEnabled" size="sm" variant="secondary" :loading="aiReviewing" @click="runAiReview">
+            <Icon name="sparkles" :size="13" /> AI 校对
+          </Button>
+        </div>
+
+        <!-- AI 建议：只列出与当前值不同的项，逐项应用，改不改都由人决定 -->
+        <div v-if="aiReview" class="mb-3.5 p-3 bg-primary-soft/70 border border-primary/25 rounded-(--radius-control) space-y-2">
+          <div class="flex items-center gap-1.5 text-xs font-semibold text-primary">
+            <Icon name="sparkles" :size="12" />
+            AI 校对建议
+            <button
+              v-if="aiSuggestionCount > 0"
+              class="ml-auto h-6 px-2 text-meta rounded-md bg-primary text-white cursor-pointer hover:bg-primary-hover"
+              @click="applyAiAll"
+            >
+              全部应用（{{ aiSuggestionCount }}）
+            </button>
+          </div>
+          <template v-if="aiSuggestionCount > 0">
+            <div v-for="f in aiHeaderFields" :key="f.key" class="flex items-center gap-2 flex-wrap text-meta">
+              <span class="text-muted">{{ f.label }}：</span>
+              <span class="text-faint line-through">{{ form[f.key] || '（空）' }}</span>
+              <span class="text-primary">→</span>
+              <b class="text-ink">{{ f.value }}</b>
+              <button class="text-xs text-primary hover:underline cursor-pointer" @click="applyAiHeaderField(f.key)">应用</button>
+            </div>
+            <p v-if="aiReview.lines.length > 0" class="text-meta text-muted">
+              另有 {{ aiReview.lines.length }} 条明细建议，见下方高亮行。
+            </p>
+          </template>
+          <p v-else class="text-meta text-muted">表头没有需要修改的地方。</p>
+          <p v-for="(w, wi) in aiReview.warnings" :key="wi" class="text-meta text-amber flex items-start gap-1">
+            <Icon name="alert" :size="12" class="mt-0.5 shrink-0" />{{ w }}
+          </p>
+        </div>
+
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
           <Input v-model="form.serialNumber" label="流水号" required :error="errors.serialNumber" @blur="checkDuplicates" />
           <Input v-model="form.requestDate" label="申请日期" type="date" required :error="errors.requestDate" />
@@ -416,7 +533,10 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
             v-for="(line, i) in lines"
             :key="i"
             class="p-3 border rounded-(--radius-control) grid grid-cols-12 gap-2 items-center"
-            :class="line.duplicate ? 'bg-amber-soft/60 border-amber/30' : 'bg-canvas/60 border-line'"
+            :class="[
+              line.duplicate ? 'bg-amber-soft/60 border-amber/30' : 'bg-canvas/60 border-line',
+              aiLineSuggestion(i) ? '!border-primary/50 ring-1 ring-primary/20' : '',
+            ]"
           >
             <div class="col-span-12 sm:col-span-5">
               <Input v-model="line.itemName" placeholder="品名" @blur="checkDuplicates" />
@@ -457,6 +577,21 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
                   </button>
                 </div>
               </template>
+            </div>
+
+            <!-- 行级 AI 建议：与高亮边框联动，应用后消失 -->
+            <div v-if="aiLineSuggestion(i)" class="col-span-12 flex items-center gap-2 flex-wrap rounded-md bg-primary-soft border border-primary/20 px-2.5 py-1.5">
+              <Icon name="sparkles" :size="12" class="text-primary shrink-0" />
+              <span class="text-meta text-muted">AI 建议：</span>
+              <template v-if="aiLineSuggestion(i)!.itemName">
+                <span class="text-meta text-faint line-through">{{ line.itemName }}</span>
+                <span class="text-meta text-primary">→</span>
+                <b class="text-meta text-ink">{{ aiLineSuggestion(i)!.itemName }}</b>
+              </template>
+              <span v-if="aiLineSuggestion(i)!.quantity != null" class="text-meta">数量 → <b class="text-ink num">{{ aiLineSuggestion(i)!.quantity }}</b></span>
+              <span v-if="aiLineSuggestion(i)!.unitPrice != null" class="text-meta">单价 → <b class="text-ink num">{{ aiLineSuggestion(i)!.unitPrice }}</b></span>
+              <span v-if="aiLineSuggestion(i)!.reason" class="text-meta text-faint">{{ aiLineSuggestion(i)!.reason }}</span>
+              <button class="ml-auto text-xs text-primary hover:underline cursor-pointer" @click="applyAiLine(i)">应用</button>
             </div>
           </div>
         </div>

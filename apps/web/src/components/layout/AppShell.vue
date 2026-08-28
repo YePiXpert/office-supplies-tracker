@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Icon from '@/components/ui/Icon.vue';
+import AiPanel from '@/components/ai/AiPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
@@ -56,6 +57,7 @@ const mobileItems: NavItem[] = [
 const moreItems = computed(() => allItems.value.filter((i) => !mobileItems.some((m) => m.path === i.path)));
 
 const moreOpen = ref(false);
+const aiOpen = ref(false);
 // 路由一变就收起面板
 watch(() => route.path, () => (moreOpen.value = false));
 
@@ -143,6 +145,15 @@ async function logout(): Promise<void> {
         </div>
         <h1 class="text-sm font-bold text-ink truncate">{{ pageTitle }}</h1>
         <div class="ml-auto flex items-center gap-1.5">
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 h-8 px-3 rounded-(--radius-control) bg-surface text-text border border-line-strong hover:border-primary hover:text-primary text-xs font-medium transition-colors cursor-pointer"
+            :aria-expanded="aiOpen"
+            @click="aiOpen = true"
+          >
+            <Icon name="sparkles" :size="13" />
+            <span class="hidden sm:inline">AI 助手</span>
+          </button>
           <router-link
             :to="primaryAction.to"
             class="inline-flex items-center gap-1.5 h-8 px-3 rounded-(--radius-control) bg-primary text-white text-xs font-medium hover:bg-primary-hover transition-colors"
@@ -230,6 +241,9 @@ async function logout(): Promise<void> {
           </div>
         </Transition>
       </Teleport>
+
+      <!-- 全局 AI 助手抽屉 -->
+      <AiPanel :open="aiOpen" @close="aiOpen = false" />
     </div>
   </div>
 </template>

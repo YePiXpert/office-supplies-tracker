@@ -13,6 +13,8 @@ import { SuppliersModule } from './suppliers/suppliers.module';
 import { ReportsModule } from './reports/reports.module';
 import { SystemModule } from './system/system.module';
 import { AttachmentsModule } from './attachments/attachments.module';
+import { AiCoreModule } from './ai/ai-core.module';
+import { AiModule } from './ai/ai.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -20,6 +22,7 @@ import { HealthController } from './health.controller';
     ScheduleModule.forRoot(),
     PrismaModule,
     AuditModule,
+    AiCoreModule,
     AuthModule,
     ItemsModule,
     ImportsModule,
@@ -29,6 +32,7 @@ import { HealthController } from './health.controller';
     ReportsModule,
     SystemModule,
     AttachmentsModule,
+    AiModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],

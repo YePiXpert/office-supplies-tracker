@@ -8,15 +8,27 @@
 ┌──────────┐   /api    ┌──────────┐  HTTP(内网Key) ┌──────────────┐
 │  nginx   │ ────────▶ │  NestJS  │ ─────────────▶ │ Python OCR   │
 │ 静态前端  │           │ Prisma + │                │ PaddleOCR    │
-│ (Vue 3)  │           │ SQLite   │                │ pdfplumber   │
-└──────────┘           └────┬─────┘                └──────────────┘
-                            │ state/ (db·uploads·backups·secret)
+│ (Vue 3)  │           │ SQLite   │  HTTPS(可配置) │ pdfplumber   │
+└──────────┘           └────┬─────┘  ────────────▶ └──────────────┘
+                            │ state/ (db·uploads·backups·secret)  LLM API
+                                                                (GLM/DeepSeek…)
 ```
 
 - **apps/web** — Vue 3.5 + Vite + TypeScript + Tailwind v4 + Reka UI（shadcn 风格自建组件）+ ECharts + PWA
 - **apps/server** — NestJS 11 + Fastify + Prisma(SQLite) + argon2 认证 + 审计日志 + 备份恢复
 - **apps/ocr** — FastAPI + PaddleOCR：PDF 文本层优先、栅格化 OCR 兜底、OA 界面噪音过滤、表格重建
 - **packages/shared** — zod API 契约与状态枚举（前后端共享）
+
+## AI 能力（可选）
+
+在「系统设置 → AI 助手」配置任意 OpenAI 兼容接口（默认预填 DeepSeek）后可用，数据面完全自持、开箱降级：
+
+- **自然语言问答**：顶栏「AI 助手」抽屉，直接问「上月各部门采购金额」「谁领用最多」；服务端 tool-calling 只读查询台账/库存/发放/报表，回答附带查询轨迹
+- **智能搜索**：台账与库存搜索自动做同义词扩展（搜「打印纸」命中「A4复印纸」），扩展词以库内真实品名落地，AI 关闭时退回普通关键字匹配
+- **AI OCR 校对**：导入校对页一键让 LLM 对齐既有品名/部门写法、标记数量单价异常，建议逐项应用、改动始终由人确认
+
+未启用时以上入口自动隐藏或降级，不影响原有功能。开启后提问与所涉台账内容会发送给所配置的模型服务商（API Key 明文存本机数据库）。首次默认值可用 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL` 环境变量注入，运行时配置存 Setting 表、改完即生效。
+
 
 ## 核心流程
 

@@ -22,6 +22,12 @@ export const config = {
   port: Number(process.env.PORT ?? 3000),
   ocrBaseUrl: process.env.OCR_BASE_URL ?? 'http://127.0.0.1:8000',
   ocrApiKey: process.env.OCR_API_KEY ?? 'dev-ocr-key',
+  /** AI 能力的初始默认值；运行时以 Setting 表中的 aiConfig 为准（设置页可改）。用 || 是因为 compose 会把未设置的环境变量传成空串 */
+  llmDefaults: {
+    baseUrl: process.env.LLM_BASE_URL || 'https://api.deepseek.com',
+    apiKey: process.env.LLM_API_KEY || '',
+    model: process.env.LLM_MODEL || 'deepseek-chat',
+  },
   maxUploadBytes: Number(process.env.MAX_UPLOAD_MB ?? 30) * 1024 * 1024,
   session: {
     cookieName: 'pl_session',

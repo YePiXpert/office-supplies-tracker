@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AiSearchService } from '../ai/ai-search.service';
 import { todayString } from '../common/date.util';
 import type { MovementCreateInput, MovementQuery, ProductUpsertInput } from '@procure-lite/shared';
 
@@ -15,13 +16,21 @@ export class InventoryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly aiSearch: AiSearchService,
   ) {}
 
   /* -------------------------------- 物品主数据 ------------------------------- */
 
   async products(search?: string, lowOnly?: boolean) {
+    let where: Prisma.ProductWhereInput | undefined;
+    if (search) {
+      const synonyms = await this.aiSearch.synonyms(search);
+      where = {
+        OR: [{ name: { contains: search } }, ...synonyms.map((t) => ({ name: { contains: t } }))],
+      };
+    }
     const products = await this.prisma.product.findMany({
-      where: search ? { name: { contains: search } } : undefined,
+      where,
       include: { _count: { select: { movements: true, distributionLines: true } } },
       orderBy: { name: 'asc' },
     });

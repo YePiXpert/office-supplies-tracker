@@ -9,7 +9,7 @@ import Badge from '@/components/ui/Badge.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import ErrorState from '@/components/ui/ErrorState.vue';
 import Dialog from '@/components/ui/Dialog.vue';
-import { systemApi, downloadFile, http, type BackupInfo, type SystemStatus } from '@/api';
+import { systemApi, downloadFile, http, aiApi, type BackupInfo, type SystemStatus } from '@/api';
 import { useToastStore } from '@/stores/toast';
 import { useAuthStore } from '@/stores/auth';
 import { apiError } from '@/api/client';
@@ -40,6 +40,13 @@ const backupForm = reactive({ enabled: false, intervalHours: '24', keepCount: '7
 const backupErrors = reactive<Record<string, string>>({});
 const backupSaving = ref(false);
 
+/* AI 助手 */
+const aiForm = reactive({ enabled: false, baseUrl: '', apiKey: '', model: '', semanticSearch: true });
+const aiErrors = reactive<Record<string, string>>({});
+const aiSaving = ref(false);
+const aiTesting = ref(false);
+const aiKeySet = ref(false);
+
 /* 备份操作 */
 const creating = ref(false);
 const restoring = ref(false);
@@ -60,6 +67,14 @@ async function load(): Promise<void> {
     loadError.value = '';
     backups.value = await systemApi.backups().catch(() => []);
     ocrOk.value = await systemApi.ocrHealth();
+    const ai = await aiApi.config().catch(() => null);
+    if (ai) {
+      aiForm.enabled = ai.enabled;
+      aiForm.baseUrl = ai.baseUrl;
+      aiForm.model = ai.model;
+      aiForm.semanticSearch = ai.semanticSearch;
+      aiKeySet.value = ai.apiKeySet;
+    }
   } catch (e) {
     loadError.value = apiError(e);
   } finally {
@@ -169,6 +184,58 @@ async function saveBackupConfig(): Promise<void> {
     toast.error(apiError(e));
   } finally {
     backupSaving.value = false;
+  }
+}
+
+function validateAi(): boolean {
+  Object.keys(aiErrors).forEach((k) => delete aiErrors[k]);
+  if (!/^https?:\/\/.+/.test(aiForm.baseUrl)) aiErrors.baseUrl = '接口地址需以 http(s):// 开头';
+  if (!aiForm.model.trim()) aiErrors.model = '模型名不能为空';
+  if (aiForm.enabled && !aiForm.apiKey && !aiKeySet.value) aiErrors.apiKey = '启用前需填写 API Key';
+  return Object.keys(aiErrors).length === 0;
+}
+
+function aiPayload() {
+  return {
+    enabled: aiForm.enabled,
+    baseUrl: aiForm.baseUrl.trim(),
+    model: aiForm.model.trim(),
+    semanticSearch: aiForm.semanticSearch,
+    // 留空 = 保留已保存的 Key（服务端语义）
+    ...(aiForm.apiKey.trim() ? { apiKey: aiForm.apiKey.trim() } : {}),
+  };
+}
+
+async function saveAiConfig(): Promise<void> {
+  if (!validateAi()) return;
+  aiSaving.value = true;
+  try {
+    const view = await aiApi.updateConfig(aiPayload());
+    aiKeySet.value = view.apiKeySet;
+    aiForm.apiKey = '';
+    toast.success('AI 配置已保存');
+  } catch (e) {
+    toast.error(apiError(e));
+  } finally {
+    aiSaving.value = false;
+  }
+}
+
+/** 测试连接 = 先保存再探活，测到的才是表单里填的配置 */
+async function testAi(): Promise<void> {
+  if (!validateAi()) return;
+  aiTesting.value = true;
+  try {
+    const view = await aiApi.updateConfig(aiPayload());
+    aiKeySet.value = view.apiKeySet;
+    aiForm.apiKey = '';
+    const res = await aiApi.health();
+    if (res.ok) toast.success('AI 服务连接正常');
+    else toast.error('AI 服务连接失败，请检查接口地址、API Key 与模型名');
+  } catch (e) {
+    toast.error(apiError(e));
+  } finally {
+    aiTesting.value = false;
   }
 }
 
@@ -313,6 +380,58 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
       </dl>
       <p v-if="ocrOk === false" class="mt-3 px-3 py-2 bg-amber-soft border border-amber/25 rounded-(--radius-control) text-xs text-amber">
         OCR 不可用时导入页仍能打开，但上传后会解析失败。可以先手工新增台账记录。
+      </p>
+    </section>
+
+    <!-- AI 助手 -->
+    <section class="card p-5 lg:col-span-2">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="flex items-center justify-center size-7 rounded-lg bg-primary-soft text-primary">
+          <Icon name="sparkles" :size="14" />
+        </span>
+        <h2 class="text-sm font-bold text-ink">AI 助手</h2>
+      </div>
+      <p class="text-xs text-faint mb-4">
+        配置 OpenAI 兼容接口后，可用自然语言查询台账，并启用智能搜索与 OCR 校对辅助
+      </p>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <label class="flex items-center gap-2 text-sm sm:col-span-2 lg:col-span-4 cursor-pointer select-none w-fit">
+          <input v-model="aiForm.enabled" type="checkbox" class="size-4 accent-[#2563EB]" />
+          启用 AI 能力（问答 / 智能搜索 / OCR 校对）
+        </label>
+        <Input
+          v-model="aiForm.baseUrl"
+          label="接口地址"
+          placeholder="https://api.deepseek.com"
+          :error="aiErrors.baseUrl"
+        />
+        <Input
+          v-model="aiForm.apiKey"
+          type="password"
+          label="API Key"
+          :placeholder="aiKeySet ? '已保存，留空不修改' : '服务商控制台获取'"
+          autocomplete="new-password"
+          :error="aiErrors.apiKey"
+        />
+        <Input
+          v-model="aiForm.model"
+          label="模型名"
+          placeholder="deepseek-chat"
+          :error="aiErrors.model"
+        />
+        <label class="flex items-center gap-2 text-sm cursor-pointer select-none self-end pb-2 w-fit">
+          <input v-model="aiForm.semanticSearch" type="checkbox" class="size-4 accent-[#2563EB]" />
+          搜索时启用同义词扩展
+        </label>
+      </div>
+      <div class="flex items-center gap-2 mt-4">
+        <Button variant="primary" size="sm" :loading="aiSaving" @click="saveAiConfig">保存</Button>
+        <Button variant="secondary" size="sm" :loading="aiTesting" @click="testAi">
+          <Icon name="refresh" :size="13" /> 测试连接
+        </Button>
+      </div>
+      <p class="mt-3 px-3 py-2 bg-amber-soft border border-amber/25 rounded-(--radius-control) text-xs text-amber">
+        开启后，提问与所涉台账内容会发送给你配置的模型服务商；API Key 明文保存在本机数据库中。
       </p>
     </section>
 

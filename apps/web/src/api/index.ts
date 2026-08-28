@@ -2,6 +2,11 @@ import { http } from './client';
 
 export { http, apiError, bindRouter } from './client';
 import type {
+  AiAskInput,
+  AiAskResponse,
+  AiConfigInput,
+  AiConfigView,
+  AiOcrReviewResult,
   AutoBackupConfig,
   DistributionCreateInput,
   DistributionQuery,
@@ -274,6 +279,19 @@ export const systemApi = {
   deleteBackup: (name: string) => http.delete(`/system/backups/${name}`).then((r) => r.data),
   getAutoBackup: () => http.get<AutoBackupConfig>('/system/auto-backup').then((r) => r.data),
   updateAutoBackup: (body: AutoBackupConfig) => http.put('/system/auto-backup', body).then((r) => r.data),
+};
+
+/* ----------------------------------- AI ----------------------------------- */
+export const aiApi = {
+  config: () => http.get<AiConfigView>('/ai/config').then((r) => r.data),
+  /** apiKey 留空 = 保留已保存的 Key */
+  updateConfig: (body: AiConfigInput) => http.put<AiConfigView>('/ai/config', body).then((r) => r.data),
+  health: () => http.get<{ ok: boolean; reason?: string }>('/ai/health').then((r) => r.data),
+  ask: (body: AiAskInput) =>
+    // 问答要跑多轮工具调用，放宽到与导入上传同级的超时
+    http.post<AiAskResponse>('/ai/ask', body, { timeout: 180_000 }).then((r) => r.data),
+  ocrReview: (taskId: string) =>
+    http.post<AiOcrReviewResult>('/ai/ocr-review', { taskId }, { timeout: 120_000 }).then((r) => r.data),
 };
 
 /* ---------------------------------- 审计 ---------------------------------- */
