@@ -46,7 +46,9 @@ router.beforeEach(async (to) => {
 
 /**
  * 发布新版本后，仍开着旧页面的用户去加载已被替换掉的路由分片会 404。
- * PWA 用的是 autoUpdate，Service Worker 已经换成新版本，这里刷一次即可拿到新壳子。
+ * PWA 是 prompt 更新（见 vite.config.ts / main.ts）：点「立即更新」重载前，
+ * SW 仍伺服旧 precache，一般撞不上；但用户接受更新后旧页面继续导航、
+ * 或部署被直接覆盖时仍可能发生，这里整页刷新兜底。
  */
 router.onError((error, to) => {
   const message = String((error as Error)?.message ?? error);

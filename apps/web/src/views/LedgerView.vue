@@ -338,7 +338,8 @@ async function exportXlsx(): Promise<void> {
         <Select v-model="filters.department" :options="departmentOptions" placeholder="全部部门" clearable class="w-36" @update:model-value="applyFilters" />
         <Select v-model="filters.handler" :options="handlerOptions" placeholder="全部经办人" clearable class="w-32" @update:model-value="applyFilters" />
         <div class="ml-auto flex gap-2">
-          <Button variant="secondary" size="sm" :loading="exporting" @click="exportXlsx">
+          <!-- 导出走服务端「未删除」全量，与回收站语义不符，只在台账页签提供 -->
+          <Button v-if="tab === 'active'" variant="secondary" size="sm" :loading="exporting" @click="exportXlsx">
             <Icon name="download" :size="13" /> 导出
           </Button>
           <Button variant="primary" size="sm" @click="editTarget = null; editOpen = true">

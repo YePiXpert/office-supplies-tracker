@@ -38,9 +38,10 @@ http.interceptors.response.use(
   (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
       unauthorizedHandler?.();
-      const path = routerRef?.currentRoute.value.path;
-      if (path && path !== '/login') {
-        void routerRef?.push({ path: '/login', query: { redirect: path } });
+      const route = routerRef?.currentRoute.value;
+      if (route && route.path !== '/login') {
+        // fullPath 而非 path：把 query 一起带走，重新登录后能回到原来的筛选状态
+        void routerRef?.push({ path: '/login', query: { redirect: route.fullPath } });
       }
     }
     return Promise.reject(error);

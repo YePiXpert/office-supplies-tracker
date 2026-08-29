@@ -4,7 +4,7 @@ import Button from './Button.vue';
 import Icon from './Icon.vue';
 
 const props = withDefaults(
-  defineProps<{ page: number; pageSize: number; total: number }>(),
+  defineProps<{ page?: number; pageSize?: number; total?: number }>(),
   { page: 1, pageSize: 20, total: 0 },
 );
 const emit = defineEmits<{ change: [page: number] }>();

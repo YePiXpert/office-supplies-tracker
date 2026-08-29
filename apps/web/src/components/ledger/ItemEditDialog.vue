@@ -151,6 +151,7 @@ function validateField(field: keyof FormShape): void {
   }
 }
 
+/** 必填字段；unitPrice 可空但提交前也要过一遍校验（填了就必须是合法数字） */
 const REQUIRED: (keyof FormShape)[] = [
   'serialNumber',
   'department',
@@ -158,11 +159,11 @@ const REQUIRED: (keyof FormShape)[] = [
   'itemName',
   'requestDate',
   'quantity',
-  'unitPrice',
 ];
 
 function validateAll(): boolean {
   REQUIRED.forEach(validateField);
+  validateField('unitPrice');
   return Object.keys(errors).length === 0;
 }
 

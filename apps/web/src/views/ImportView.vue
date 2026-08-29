@@ -54,6 +54,8 @@ const form = reactive({
 const errors = reactive<Record<string, string>>({});
 
 interface DraftLine {
+  /** 行唯一 id：明细行会增删，用索引当 key 会让输入焦点/状态错位到别的行 */
+  id: number;
   itemName: string;
   quantity: string;
   unitPrice: string;
@@ -63,6 +65,11 @@ interface DraftLine {
   action: 'skip' | 'merge';
 }
 const lines = ref<DraftLine[]>([]);
+
+let lineSeq = 0;
+function makeLine(init: Omit<DraftLine, 'id' | 'duplicate' | 'action'>): DraftLine {
+  return { id: ++lineSeq, duplicate: null, action: 'skip', ...init };
+}
 
 const fileInput = ref<HTMLInputElement | null>(null);
 
@@ -177,14 +184,14 @@ async function poll(): Promise<void> {
     form.department = task.result.department ?? '';
     form.handler = task.result.handler ?? '';
     form.requestDate = task.result.requestDate ?? todayString();
-    lines.value = task.result.items.map((it) => ({
-      itemName: it.itemName,
-      quantity: String(it.quantity ?? 1),
-      unitPrice: it.unitPrice != null ? String(it.unitPrice) : '',
-      purchaseLink: it.purchaseLink ?? '',
-      duplicate: null,
-      action: 'skip',
-    }));
+    lines.value = task.result.items.map((it) =>
+      makeLine({
+        itemName: it.itemName,
+        quantity: String(it.quantity ?? 1),
+        unitPrice: it.unitPrice != null ? String(it.unitPrice) : '',
+        purchaseLink: it.purchaseLink ?? '',
+      }),
+    );
     if (task.result.warnings.length > 0) {
       // 逐条弹会糊满屏幕，合成一条
       toast.info(
@@ -320,7 +327,18 @@ function applyAiAll(): void {
 }
 
 function addLine(): void {
-  lines.value.push({ itemName: '', quantity: '1', unitPrice: '', purchaseLink: '', duplicate: null, action: 'skip' });
+  // 追加在末尾不改变已有行的行号，行级 AI 建议仍然有效
+  lines.value.push(makeLine({ itemName: '', quantity: '1', unitPrice: '', purchaseLink: '' }));
+}
+
+function removeLine(index: number): void {
+  // 行级 AI 建议按行号匹配原始解析结果；从中间删行会让后续行号移位指错行，宁可清掉重跑
+  if (index < lines.value.length - 1) clearLineSuggestions();
+  lines.value.splice(index, 1);
+}
+
+function clearLineSuggestions(): void {
+  if (aiReview.value) aiReview.value.lines = [];
 }
 
 function validate(): boolean {
@@ -530,7 +548,7 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
         <div v-else class="space-y-2">
           <div
             v-for="(line, i) in lines"
-            :key="i"
+            :key="line.id"
             class="p-3 border rounded-(--radius-control) grid grid-cols-12 gap-2 items-center"
             :class="[
               line.duplicate ? 'bg-amber-soft/60 border-amber/30' : 'bg-canvas/60 border-line',
@@ -550,7 +568,7 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
               {{ line.unitPrice && line.quantity ? formatCurrency(Number(line.unitPrice) * Number(line.quantity)) : '' }}
             </div>
             <div class="col-span-3 sm:col-span-1 flex justify-end">
-              <button class="p-2 text-faint hover:text-red cursor-pointer" :aria-label="`删除第 ${i + 1} 行`" @click="lines.splice(i, 1)">
+              <button class="p-2 text-faint hover:text-red cursor-pointer" :aria-label="`删除第 ${i + 1} 行`" @click="removeLine(i)">
                 <Icon name="close" :size="14" />
               </button>
             </div>

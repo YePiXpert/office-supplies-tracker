@@ -14,7 +14,7 @@ import {
 import Icon from './Icon.vue';
 import type { SelectOption } from './types';
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     modelValue?: string | null;
     options: SelectOption[];

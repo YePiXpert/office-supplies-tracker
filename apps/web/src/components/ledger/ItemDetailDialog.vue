@@ -40,6 +40,11 @@ const removingAttachmentId = ref<number | null>(null);
 const uploading = ref(false);
 const uploadKind = ref<'INVOICE' | 'SIGNOFF'>('INVOICE');
 
+/** 变更列表模板里要用两处（v-if + v-for），提前解析好，避免每行重复 JSON.parse */
+const historyWithChanges = computed(() =>
+  history.value.map((h) => ({ ...h, changes: changesOf(h) })),
+);
+
 const MAX_ATTACHMENT_MB = 20;
 
 watch(
@@ -86,7 +91,7 @@ interface FieldChange {
   after: string;
 }
 
-/** 普通函数，不是 computed 返回函数：后者对每行都会重跑且完全没有缓存 */
+/** 解析变更明细；只被 historyWithChanges 调用，不在模板里重复执行 */
 function changesOf(row: HistoryRow): FieldChange[] {
   if (!row.changedFields) return [];
   try {
@@ -264,14 +269,14 @@ const amount = computed(() =>
         <p v-if="history.length === 0" class="text-xs text-faint">暂无历史</p>
         <ul v-else class="space-y-1.5 max-h-64 overflow-y-auto">
           <li
-            v-for="h in history"
+            v-for="h in historyWithChanges"
             :key="h.id"
             class="flex items-start justify-between gap-2 px-2.5 py-2 rounded-lg bg-canvas/60 text-sm"
           >
             <div class="min-w-0">
               <p class="font-medium">{{ ACTION_LABELS[h.action] ?? h.action }}</p>
-              <ul v-if="changesOf(h).length > 0" class="mt-1 space-y-0.5">
-                <li v-for="c in changesOf(h)" :key="c.label" class="text-meta text-muted">
+              <ul v-if="h.changes.length > 0" class="mt-1 space-y-0.5">
+                <li v-for="c in h.changes" :key="c.label" class="text-meta text-muted">
                   <span class="text-faint">{{ c.label }}</span>
                   <span class="mx-1 line-through opacity-60">{{ c.before }}</span>
                   <Icon name="chevron-right" :size="9" class="inline text-faint" />

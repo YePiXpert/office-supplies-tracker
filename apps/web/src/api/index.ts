@@ -25,7 +25,7 @@ import type {
 } from '@procure-lite/shared';
 
 /* ------------------------------- 通用分页结构 ------------------------------ */
-export interface Paged<T> {
+export interface Paged {
   total: number;
   page: number;
   pageSize: number;
@@ -54,7 +54,7 @@ export interface ItemRow {
   updatedAt: string;
   supplier?: { name: string } | null;
 }
-export interface ItemsPage extends Paged<never> {
+export interface ItemsPage extends Paged {
   items: ItemRow[];
 }
 
@@ -165,7 +165,7 @@ export interface DistributionRow {
 }
 export const distributionsApi = {
   list: (query: Partial<DistributionQuery>) =>
-    http.get<Paged<never> & { distributions: DistributionRow[] }>('/distributions', { params: query }).then((r) => r.data),
+    http.get<Paged & { distributions: DistributionRow[] }>('/distributions', { params: query }).then((r) => r.data),
   get: (id: number) => http.get<DistributionRow>(`/distributions/${id}`).then((r) => r.data),
   create: (body: DistributionCreateInput) => http.post('/distributions', body).then((r) => r.data),
   remove: (id: number) => http.delete(`/distributions/${id}`).then((r) => r.data),
@@ -202,7 +202,7 @@ export const inventoryApi = {
     http.post<ProductRow>('/inventory/products', body).then((r) => r.data),
   deleteProduct: (id: number) => http.delete(`/inventory/products/${id}`).then((r) => r.data),
   movements: (query: Partial<MovementQuery>) =>
-    http.get<Paged<never> & { movements: MovementRow[] }>('/inventory/movements', { params: query }).then((r) => r.data),
+    http.get<Paged & { movements: MovementRow[] }>('/inventory/movements', { params: query }).then((r) => r.data),
   createMovement: (body: MovementCreateInput) => http.post('/inventory/movements', body).then((r) => r.data),
   removeMovement: (id: number) => http.delete(`/inventory/movements/${id}`).then((r) => r.data),
   stockIn: (itemId: number) => http.post(`/inventory/stock-in/${itemId}`).then((r) => r.data),
@@ -306,7 +306,7 @@ export interface AuditRow {
 }
 export const auditApi = {
   list: (params: { action?: string; search?: string; page?: number; pageSize?: number }) =>
-    http.get<Paged<never> & { logs: AuditRow[] }>('/audit-logs', { params }).then((r) => r.data),
+    http.get<Paged & { logs: AuditRow[] }>('/audit-logs', { params }).then((r) => r.data),
 };
 
 /** 浏览器下载 API 生成的文件（同源带 Cookie） */

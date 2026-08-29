@@ -40,21 +40,25 @@ let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 watch(
   () => props.open,
   (open) => {
-    if (!open) return;
-    window.addEventListener('keydown', onEscape);
-    if (!configLoaded.value) {
-      aiApi
-        .config()
-        .then((cfg) => {
-          config.value = cfg;
-          configLoaded.value = true;
-        })
-        .catch(() => {
-          // 401 已由拦截器统一处理；其他错误按未配置展示引导
-          configLoaded.value = true;
-        });
+    // 监听随开关增减：常驻的话面板关着时按 Escape 也会触发一次多余的 close
+    if (open) {
+      window.addEventListener('keydown', onEscape);
+      if (!configLoaded.value) {
+        aiApi
+          .config()
+          .then((cfg) => {
+            config.value = cfg;
+            configLoaded.value = true;
+          })
+          .catch(() => {
+            // 401 已由拦截器统一处理；其他错误按未配置展示引导
+            configLoaded.value = true;
+          });
+      }
+      void nextTick(() => inputEl.value?.focus());
+    } else {
+      window.removeEventListener('keydown', onEscape);
     }
-    void nextTick(() => inputEl.value?.focus());
   },
 );
 

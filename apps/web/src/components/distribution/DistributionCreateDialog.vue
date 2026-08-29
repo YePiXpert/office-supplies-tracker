@@ -39,6 +39,8 @@ const form = reactive({
 });
 
 interface LineDraft {
+  /** 行唯一 id：明细行可删，用索引当 key 会让输入焦点错位到别的行 */
+  id: number;
   itemId?: number;
   productId?: number;
   itemName: string;
@@ -50,8 +52,9 @@ interface LineDraft {
 }
 const lines = ref<LineDraft[]>([]);
 
+let lineSeq = 0;
 function emptyLine(): LineDraft {
-  return { itemName: '', recipient: '', quantity: '1', signoffNote: '' };
+  return { id: ++lineSeq, itemName: '', recipient: '', quantity: '1', signoffNote: '' };
 }
 
 watch(
@@ -78,6 +81,7 @@ watch(
       if (props.presetItems.length > 0) {
         form.department = props.presetItems[0].department;
         lines.value = props.presetItems.map((it) => ({
+          id: ++lineSeq,
           itemId: it.id,
           itemName: it.itemName,
           remaining: it.quantity,
@@ -254,7 +258,7 @@ async function submit(): Promise<void> {
 
       <!-- 明细行 -->
       <div class="space-y-2">
-        <div v-for="(line, i) in lines" :key="i" class="p-3 bg-canvas/60 border border-line rounded-(--radius-control) space-y-2">
+        <div v-for="(line, i) in lines" :key="line.id" class="p-3 bg-canvas/60 border border-line rounded-(--radius-control) space-y-2">
           <div class="grid grid-cols-12 gap-2 items-end">
             <div class="col-span-12 sm:col-span-5">
               <Select
