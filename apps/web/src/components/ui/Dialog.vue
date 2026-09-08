@@ -76,7 +76,7 @@ function onBackdropPointerDown(e: PointerEvent): void {
 <template>
   <DialogRoot :open="props.open" @update:open="(v) => { if (!v) requestClose(); }">
     <DialogPortal>
-      <DialogOverlay class="fixed inset-0 z-40 bg-ink/40 backdrop-blur-[1px] data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+      <DialogOverlay class="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0" />
       <!--
         DialogContent 是全屏透明容器（滚动 + 关闭手势都挂在它上面），面板才是视觉卡片。
         不能给 DialogContent 加 translate 居中：transform/translate 会让它成为 fixed
@@ -88,12 +88,12 @@ function onBackdropPointerDown(e: PointerEvent): void {
       >
         <div class="flex min-h-full items-center justify-center" @pointerdown.self="onBackdropPointerDown">
           <div
-            class="w-[calc(100vw-2rem)] max-h-[88vh] overflow-y-auto bg-surface border border-line rounded-(--radius-card) shadow-(--shadow-pop)"
+            class="dialog-panel w-[calc(100vw-2rem)] max-h-[88vh] overflow-y-auto bg-surface border border-line rounded-(--radius-card) shadow-(--shadow-pop)"
             :style="{ maxWidth: props.width }"
           >
             <div class="sticky top-0 z-10 flex items-start justify-between gap-4 px-5 pt-4 pb-3 border-b border-line bg-surface">
               <div class="min-w-0">
-                <DialogTitle class="text-base font-bold text-ink">{{ title }}</DialogTitle>
+                <DialogTitle class="text-base font-semibold text-ink">{{ title }}</DialogTitle>
                 <DialogDescription v-if="description" class="mt-0.5 text-xs text-muted break-words">
                   {{ description }}
                 </DialogDescription>
@@ -120,13 +120,13 @@ function onBackdropPointerDown(e: PointerEvent): void {
         <!-- 放弃未保存内容的二次确认：盖满全屏，弹窗外的点击也进不来 -->
         <div
           v-if="confirmDiscard"
-          class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40"
+          class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
           role="alertdialog"
           aria-modal="true"
           aria-label="放弃未保存的修改"
         >
           <div class="mx-4 max-w-xs bg-surface border border-line rounded-(--radius-card) shadow-(--shadow-pop) p-4">
-            <p class="text-sm font-bold text-ink">放弃未保存的修改？</p>
+            <p class="text-sm font-semibold text-ink">放弃未保存的修改？</p>
             <p class="mt-1 text-xs text-muted">关闭后这次填写的内容不会保留。</p>
             <div class="mt-4 flex justify-end gap-2">
               <button
@@ -151,3 +151,20 @@ function onBackdropPointerDown(e: PointerEvent): void {
     </DialogPortal>
   </DialogRoot>
 </template>
+
+<style scoped>
+/* 面板进场：data-state 挂在 reka 的 content 上，内层面板做缩放淡入 */
+[data-state='open'] .dialog-panel {
+  animation: dialog-in 0.18s ease-out;
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+</style>

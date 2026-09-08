@@ -134,7 +134,7 @@ watch([messages, asking], () => scrollToBottom(), { deep: true });
         aria-modal="true"
         aria-label="AI 助手"
       >
-        <div class="absolute inset-0 bg-ink/40" @click="emit('close')" />
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="emit('close')" />
         <div class="relative h-full w-full sm:max-w-md bg-canvas flex flex-col shadow-(--shadow-pop)">
           <!-- 头部 -->
           <div class="flex items-center gap-2.5 px-4 h-13 bg-surface border-b border-line shrink-0">
@@ -142,12 +142,12 @@ watch([messages, asking], () => scrollToBottom(), { deep: true });
               <Icon name="sparkles" :size="15" />
             </span>
             <div class="leading-tight min-w-0">
-              <p class="text-sm font-bold text-ink">AI 助手</p>
+              <p class="text-sm font-semibold text-ink">AI 助手</p>
               <p v-if="configured" class="text-meta text-faint truncate">{{ config?.model }} · 问答内容会发送给模型服务商</p>
               <p v-else class="text-meta text-faint">自然语言查询台账与库存</p>
             </div>
             <button
-              class="ml-auto p-1.5 text-faint hover:text-ink cursor-pointer"
+              class="ml-auto p-1.5 rounded-(--radius-control) text-faint hover:text-ink hover:bg-canvas transition-colors cursor-pointer"
               aria-label="关闭"
               @click="emit('close')"
             >
@@ -232,13 +232,13 @@ watch([messages, asking], () => scrollToBottom(), { deep: true });
                 v-model="draft"
                 rows="2"
                 placeholder="问点什么，如：上月行政部买了什么？（Enter 发送，Shift+Enter 换行）"
-                class="flex-1 px-3 py-2 text-sm bg-canvas border border-line-strong rounded-(--radius-control) placeholder:text-faint focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 transition-colors resize-none"
+                class="flex-1 px-3 py-2 text-sm bg-canvas border border-line-strong rounded-(--radius-control) placeholder:text-faint focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors resize-none"
                 :disabled="asking"
                 @keydown.enter.exact.prevent="send()"
               />
               <button
                 type="button"
-                class="inline-flex items-center justify-center size-9.5 shrink-0 rounded-(--radius-control) bg-primary text-white hover:bg-primary-hover disabled:opacity-40 transition-colors cursor-pointer"
+                class="inline-flex items-center justify-center size-9.5 shrink-0 rounded-(--radius-control) bg-primary text-white hover:bg-primary-hover active:scale-[0.98] disabled:opacity-40 transition-all cursor-pointer"
                 :disabled="asking || !draft.trim()"
                 aria-label="发送"
                 @click="send()"

@@ -231,7 +231,7 @@ async function runSuggest(): Promise<void> {
   <div class="h-full flex flex-col space-y-4">
     <!-- 采购建议 -->
     <div class="card p-4">
-      <h2 class="text-sm font-bold text-ink mb-1">比价建议</h2>
+      <h2 class="text-sm font-semibold text-ink mb-1">比价建议</h2>
       <p class="text-xs text-faint mb-2.5">按品名查各家最新报价；下单登记时也会自动提示</p>
       <div class="flex gap-2">
         <SearchInput
@@ -277,7 +277,7 @@ async function runSuggest(): Promise<void> {
           v-for="t in [{ key: 'suppliers', label: '供应商' }, { key: 'prices', label: '价格记忆' }]"
           :key="t.key"
           class="px-3 h-9 text-sm font-medium rounded-t-lg cursor-pointer transition-colors"
-          :class="tab === t.key ? 'text-primary border-b-2 border-primary bg-primary-soft/40' : 'text-muted hover:text-text'"
+          :class="tab === t.key ? 'text-primary border-b-2 border-primary bg-primary-soft/40' : 'text-muted hover:text-text hover:bg-canvas/60'"
           @click="switchTab(t.key as 'suppliers' | 'prices')"
         >
           {{ t.label }}
@@ -299,8 +299,8 @@ async function runSuggest(): Promise<void> {
         <div v-if="loading" class="p-3 space-y-2">
           <Skeleton v-for="i in 8" :key="i" class="h-10" />
         </div>
-        <ErrorState v-else-if="loadError" :message="loadError" @retry="loadSuppliers" />
-        <EmptyState v-else-if="suppliers.length === 0" illustration="truck" title="还没有供应商" description="把常用的几家加进来，采购时快速选择" />
+        <ErrorState v-else-if="loadError" class="flex-1 justify-center" :message="loadError" @retry="loadSuppliers" />
+        <EmptyState v-else-if="suppliers.length === 0" class="flex-1 justify-center" illustration="truck" title="还没有供应商" description="把常用的几家加进来，采购时快速选择" />
         <div v-else class="flex-1 min-h-0 overflow-auto">
           <table class="table-base table-sticky min-w-[640px]">
             <thead><tr><th>名称</th><th>联系人</th><th>电话</th><th class="text-right">关联台账</th><th class="text-right">报价数</th><th class="w-24">操作</th></tr></thead>
@@ -316,9 +316,9 @@ async function runSuggest(): Promise<void> {
                 <td class="text-right num">{{ s._count?.priceRecords ?? 0 }}</td>
                 <td>
                   <div class="flex items-center gap-0.5">
-                    <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="编辑" @click="openSupplierDialog(s)"><Icon name="edit" :size="14" /></button>
+                    <button class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-primary cursor-pointer" title="编辑" @click="openSupplierDialog(s)"><Icon name="edit" :size="14" /></button>
                     <button
-                      class="p-1.5 text-faint hover:text-red cursor-pointer disabled:opacity-50"
+                      class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-red cursor-pointer disabled:opacity-50"
                       title="删除"
                       :disabled="removingSupplierId === s.id"
                       @click="deleteTarget = s"
@@ -338,7 +338,7 @@ async function runSuggest(): Promise<void> {
       <!-- 价格记录 -->
       <template v-else>
         <div class="h-full flex flex-col">
-        <div class="flex items-center gap-2.5 px-4 py-3 border-b border-line">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-line">
           <SearchInput v-model="state.priceSearch" class="flex-1 max-w-xs" placeholder="按品名过滤" @search="loadPrices" />
           <p v-if="prices.length >= 200" class="text-xs text-amber">仅显示最近 200 条，请用品名过滤</p>
         </div>
@@ -347,6 +347,7 @@ async function runSuggest(): Promise<void> {
         </div>
         <EmptyState
           v-else-if="prices.length === 0"
+          class="flex-1 justify-center"
           :illustration="state.priceSearch ? 'search' : 'empty'"
           :title="state.priceSearch ? '没有匹配的价格记录' : '暂无价格记录'"
           description="下单时顺手记下单价，下次自动比价"
@@ -366,7 +367,7 @@ async function runSuggest(): Promise<void> {
                 <td class="text-xs text-faint num">{{ formatDate(p.createdAt) }}</td>
                 <td>
                   <button
-                    class="p-1.5 text-faint hover:text-red cursor-pointer disabled:opacity-50"
+                    class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-red cursor-pointer disabled:opacity-50"
                     title="删除"
                     :disabled="removingPriceId === p.id"
                     @click="deletePriceTarget = p"

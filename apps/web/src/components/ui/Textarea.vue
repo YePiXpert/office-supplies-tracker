@@ -25,7 +25,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
       :disabled="disabled"
       :required="required"
       :aria-label="label"
-      class="w-full px-3 py-2 text-sm bg-surface border border-line-strong rounded-(--radius-control) placeholder:text-faint focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 transition-colors resize-y"
+      class="w-full px-3 py-2 text-sm bg-surface border border-line-strong rounded-(--radius-control) placeholder:text-faint focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors resize-y"
       @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
     />
   </label>

@@ -324,9 +324,9 @@ async function exportXlsx(): Promise<void> {
 
 <template>
   <div class="h-full flex flex-col space-y-4">
-    <!-- 工具栏 -->
-    <div class="card p-3.5 space-y-3">
-      <div class="flex flex-wrap items-center gap-2.5">
+    <!-- 工具栏：单行紧凑布局，空间不足时自动折行 -->
+    <div class="card p-3 space-y-2.5">
+      <div class="flex flex-wrap items-center gap-2">
         <SearchInput
           v-model="filters.search"
           class="flex-1 min-w-52"
@@ -337,24 +337,11 @@ async function exportXlsx(): Promise<void> {
         <Select v-model="filters.paymentStatus" :options="paymentOptions" placeholder="付款状态" clearable class="w-32" @update:model-value="applyFilters" />
         <Select v-model="filters.department" :options="departmentOptions" placeholder="全部部门" clearable class="w-36" @update:model-value="applyFilters" />
         <Select v-model="filters.handler" :options="handlerOptions" placeholder="全部经办人" clearable class="w-32" @update:model-value="applyFilters" />
-        <div class="ml-auto flex gap-2">
-          <!-- 导出走服务端「未删除」全量，与回收站语义不符，只在台账页签提供 -->
-          <Button v-if="tab === 'active'" variant="secondary" size="sm" :loading="exporting" @click="exportXlsx">
-            <Icon name="download" :size="13" /> 导出
-          </Button>
-          <Button variant="primary" size="sm" @click="editTarget = null; editOpen = true">
-            <Icon name="plus" :size="13" /> 新增
-          </Button>
-        </div>
-      </div>
-
-      <!-- 日期区间 + 排序 -->
-      <div class="flex flex-wrap items-center gap-2.5 text-xs">
-        <span class="text-faint">申请日期</span>
+        <span class="text-xs text-faint">申请日期</span>
         <Input v-model="filters.dateFrom" type="date" class="w-38" aria-label="申请日期起" @change="applyFilters" />
-        <span class="text-faint">至</span>
+        <span class="text-xs text-faint">至</span>
         <Input v-model="filters.dateTo" type="date" class="w-38" aria-label="申请日期止" @change="applyFilters" />
-        <span class="ml-2 text-faint">排序</span>
+        <span class="text-xs text-faint">排序</span>
         <NativeSelect
           v-model="filters.sort"
           :options="sortOptions"
@@ -365,10 +352,19 @@ async function exportXlsx(): Promise<void> {
         <Button v-if="hasFilters" variant="ghost" size="sm" @click="resetFilters">
           <Icon name="close" :size="12" /> 清除筛选
         </Button>
-        <span v-if="refreshing" class="ml-auto flex items-center gap-1.5 text-faint">
+        <span v-if="refreshing" class="flex items-center gap-1.5 text-xs text-faint">
           <span class="inline-block size-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
           更新中
         </span>
+        <div class="ml-auto flex gap-2">
+          <!-- 导出走服务端「未删除」全量，与回收站语义不符，只在台账页签提供 -->
+          <Button v-if="tab === 'active'" variant="secondary" size="sm" :loading="exporting" @click="exportXlsx">
+            <Icon name="download" :size="13" /> 导出
+          </Button>
+          <Button variant="primary" size="sm" @click="editTarget = null; editOpen = true">
+            <Icon name="plus" :size="13" /> 新增
+          </Button>
+        </div>
       </div>
 
       <!-- 批量工具条 -->
@@ -415,7 +411,7 @@ async function exportXlsx(): Promise<void> {
           v-for="t in [{ key: 'active', label: '台账' }, { key: 'recycle', label: '回收站' }]"
           :key="t.key"
           class="px-3 h-9 text-sm font-medium rounded-t-lg cursor-pointer transition-colors"
-          :class="tab === t.key ? 'text-primary border-b-2 border-primary bg-primary-soft/40' : 'text-muted hover:text-text'"
+          :class="tab === t.key ? 'text-primary border-b-2 border-primary bg-primary-soft/40' : 'text-muted hover:text-text hover:bg-canvas/60'"
           @click="switchTab(t.key as 'active' | 'recycle')"
         >
           {{ t.label }}
@@ -436,10 +432,11 @@ async function exportXlsx(): Promise<void> {
           <Skeleton v-for="i in 8" :key="i" class="h-10" />
         </div>
 
-        <ErrorState v-else-if="loadError" :message="loadError" @retry="load" />
+        <ErrorState v-else-if="loadError" class="flex-1 justify-center" :message="loadError" @retry="load" />
 
         <EmptyState
           v-else-if="rows.length === 0"
+          class="flex-1 justify-center"
           :illustration="tab === 'recycle' ? 'empty' : hasFilters ? 'search' : 'ledger'"
           :title="tab === 'recycle' ? '回收站是空的' : hasFilters ? '没有符合条件的记录' : '没有台账记录'"
           :description="hasFilters ? '试试放宽筛选条件' : '从 OA 单据导入，或点击右上角手工新增'"
@@ -497,7 +494,7 @@ async function exportXlsx(): Promise<void> {
                 </td>
                 <td class="text-right num">{{ row.quantity }}<span v-if="row.unit" class="text-meta text-faint">{{ row.unit }}</span></td>
                 <td class="text-right num">
-                  {{ formatAmount(row.unitPrice, row.quantity) }}
+                  <span class="font-semibold text-ink">{{ formatAmount(row.unitPrice, row.quantity) }}</span>
                   <p v-if="row.unitPrice != null" class="text-meta text-faint">单价 {{ formatCurrency(row.unitPrice) }}</p>
                 </td>
                 <td class="text-xs">{{ row.supplierName ?? '—' }}</td>
@@ -526,21 +523,21 @@ async function exportXlsx(): Promise<void> {
                 <td>
                   <div class="flex items-center gap-0.5">
                     <template v-if="tab === 'active'">
-                      <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="详情" @click="detailTarget = row; detailOpen = true">
+                      <button class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-primary cursor-pointer" title="详情" @click="detailTarget = row; detailOpen = true">
                         <Icon name="search" :size="14" />
                       </button>
-                      <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="编辑" @click="editTarget = row; editOpen = true">
+                      <button class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-primary cursor-pointer" title="编辑" @click="editTarget = row; editOpen = true">
                         <Icon name="edit" :size="14" />
                       </button>
-                      <button class="p-1.5 text-faint hover:text-red cursor-pointer" title="移入回收站" @click="deleteTargets = [row]">
+                      <button class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-red cursor-pointer" title="移入回收站" @click="deleteTargets = [row]">
                         <Icon name="trash" :size="14" />
                       </button>
                     </template>
                     <template v-else>
-                      <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="恢复" @click="restoreSelected([row])">
+                      <button class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-primary cursor-pointer" title="恢复" @click="restoreSelected([row])">
                         <Icon name="restore" :size="14" />
                       </button>
-                      <button class="p-1.5 text-faint hover:text-red cursor-pointer" title="彻底删除" @click="purgeTargets = [row]">
+                      <button class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-red cursor-pointer" title="彻底删除" @click="purgeTargets = [row]">
                         <Icon name="trash" :size="14" />
                       </button>
                     </template>

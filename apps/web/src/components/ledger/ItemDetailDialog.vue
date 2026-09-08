@@ -221,7 +221,7 @@ const amount = computed(() =>
       <!-- 附件 -->
       <div class="mt-5 pt-4 border-t border-line">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <h3 class="text-xs font-bold text-muted">附件</h3>
+          <h3 class="text-xs font-semibold text-ink">附件</h3>
           <div class="flex items-center gap-2">
             <label class="flex items-center gap-1 text-meta text-muted cursor-pointer">
               <input v-model="uploadKind" type="radio" value="INVOICE" class="accent-primary" /> 发票
@@ -251,7 +251,7 @@ const amount = computed(() =>
             </button>
             <span class="ml-auto text-meta text-faint shrink-0 num">{{ formatBytes(a.sizeBytes) }} · {{ formatDateTime(a.createdAt) }}</span>
             <button
-              class="shrink-0 p-1 text-faint hover:text-red cursor-pointer disabled:opacity-50"
+              class="shrink-0 p-1 rounded-md text-faint transition-colors duration-150 hover:bg-canvas hover:text-red cursor-pointer disabled:opacity-50"
               title="删除附件"
               :disabled="removingAttachmentId === a.id"
               @click="deleteAttachment = a"
@@ -265,13 +265,13 @@ const amount = computed(() =>
 
       <!-- 修改历史 -->
       <div class="mt-5 pt-4 border-t border-line">
-        <h3 class="text-xs font-bold text-muted mb-2">修改历史（可回滚）</h3>
+        <h3 class="text-xs font-semibold text-ink mb-2">修改历史（可回滚）</h3>
         <p v-if="history.length === 0" class="text-xs text-faint">暂无历史</p>
         <ul v-else class="space-y-1.5 max-h-64 overflow-y-auto">
           <li
             v-for="h in historyWithChanges"
             :key="h.id"
-            class="flex items-start justify-between gap-2 px-2.5 py-2 rounded-lg bg-canvas/60 text-sm"
+            class="flex items-start justify-between gap-2 px-2.5 py-2 rounded-(--radius-control) bg-canvas/60 text-sm"
           >
             <div class="min-w-0">
               <p class="font-medium">{{ ACTION_LABELS[h.action] ?? h.action }}</p>

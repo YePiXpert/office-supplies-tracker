@@ -229,7 +229,7 @@ function exportStats(): void {
           v-for="t in [{ key: 'records', label: '发放单' }, { key: 'recipients', label: '领用统计' }]"
           :key="t.key"
           class="px-3 h-9 text-sm font-medium rounded-t-lg cursor-pointer transition-colors"
-          :class="tab === t.key ? 'text-primary border-b-2 border-primary bg-primary-soft/40' : 'text-muted hover:text-text'"
+          :class="tab === t.key ? 'text-primary border-b-2 border-primary bg-primary-soft/40' : 'text-muted hover:text-text hover:bg-canvas/60'"
           @click="switchTab(t.key as 'records' | 'recipients')"
         >
           {{ t.label }}
@@ -243,7 +243,7 @@ function exportStats(): void {
 
       <!-- 发放单列表 -->
       <template v-if="tab === 'records'">
-        <div class="flex flex-wrap items-center gap-2.5 px-4 py-3 border-b border-line">
+        <div class="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-line">
           <SearchInput
             v-model="filters.recipient"
             class="flex-1 min-w-44"
@@ -281,7 +281,7 @@ function exportStats(): void {
         <ul v-else class="divide-y divide-line">
           <li v-for="d in rows" :key="d.id" class="px-4">
             <div
-              class="flex items-center gap-3 py-3 cursor-pointer select-none"
+              class="flex items-center gap-3 -mx-4 px-4 py-3 cursor-pointer select-none transition-colors duration-150 hover:bg-canvas/60"
               role="button"
               tabindex="0"
               :aria-expanded="expanded.has(d.id)"
@@ -305,11 +305,11 @@ function exportStats(): void {
                 </p>
               </div>
               <div class="text-right shrink-0">
-                <p class="text-sm font-bold num text-ink">{{ d.lines.length }} 笔</p>
+                <p class="text-sm font-semibold num text-ink">{{ d.lines.length }} 笔</p>
                 <p class="text-meta text-faint">{{ formatDateTime(d.createdAt) }}</p>
               </div>
               <button
-                class="p-1.5 text-faint hover:text-red cursor-pointer shrink-0 disabled:opacity-50"
+                class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-red cursor-pointer shrink-0 disabled:opacity-50"
                 title="作废此发放单"
                 :disabled="revokingId === d.id"
                 @click.stop="revokeTarget = d"
@@ -339,7 +339,7 @@ function exportStats(): void {
               <!-- 签收单附件 -->
               <div class="pt-2 border-t border-line">
                 <div class="flex items-center justify-between mb-1.5">
-                  <h4 class="text-xs font-bold text-muted">签收单</h4>
+                  <h4 class="text-xs font-semibold text-ink">签收单</h4>
                   <label
                     class="inline-flex items-center gap-1 text-xs cursor-pointer hover:underline"
                     :class="uploadingFor === d.id ? 'text-faint pointer-events-none' : 'text-primary'"
@@ -361,7 +361,7 @@ function exportStats(): void {
                     </button>
                     <span class="ml-auto text-meta text-faint shrink-0 num">{{ formatBytes(a.sizeBytes) }}</span>
                     <button
-                      class="shrink-0 p-1 text-faint hover:text-red cursor-pointer disabled:opacity-50"
+                      class="shrink-0 p-1 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-red cursor-pointer disabled:opacity-50"
                       title="删除附件"
                       :disabled="removingAttachmentId === a.id"
                       @click="deleteAttachment = a"
@@ -383,7 +383,7 @@ function exportStats(): void {
 
       <!-- 领用统计 -->
       <template v-else>
-        <div class="flex flex-wrap items-end gap-2.5 px-4 py-3 border-b border-line">
+        <div class="flex flex-wrap items-end gap-2 px-4 py-3 border-b border-line">
           <Input v-model="filters.statFrom" type="date" label="起" class="w-38" @change="loadStats" />
           <Input v-model="filters.statTo" type="date" label="止" class="w-38" @change="loadStats" />
           <p class="text-xs text-faint mb-2.5">按领用人汇总发放数量</p>
@@ -412,7 +412,7 @@ function exportStats(): void {
                 </div>
               </div>
               <div class="text-right shrink-0">
-                <p class="text-sm font-bold num">{{ s.quantity }}</p>
+                <p class="text-sm font-semibold num text-ink">{{ s.quantity }}</p>
                 <p class="text-meta text-faint">{{ s.times }} 次</p>
               </div>
             </li>

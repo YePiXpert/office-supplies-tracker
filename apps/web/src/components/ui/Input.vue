@@ -50,8 +50,8 @@ const listId = `dl-${Math.random().toString(36).slice(2, 9)}`;
       :aria-invalid="error ? 'true' : undefined"
       class="w-full h-9.5 px-3 text-sm bg-surface border rounded-(--radius-control) placeholder:text-faint disabled:bg-canvas disabled:cursor-not-allowed focus:outline-none focus:ring-2 transition-colors"
       :class="error
-        ? 'border-red focus:border-red focus:ring-red/15'
-        : 'border-line-strong focus:border-primary focus:ring-primary/15'"
+        ? 'border-red focus:border-red focus:ring-red/20'
+        : 'border-line-strong focus:border-primary focus:ring-primary/20'"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       @blur="emit('blur', $event)"
       @keyup.enter="emit('enter')"

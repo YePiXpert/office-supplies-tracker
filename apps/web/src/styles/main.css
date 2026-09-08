@@ -1,36 +1,85 @@
 @import "tailwindcss";
 
-/* 设计令牌：延续「瑞士风操作台」设计体系（墨蓝侧边栏 / 蓝色主操作 / 边框优先） */
-@theme {
-  --color-ink: #14213d;
-  --color-ink-soft: #1d2d52;
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
-  --color-primary-soft: #eff4ff;
-  --color-teal: #0f766e;
-  --color-teal-soft: #ecfdf8;
-  --color-amber: #b45309;
-  --color-amber-soft: #fff8ec;
-  --color-red: #c24141;
-  --color-red-soft: #fdf1f1;
-  --color-canvas: #f3f5f8;
-  --color-surface: #ffffff;
-  --color-text: #172033;
-  --color-muted: #526078;
-  /* 次要文字大量用在 11-12px 上，比原来的 #64748B 加深一档换对比度（白底 5.4:1 / 灰底 5.0:1） */
-  --color-faint: #5b6880;
-  --color-line: #dfe5ed;
-  --color-line-strong: #c6d0dd;
+/* 注册 .dark 变体：html.dark 下的所有 dark:* 工具类生效 */
+@custom-variant dark (&:where(.dark, .dark *));
 
-  --radius-card: 12px;
-  --radius-control: 8px;
+/*
+ * 设计令牌：现代 SaaS 精致风（柔阴影 / 冷灰中性 / 单蓝色强调）
+ * - ink  = 强文字色（深色模式下翻为近白）
+ * - panel = 常驻深色面板（侧边栏 / 品牌区 / 深色浮层），两个主题下都保持深色
+ * - 深色模式只需在 .dark 里改令牌值，全站工具类自动翻转
+ */
+@theme {
+  /* 常驻深色面板：侧边栏 / 登录品牌区 / 概览横幅 */
+  --color-panel: #101d36;
+  --color-panel-soft: #1b2c50;
+
+  --color-primary: #2563eb;
+  --color-primary-hover: #1e56d9;
+  --color-primary-soft: #edf3ff;
+  --color-teal: #0c7c6d;
+  --color-teal-soft: #e8faf4;
+  --color-amber: #b45309;
+  --color-amber-soft: #fdf5e7;
+  --color-red: #c63e3e;
+  --color-red-soft: #fdeeec;
+
+  --color-canvas: #f4f6f9;
+  --color-surface: #ffffff;
+  /* 强文字色（标题、强调数字），深色下翻白 */
+  --color-ink: #131c2e;
+  --color-text: #1e2735;
+  /* 次要文字大量用在 11-12px 上，白底对比度 ≥ 4.5:1 */
+  --color-muted: #4d5a70;
+  --color-faint: #5d6a81;
+  --color-line: #e2e7ef;
+  --color-line-strong: #c9d2df;
+
+  --radius-card: 14px;
+  --radius-control: 10px;
 
   --font-sans: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei UI",
     system-ui, sans-serif;
   --font-mono: "Cascadia Mono", ui-monospace, "SF Mono", Consolas, monospace;
 
-  --shadow-card: 0 1px 2px rgb(20 33 61 / 0.04);
-  --shadow-pop: 0 8px 24px rgb(20 33 61 / 0.12);
+  /* 柔和分层阴影：近处羽化 + 远处扩散 */
+  --shadow-xs: 0 1px 2px rgb(19 28 46 / 0.05);
+  --shadow-card: 0 1px 2px rgb(19 28 46 / 0.04), 0 2px 8px -2px rgb(19 28 46 / 0.05);
+  --shadow-pop: 0 4px 12px -2px rgb(19 28 46 / 0.08), 0 16px 40px -12px rgb(19 28 46 / 0.18);
+}
+
+/*
+ * 深色令牌：真深色中性底（非纯黑），soft 色改为半透明着色面
+ * @layer base 晚于 @theme 输出，同特异性下覆盖 :root 令牌值
+ */
+@layer base {
+  .dark {
+    --color-panel: #0a101f;
+    --color-panel-soft: #111c33;
+
+    --color-primary: #4d84f6;
+    --color-primary-hover: #3d74e8;
+    --color-primary-soft: rgb(77 132 246 / 0.16);
+    --color-teal: #2fb3a0;
+    --color-teal-soft: rgb(47 179 160 / 0.15);
+    --color-amber: #e0a04a;
+    --color-amber-soft: rgb(224 160 74 / 0.14);
+    --color-red: #e56363;
+    --color-red-soft: rgb(229 99 99 / 0.15);
+
+    --color-canvas: #0d1219;
+    --color-surface: #141b26;
+    --color-ink: #eef2f9;
+    --color-text: #dde4ee;
+    --color-muted: #9aa7bb;
+    --color-faint: #7f8b9f;
+    --color-line: #232e40;
+    --color-line-strong: #36445a;
+
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.35);
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 2px 10px -2px rgb(0 0 0 / 0.35);
+    --shadow-pop: 0 4px 14px -2px rgb(0 0 0 / 0.45), 0 18px 48px -12px rgb(0 0 0 / 0.6);
+  }
 }
 
 @layer base {
@@ -44,6 +93,29 @@
     margin: 0;
     min-height: 100dvh;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--color-primary-soft);
+    color: var(--color-ink);
+  }
+
+  /* 细滚动条，跟随令牌（深浅主题自适应） */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
   }
 
   *:focus-visible {
@@ -74,8 +146,11 @@
   .table-base td {
     @apply border-b border-line/70 px-3 py-2.5 align-middle;
   }
+  .table-base tbody tr {
+    @apply transition-colors;
+  }
   .table-base tbody tr:hover {
-    @apply bg-canvas/50;
+    @apply bg-canvas/60;
   }
 
   /* 长表格滚动时表头钉住，配合外层容器的 max-height + overflow-auto 使用 */
@@ -89,8 +164,7 @@
 
   /*
    * 元信息文字（表格副行、时间戳、辅助说明）。
-   * 之前是散落在 30 多处的 text-[11px]，天天录入的场景下偏小；
-   * 收成一个类后既统一到 12px，以后要再调也只改这一处。
+   * 收成一个类统一 12px，以后要调只改这一处。
    */
   .text-meta {
     font-size: 0.75rem;

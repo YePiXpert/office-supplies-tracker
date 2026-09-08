@@ -269,7 +269,7 @@ function toggleLow(): void {
           v-for="t in [{ key: 'products', label: '库存物品' }, { key: 'movements', label: '库存流水' }]"
           :key="t.key"
           class="px-3 h-9 text-sm font-medium rounded-t-lg cursor-pointer transition-colors"
-          :class="tab === t.key ? 'text-primary border-b-2 border-primary bg-primary-soft/40' : 'text-muted hover:text-text'"
+          :class="tab === t.key ? 'text-primary border-b-2 border-primary bg-primary-soft/40' : 'text-muted hover:text-text hover:bg-canvas/60'"
           @click="switchTab(t.key as 'products' | 'movements')"
         >
           {{ t.label }}
@@ -288,11 +288,11 @@ function toggleLow(): void {
       <!-- 物品 -->
       <template v-if="tab === 'products'">
         <div class="h-full flex flex-col">
-        <div class="flex flex-wrap items-center gap-2.5 px-4 py-3 border-b border-line">
+        <div class="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-line">
           <SearchInput v-model="state.search" class="flex-1 min-w-44" placeholder="搜索物品名" @search="loadProducts" />
           <button
-            class="inline-flex items-center gap-1.5 h-9 px-3 rounded-(--radius-control) border text-xs cursor-pointer transition-colors"
-            :class="state.low ? 'bg-red-soft border-red/30 text-red font-semibold' : 'bg-surface border-line-strong text-muted hover:border-primary'"
+            class="inline-flex items-center gap-1.5 h-9 px-3 rounded-(--radius-control) border text-xs cursor-pointer transition-all duration-150 active:scale-[0.98]"
+            :class="state.low ? 'bg-ink border-ink text-surface font-semibold' : 'bg-surface border-line-strong text-muted hover:border-primary'"
             @click="toggleLow"
           >
             <Icon name="alert" :size="12" /> 只看低库存
@@ -305,9 +305,10 @@ function toggleLow(): void {
         <div v-if="loadingProducts" class="p-3 space-y-2">
           <Skeleton v-for="i in 8" :key="i" class="h-10" />
         </div>
-        <ErrorState v-else-if="productError" :message="productError" @retry="loadProducts" />
+        <ErrorState v-else-if="productError" class="flex-1 justify-center" :message="productError" @retry="loadProducts" />
         <EmptyState
           v-else-if="products.length === 0"
+          class="flex-1 justify-center"
           :illustration="state.search || state.low ? 'search' : 'box'"
           :title="state.search || state.low ? '没有符合条件的物品' : '暂无库存物品'"
           :description="state.search || state.low ? '试试清除筛选条件' : '台账入库或手动新增后出现在这里'"
@@ -330,11 +331,11 @@ function toggleLow(): void {
                 <td class="text-right num text-xs">{{ p._count?.distributionLines ?? 0 }}</td>
                 <td>
                   <div class="flex items-center gap-0.5">
-                    <button class="p-1.5 text-faint hover:text-primary cursor-pointer" title="编辑" @click="openProductDialog(p)">
+                    <button class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-primary cursor-pointer" title="编辑" @click="openProductDialog(p)">
                       <Icon name="edit" :size="14" />
                     </button>
                     <button
-                      class="p-1.5 text-faint hover:text-red cursor-pointer disabled:opacity-50"
+                      class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-red cursor-pointer disabled:opacity-50"
                       title="删除"
                       :disabled="removingProductId === p.id"
                       @click="deleteTarget = p"
@@ -354,7 +355,7 @@ function toggleLow(): void {
       <!-- 流水 -->
       <template v-else>
         <div class="h-full flex flex-col">
-        <div class="flex items-center gap-2.5 px-4 py-3 border-b border-line">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-line">
           <Select
             v-model="state.movementType"
             :options="[{ label: '全部类型', value: '' }, ...Object.entries(MOVEMENT_TYPE_LABELS).map(([v, l]) => ({ label: l, value: v }))]"
@@ -366,8 +367,8 @@ function toggleLow(): void {
         <div v-if="loadingMovements" class="p-3 space-y-2">
           <Skeleton v-for="i in 8" :key="i" class="h-10" />
         </div>
-        <ErrorState v-else-if="movementError" :message="movementError" @retry="loadMovements" />
-        <EmptyState v-else-if="movements.length === 0" illustration="empty" title="暂无库存流水" />
+        <ErrorState v-else-if="movementError" class="flex-1 justify-center" :message="movementError" @retry="loadMovements" />
+        <EmptyState v-else-if="movements.length === 0" class="flex-1 justify-center" illustration="empty" title="暂无库存流水" />
 
         <div v-else class="flex-1 min-h-0 overflow-auto">
           <table class="table-base table-sticky min-w-[680px]">
@@ -397,7 +398,7 @@ function toggleLow(): void {
                 <td>
                   <button
                     v-if="!m.relatedItemId && !m.relatedDistributionId"
-                    class="p-1.5 text-faint hover:text-red cursor-pointer disabled:opacity-50"
+                    class="p-1.5 rounded-md text-faint transition-colors duration-150 hover:bg-canvas/80 hover:text-red cursor-pointer disabled:opacity-50"
                     title="删除并回冲"
                     :disabled="removingMovementId === m.id"
                     @click="deleteMovementTarget = m"

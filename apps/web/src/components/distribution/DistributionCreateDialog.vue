@@ -223,7 +223,7 @@ async function submit(): Promise<void> {
     :dirty="dirty && !saving"
     @update:open="emit('update:open', $event)"
   >
-    <div v-if="loading" class="py-10 text-center text-sm text-faint">加载可发放清单…</div>
+    <div v-if="loading" class="py-16 text-center text-sm text-faint">加载可发放清单…</div>
 
     <template v-else>
       <p v-if="loadError" class="mb-3 flex items-start gap-1.5 px-3 py-2 bg-red-soft border border-red/25 rounded-(--radius-control) text-xs text-red">
@@ -241,8 +241,8 @@ async function submit(): Promise<void> {
           v-for="m in [{ key: 'DIRECT', label: '从台账直发' }, { key: 'STOCK', label: '从库存发放' }]"
           :key="m.key"
           type="button"
-          class="h-8 px-3 rounded-(--radius-control) text-xs font-medium border cursor-pointer transition-colors"
-          :class="mode === m.key ? 'bg-primary text-white border-primary' : 'bg-surface text-muted border-line-strong hover:border-primary'"
+          class="h-8 px-3 rounded-(--radius-control) text-xs font-medium border cursor-pointer transition-all duration-150 active:scale-[0.98]"
+          :class="mode === m.key ? 'bg-ink text-surface border-ink' : 'bg-surface text-muted border-line-strong hover:border-primary'"
           @click="switchMode(m.key as DistributionSource)"
         >
           {{ m.label }}

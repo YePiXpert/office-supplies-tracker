@@ -47,8 +47,8 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
           :class="[
             clearable && modelValue ? 'pr-7' : '',
             error
-              ? 'border-red focus:border-red focus:ring-red/15'
-              : 'border-line-strong focus:border-primary focus:ring-primary/15',
+              ? 'border-red focus:border-red focus:ring-red/20'
+              : 'border-line-strong hover:border-primary focus:border-primary focus:ring-primary/20',
           ]"
           :disabled="disabled"
           :aria-label="label"
@@ -75,7 +75,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
         <SelectContent
           position="popper"
           :side-offset="4"
-          class="z-50 max-h-72 min-w-(--reka-select-trigger-width) overflow-hidden bg-surface border border-line rounded-(--radius-control) shadow-(--shadow-pop)"
+          class="z-50 max-h-72 min-w-(--reka-select-trigger-width) overflow-hidden bg-surface border border-line rounded-(--radius-control) shadow-(--shadow-pop) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
         >
           <SelectScrollUpButton class="flex h-6 items-center justify-center text-muted"><Icon name="chevron-down" :size="12" class="rotate-180" /></SelectScrollUpButton>
           <SelectViewport class="p-1">

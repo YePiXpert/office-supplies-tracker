@@ -117,16 +117,16 @@ const subheading = computed(() =>
 <template>
   <div class="min-h-dvh flex flex-col lg:flex-row">
     <!-- 左侧品牌区 -->
-    <div class="relative overflow-hidden lg:w-2/5 bg-ink text-white flex flex-col justify-between p-8 lg:p-12 lg:min-h-dvh">
-      <PatternGrid class="text-white/[0.07]" />
+    <div class="relative overflow-hidden lg:w-2/5 bg-gradient-to-br from-panel to-panel-soft text-white flex flex-col justify-between p-8 lg:p-12 lg:min-h-dvh">
+      <PatternGrid class="text-white/[0.06]" />
       <div class="relative flex items-center gap-2.5">
-        <div class="flex items-center justify-center size-8 rounded-lg bg-primary">
+        <div class="flex items-center justify-center size-8 rounded-lg bg-primary shadow-(--shadow-xs)">
           <Icon name="inventory" :size="16" />
         </div>
-        <p class="text-sm font-bold">Procure Lite</p>
+        <p class="text-sm font-semibold tracking-tight">Procure Lite</p>
       </div>
       <div class="relative my-10 lg:my-0 max-w-sm">
-        <h1 class="text-2xl lg:text-3xl font-bold leading-snug">让每一笔采购<br />都有下文</h1>
+        <h1 class="text-2xl lg:text-[34px] font-semibold tracking-tight leading-snug">让每一笔采购<br />都有下文</h1>
         <p class="mt-3 text-sm text-white/60 leading-relaxed">
           OA 单据导入 · 采购执行 · 库存与领用发放，一台服务器安静运行。
         </p>
@@ -143,7 +143,7 @@ const subheading = computed(() =>
           <div class="mx-auto flex items-center justify-center size-12 rounded-full bg-red-soft text-red border border-red/20">
             <Icon name="alert" :size="20" />
           </div>
-          <p class="mt-3 text-sm font-bold text-ink">连接不上后端服务</p>
+          <p class="mt-3 text-sm font-semibold text-ink">连接不上后端服务</p>
           <p class="mt-1 text-xs text-muted">服务可能还在启动，或者容器没跑起来。</p>
           <Button variant="primary" class="w-full mt-5" :loading="loading" @click="auth.refresh()">重试</Button>
         </div>
@@ -168,8 +168,8 @@ const subheading = computed(() =>
         </div>
 
         <template v-else>
-          <h2 class="text-lg font-bold text-ink">{{ heading }}</h2>
-          <p class="mt-1 mb-6 text-xs text-muted">{{ subheading }}</p>
+          <h2 class="text-xl font-semibold text-ink tracking-tight">{{ heading }}</h2>
+          <p class="mt-1.5 mb-6 text-[13px] text-muted">{{ subheading }}</p>
 
           <form class="space-y-4" @submit.prevent="submit">
             <Input

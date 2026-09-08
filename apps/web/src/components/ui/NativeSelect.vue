@@ -37,8 +37,8 @@ const emit = defineEmits<{ 'update:modelValue': [v: string] }>();
         :class="[
           size === 'sm' ? 'h-7 pl-2 pr-6 text-xs' : 'h-9.5 pl-3 pr-8 text-sm',
           error
-            ? 'border-red focus:border-red focus:ring-red/15'
-            : 'border-line-strong hover:border-primary focus:border-primary focus:ring-primary/15',
+            ? 'border-red focus:border-red focus:ring-red/20'
+            : 'border-line-strong hover:border-primary focus:border-primary focus:ring-primary/20',
         ]"
         @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
       >

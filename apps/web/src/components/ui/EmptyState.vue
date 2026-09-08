@@ -42,7 +42,7 @@ const illu = computed(() => (props.illustration ? scenes[props.illustration] : n
     <div v-else class="flex items-center justify-center size-12 rounded-full bg-canvas text-faint border border-line">
       <Icon :name="icon" :size="20" />
     </div>
-    <p class="text-sm font-semibold text-muted">{{ title }}</p>
+    <p class="text-sm font-semibold text-ink">{{ title }}</p>
     <p v-if="description" class="text-xs text-faint max-w-xs">{{ description }}</p>
     <div v-if="$slots.default" class="mt-2">
       <slot />

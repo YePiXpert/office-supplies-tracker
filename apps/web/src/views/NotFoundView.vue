@@ -10,7 +10,7 @@ const router = useRouter();
   <div class="min-h-dvh flex flex-col items-center justify-center gap-4 p-6 text-center">
     <IlluNotFound :size="160" />
     <div>
-      <h1 class="text-lg font-bold text-ink">页面不存在</h1>
+      <h1 class="text-lg font-semibold text-ink">页面不存在</h1>
       <p class="mt-1 text-sm text-muted">地址可能输错了，或者这个页面已经被移除。</p>
     </div>
     <div class="flex gap-2">

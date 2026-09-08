@@ -129,10 +129,10 @@ function openPurchase(item: ItemRow): void {
   purchaseOpen.value = true;
 }
 
-const COLUMN_META: Record<string, { tone: string; hint: string }> = {
-  PENDING_PURCHASE: { tone: 'text-primary bg-primary-soft border-primary/20', hint: '登记供应商与成交价，或直接标记已下单' },
-  PENDING_ARRIVAL: { tone: 'text-amber bg-amber-soft border-amber/25', hint: '物流跟踪中，到货后确认' },
-  PENDING_DISTRIBUTION: { tone: 'text-teal bg-teal-soft border-teal/25', hint: '发放给申领人，或整单入库' },
+const COLUMN_META: Record<string, { tone: string; count: string; hint: string }> = {
+  PENDING_PURCHASE: { tone: 'text-primary bg-primary-soft border-primary/20', count: 'bg-primary-soft text-primary', hint: '登记供应商与成交价，或直接标记已下单' },
+  PENDING_ARRIVAL: { tone: 'text-amber bg-amber-soft border-amber/25', count: 'bg-amber-soft text-amber', hint: '物流跟踪中，到货后确认' },
+  PENDING_DISTRIBUTION: { tone: 'text-teal bg-teal-soft border-teal/25', count: 'bg-teal-soft text-teal', hint: '发放给申领人，或整单入库' },
 };
 
 const truncated = computed(() =>
@@ -155,13 +155,15 @@ const truncated = computed(() =>
     <ErrorState v-else-if="loadError && Object.keys(columns).length === 0" :message="loadError" @retry="load()" />
 
     <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:flex-1 lg:min-h-0">
-      <section v-for="status in KANBAN_STATUSES" :key="status" class="card flex flex-col min-h-80 lg:h-full lg:min-h-0" :aria-label="ITEM_STATUS_LABELS[status]">
+      <section v-for="status in KANBAN_STATUSES" :key="status" class="card flex flex-col min-h-80 overflow-hidden lg:h-full lg:min-h-0" :aria-label="ITEM_STATUS_LABELS[status]">
         <header class="flex items-center justify-between px-4 pt-3.5 pb-2.5 border-b border-line">
           <div class="flex items-center gap-2">
             <span class="inline-flex items-center h-6 px-2 rounded-full border text-xs font-semibold" :class="COLUMN_META[status].tone">
               {{ ITEM_STATUS_LABELS[status] }}
             </span>
-            <span class="text-xs text-faint num">{{ totals[status] ?? columns[status]?.length ?? 0 }}</span>
+            <span class="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full text-meta font-semibold num" :class="COLUMN_META[status].count">
+              {{ totals[status] ?? columns[status]?.length ?? 0 }}
+            </span>
           </div>
           <span v-if="refreshing" class="inline-block size-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
         </header>
@@ -176,7 +178,7 @@ const truncated = computed(() =>
           </router-link>
         </p>
 
-        <div class="p-3 space-y-2.5 max-h-[60dvh] overflow-y-auto lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto">
+        <div class="p-3 space-y-2.5 max-h-[60dvh] bg-canvas/50 overflow-y-auto lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto">
           <EmptyState
             v-if="!columns[status]?.length"
             :icon="status === 'PENDING_PURCHASE' ? 'kanban' : 'box'"
@@ -186,8 +188,8 @@ const truncated = computed(() =>
           <article
             v-for="item in columns[status]"
             :key="item.id"
-            class="p-3 bg-surface border border-line rounded-(--radius-control) hover:border-line-strong transition-all"
-            :class="busy.has(item.id) ? 'opacity-50 pointer-events-none' : ''"
+            class="p-3 bg-surface border border-line rounded-(--radius-control) shadow-(--shadow-xs) hover:border-line-strong hover:-translate-y-0.5 hover:shadow-(--shadow-pop) transition-all"
+            :class="busy.has(item.id) ? 'opacity-50 pointer-events-none shadow-(--shadow-pop)' : ''"
           >
             <div class="flex items-start justify-between gap-2">
               <p class="text-sm font-semibold text-ink leading-snug break-all">{{ item.itemName }}</p>

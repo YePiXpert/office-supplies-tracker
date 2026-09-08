@@ -4,6 +4,7 @@ import App from './App.vue';
 import { router } from './router';
 import { bindRouter, onUnauthorized, apiError } from './api/client';
 import { useAuthStore } from './stores/auth';
+import { useThemeStore } from './stores/theme';
 import { useToastStore } from './stores/toast';
 import { registerSW } from 'virtual:pwa-register';
 import './styles/main.css';
@@ -12,6 +13,9 @@ const app = createApp(App);
 const pinia = createPinia();
 app.use(pinia);
 bindRouter(router);
+
+// 主题要在挂载前就位：.dark 类决定整站令牌取值（index.html 已预置，这里校准并接管后续切换）
+useThemeStore(pinia).init();
 
 // 会话过期：清除登录态再跳登录页，避免守卫依据旧状态把用户弹回工作台
 onUnauthorized(() => {

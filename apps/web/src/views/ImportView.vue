@@ -410,10 +410,24 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
     <ol class="flex items-center gap-2 text-xs" aria-label="导入步骤">
       <li v-for="(s, i) in STEPS" :key="s.key" class="flex items-center gap-2">
         <span
-          class="flex items-center justify-center size-5 rounded-full border text-meta font-bold num"
-          :class="currentStepIndex >= i ? 'bg-primary text-white border-primary' : 'bg-surface text-faint border-line-strong'"
+          class="flex items-center justify-center size-5 rounded-full border text-meta font-semibold num"
+          :class="
+            i < currentStepIndex
+              ? 'bg-teal-soft text-teal border-teal/30'
+              : currentStepIndex === i
+                ? 'bg-primary text-white border-primary'
+                : 'bg-surface text-faint border-line-strong'
+          "
         >{{ i + 1 }}</span>
-        <span :class="currentStepIndex >= i ? 'text-ink font-semibold' : 'text-faint'">{{ s.label }}</span>
+        <span
+          :class="
+            i < currentStepIndex
+              ? 'text-teal font-semibold'
+              : currentStepIndex === i
+                ? 'text-primary font-semibold'
+                : 'text-faint'
+          "
+        >{{ s.label }}</span>
         <Icon v-if="i < STEPS.length - 1" name="chevron-right" :size="12" class="text-line-strong" />
       </li>
     </ol>
@@ -422,7 +436,7 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
     <div v-if="step === 'upload'" class="card p-6">
       <div
         class="flex flex-col items-center justify-center gap-3 py-10 border-2 border-dashed rounded-(--radius-card) text-center cursor-pointer transition-colors"
-        :class="dragging ? 'border-primary bg-primary-soft' : 'border-line-strong hover:border-primary/60 hover:bg-primary-soft/30'"
+        :class="dragging ? 'border-primary bg-primary-soft' : 'border-line-strong hover:border-primary/50 hover:bg-primary-soft/30'"
         role="button"
         tabindex="0"
         aria-label="选择或拖拽上传 OA 单据"
@@ -442,7 +456,7 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
       </div>
 
       <!-- 手机拍照直传 -->
-      <label class="mt-4 flex sm:hidden items-center justify-center gap-2 h-11 rounded-(--radius-control) bg-ink text-white text-sm font-medium cursor-pointer active:bg-ink-soft">
+      <label class="mt-4 flex sm:hidden items-center justify-center gap-2 h-11 rounded-(--radius-control) bg-ink text-surface text-sm font-medium cursor-pointer active:opacity-90">
         <Icon name="camera" :size="16" /> 拍照上传 OA 审批单
         <input type="file" accept="image/*" capture="environment" class="hidden" @change="onFileChange" />
       </label>
@@ -471,7 +485,7 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
     <template v-else-if="step === 'review'">
       <div class="card p-5">
         <div class="flex items-center justify-between mb-3.5">
-          <h2 class="text-sm font-bold text-ink">单据信息</h2>
+          <h2 class="text-sm font-semibold text-ink">单据信息</h2>
           <Button v-if="aiEnabled" size="sm" variant="secondary" :loading="aiReviewing" @click="runAiReview">
             <Icon name="sparkles" :size="13" /> AI 校对
           </Button>
@@ -484,7 +498,7 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
             AI 校对建议
             <button
               v-if="aiSuggestionCount > 0"
-              class="ml-auto h-6 px-2 text-meta rounded-md bg-primary text-white cursor-pointer hover:bg-primary-hover"
+              class="ml-auto h-6 px-2 text-meta rounded-md bg-primary text-white cursor-pointer transition-all hover:bg-primary-hover active:scale-[0.98]"
               @click="applyAiAll"
             >
               全部应用（{{ aiSuggestionCount }}）
@@ -519,7 +533,7 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
 
       <div class="card p-5">
         <div class="flex items-center justify-between mb-3.5">
-          <h2 class="text-sm font-bold text-ink">物品明细（{{ lines.length }} 条）</h2>
+          <h2 class="text-sm font-semibold text-ink">物品明细（{{ lines.length }} 条）</h2>
           <Button size="sm" variant="ghost" @click="addLine">
             <Icon name="plus" :size="13" /> 添加一行
           </Button>
@@ -534,10 +548,10 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
             跳过 = 保持原记录不动；合并 = 把这次的数量加到原记录上（适合补录、追加采购）。
           </p>
           <div class="mt-2 flex flex-wrap gap-2">
-            <button class="h-7 px-2.5 text-xs rounded-md border border-line-strong bg-surface cursor-pointer hover:border-primary hover:text-primary" @click="setAllDuplicateActions('skip')">
+            <button class="h-7 px-2.5 text-xs rounded-(--radius-control) border border-line-strong bg-surface cursor-pointer transition-all hover:border-primary hover:text-primary active:scale-[0.98]" @click="setAllDuplicateActions('skip')">
               全部跳过
             </button>
-            <button class="h-7 px-2.5 text-xs rounded-md border border-line-strong bg-surface cursor-pointer hover:border-primary hover:text-primary" @click="setAllDuplicateActions('merge')">
+            <button class="h-7 px-2.5 text-xs rounded-(--radius-control) border border-line-strong bg-surface cursor-pointer transition-all hover:border-primary hover:text-primary active:scale-[0.98]" @click="setAllDuplicateActions('merge')">
               全部合并数量
             </button>
           </div>
@@ -580,14 +594,14 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
                 <div class="inline-flex rounded-md border border-line-strong overflow-hidden text-meta">
                   <button
                     class="h-6 px-2 cursor-pointer transition-colors"
-                    :class="line.action === 'skip' ? 'bg-ink text-white' : 'bg-surface text-muted hover:text-primary'"
+                    :class="line.action === 'skip' ? 'bg-ink text-surface' : 'bg-surface text-muted hover:text-primary'"
                     @click="line.action = 'skip'"
                   >
                     跳过
                   </button>
                   <button
                     class="h-6 px-2 cursor-pointer transition-colors border-l border-line-strong"
-                    :class="line.action === 'merge' ? 'bg-ink text-white' : 'bg-surface text-muted hover:text-primary'"
+                    :class="line.action === 'merge' ? 'bg-ink text-surface' : 'bg-surface text-muted hover:text-primary'"
                     @click="line.action = 'merge'"
                   >
                     合并（→ {{ line.duplicate.matchedQuantity + (Number(line.quantity) || 0) }}）
@@ -630,7 +644,7 @@ const currentStepIndex = computed(() => STEPS.findIndex((s) => s.key === step.va
       <div class="flex items-center justify-center size-14 rounded-full bg-teal-soft text-teal border border-teal/25">
         <Icon name="check" :size="24" />
       </div>
-      <h2 class="text-base font-bold text-ink">导入完成</h2>
+      <h2 class="text-base font-semibold text-ink">导入完成</h2>
       <p class="text-sm text-muted">
         新建 <b class="num text-ink">{{ result.created }}</b> 条
         <template v-if="result.merged > 0"> · 合并数量 <b class="num text-ink">{{ result.merged }}</b> 条</template>

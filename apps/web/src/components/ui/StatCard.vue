@@ -25,15 +25,15 @@ const tones = {
   <component
     :is="to ? RouterLink : 'div'"
     :to="to"
-    class="card group flex items-center gap-3.5 px-4 py-3.5 transition-colors"
-    :class="to ? 'hover:border-primary/40' : ''"
+    class="card group flex items-center gap-3.5 px-4 py-3.5 transition-all"
+    :class="to ? 'hover:-translate-y-0.5 hover:shadow-(--shadow-pop) hover:border-primary/40' : ''"
   >
     <span class="flex items-center justify-center size-10 rounded-(--radius-card) shrink-0" :class="tones[tone ?? 'gray']">
       <Icon :name="icon" :size="18" />
     </span>
     <div class="min-w-0">
       <p class="text-xs text-muted truncate">{{ label }}</p>
-      <p class="text-xl font-bold text-ink num leading-tight">
+      <p class="text-xl font-semibold text-ink num leading-tight">
         {{ value }}<span v-if="unit" class="ml-1 text-xs font-medium text-faint">{{ unit }}</span>
       </p>
       <p v-if="hint" class="text-meta text-faint truncate mt-0.5">{{ hint }}</p>

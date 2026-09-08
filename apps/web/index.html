@@ -3,7 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#14213D" />
+    <meta name="theme-color" content="#101d36" />
+    <script>
+      // 防 FOUC：首帧前按本地偏好预置 .dark（与 src/stores/theme.ts 的 STORAGE_KEY 保持一致）
+      try {
+        var t = localStorage.getItem('pl-theme');
+        if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        }
+      } catch (e) { /* localStorage 不可用时退回浅色 */ }
+    </script>
     <meta name="description" content="办公用品采购台账：OA 导入、采购执行、库存与领用发放" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Procure Lite 采购台账</title>
@@ -17,8 +26,14 @@
         align-items: center;
         justify-content: center;
         gap: 14px;
-        background: #f3f5f8;
+        background: #f4f6f9;
         font-family: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
+      }
+      html.dark #boot {
+        background: #0d1219;
+      }
+      html.dark #boot p {
+        color: #7f8b9f;
       }
       #boot .mark {
         display: flex;
@@ -27,7 +42,7 @@
         width: 44px;
         height: 44px;
         border-radius: 12px;
-        background: #14213d;
+        background: #101d36;
         color: #fff;
         font-weight: 700;
         font-size: 18px;

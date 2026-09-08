@@ -135,11 +135,11 @@ async function submit(markOrdered: boolean): Promise<void> {
             v-for="(s, i) in suggestions.slice(0, 4)"
             :key="s.id"
             type="button"
-            class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md bg-surface border border-line text-xs cursor-pointer hover:border-primary text-left"
+            class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md bg-surface border border-line text-xs cursor-pointer transition-all hover:border-primary text-left active:scale-[0.99]"
             @click="applySuggestion(s)"
           >
             <span class="flex-1 truncate">{{ s.supplier.name }}</span>
-            <span v-if="i === 0" class="text-meta text-teal font-semibold">最低价</span>
+            <span v-if="i === 0" class="inline-flex items-center h-4.5 px-1.5 rounded-full text-meta font-semibold bg-teal-soft text-teal">最低价</span>
             <span class="num font-semibold shrink-0">{{ formatCurrency(s.unitPrice) }}</span>
             <span class="text-meta text-faint num shrink-0">{{ formatDate(s.createdAt) }}</span>
           </button>

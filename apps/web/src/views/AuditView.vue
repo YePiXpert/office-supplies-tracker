@@ -179,7 +179,7 @@ const hasFilters = computed(() => !!(filters.search || filters.action));
 
 <template>
   <div class="card overflow-hidden h-full flex flex-col">
-    <div class="flex flex-wrap items-center gap-2.5 px-4 py-3 border-b border-line">
+    <div class="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-line">
       <SearchInput v-model="filters.search" class="flex-1 max-w-sm" placeholder="搜索详情内容" @search="applyFilters" />
       <NativeSelect
         v-model="filters.action"
@@ -199,9 +199,10 @@ const hasFilters = computed(() => !!(filters.search || filters.action));
       <div v-if="loading" class="p-3 space-y-2">
         <Skeleton v-for="i in 8" :key="i" class="h-10" />
       </div>
-      <ErrorState v-else-if="loadError" :message="loadError" @retry="load" />
+      <ErrorState v-else-if="loadError" class="flex-1 justify-center" :message="loadError" @retry="load" />
       <EmptyState
         v-else-if="logs.length === 0"
+        class="flex-1 justify-center"
         :illustration="hasFilters ? 'search' : 'empty'"
         :title="hasFilters ? '没有符合条件的记录' : '暂无审计记录'"
         :description="hasFilters ? '试试换个操作类型或关键词' : ''"

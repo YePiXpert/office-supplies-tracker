@@ -13,12 +13,21 @@ import Dialog from '@/components/ui/Dialog.vue';
 import { systemApi, downloadFile, http, aiApi, type BackupInfo, type SystemStatus } from '@/api';
 import { useToastStore } from '@/stores/toast';
 import { useAuthStore } from '@/stores/auth';
+import { useThemeStore } from '@/stores/theme';
 import { apiError } from '@/api/client';
 import { formatBytes } from '@/utils/format';
 
 const toast = useToastStore();
 const auth = useAuthStore();
 const router = useRouter();
+const theme = useThemeStore();
+
+/* 外观主题三选一 */
+const themeOptions = [
+  { value: 'light', label: '浅色', icon: 'sun' },
+  { value: 'dark', label: '深色', icon: 'moon' },
+  { value: 'system', label: '跟随系统', icon: 'settings' },
+] as const;
 
 const status = ref<SystemStatus | null>(null);
 const ocrOk = ref<boolean | null>(null);
@@ -316,9 +325,27 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
   <ErrorState v-else-if="loadError && !status" :message="loadError" @retry="load" />
 
   <div v-else class="grid lg:grid-cols-2 gap-5 items-start">
+    <!-- 外观 -->
+    <section class="card p-5">
+      <h2 class="text-sm font-semibold text-ink mb-1">外观</h2>
+      <p class="text-xs text-faint mb-4">界面明暗主题，跟随系统时随操作系统的显示设置切换</p>
+      <div class="flex gap-0.5 max-w-sm bg-canvas border border-line rounded-(--radius-control) p-0.5">
+        <button
+          v-for="opt in themeOptions"
+          :key="opt.value"
+          type="button"
+          class="flex-1 h-8 rounded-[calc(var(--radius-control)-4px)] text-xs font-medium transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+          :class="theme.mode === opt.value ? 'bg-ink text-surface' : 'text-muted hover:text-text'"
+          @click="theme.setMode(opt.value)"
+        >
+          <Icon :name="opt.icon" :size="13" /> {{ opt.label }}
+        </button>
+      </div>
+    </section>
+
     <!-- 账号安全 -->
     <section class="card p-5">
-      <h2 class="text-sm font-bold text-ink mb-1">账号安全</h2>
+      <h2 class="text-sm font-semibold text-ink mb-1">账号安全</h2>
       <p class="text-xs text-faint mb-4">单管理员模式，会话 30 分钟无操作自动过期</p>
       <div class="space-y-3 max-w-sm">
         <Input
@@ -359,7 +386,7 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
     <!-- 系统状态 -->
     <section class="card p-5">
       <div class="flex items-center justify-between mb-3.5">
-        <h2 class="text-sm font-bold text-ink">系统状态</h2>
+        <h2 class="text-sm font-semibold text-ink">系统状态</h2>
         <Button variant="ghost" size="sm" @click="load">
           <Icon name="refresh" :size="13" /> 刷新
         </Button>
@@ -395,7 +422,7 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
         <span class="flex items-center justify-center size-7 rounded-lg bg-primary-soft text-primary">
           <Icon name="sparkles" :size="14" />
         </span>
-        <h2 class="text-sm font-bold text-ink">AI 助手</h2>
+        <h2 class="text-sm font-semibold text-ink">AI 助手</h2>
       </div>
       <p class="text-xs text-faint mb-4">
         配置 OpenAI 兼容接口后，可用自然语言查询台账，并启用智能搜索与 OCR 校对辅助
@@ -443,7 +470,7 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
 
     <!-- 自动备份 -->
     <section class="card p-5">
-      <h2 class="text-sm font-bold text-ink mb-1">自动备份</h2>
+      <h2 class="text-sm font-semibold text-ink mb-1">自动备份</h2>
       <p class="text-xs text-faint mb-4">定期打包数据库与附件，保留最近 N 份</p>
       <div class="flex flex-wrap items-start gap-3 max-w-md">
         <label class="flex items-center gap-2 text-sm mt-7 cursor-pointer select-none">
@@ -476,7 +503,7 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
     <section class="card p-5">
       <div class="flex items-center justify-between mb-3.5">
         <div>
-          <h2 class="text-sm font-bold text-ink">备份管理</h2>
+          <h2 class="text-sm font-semibold text-ink">备份管理</h2>
           <p class="text-xs text-faint">恢复会覆盖当前数据库与附件，操作前请先创建备份</p>
         </div>
         <Button variant="primary" size="sm" :loading="creating" @click="createBackup">
@@ -508,7 +535,7 @@ const totalBackupSize = computed(() => backups.value.reduce((sum, b) => sum + b.
     </section>
 
     <!-- 恢复中：全屏挡住，避免用户在数据被覆盖的过程中继续操作 -->
-    <div v-if="restoring" class="fixed inset-0 z-[90] flex flex-col items-center justify-center gap-3 bg-ink/70 backdrop-blur-sm text-white">
+    <div v-if="restoring" class="fixed inset-0 z-[90] flex flex-col items-center justify-center gap-3 bg-black/60 backdrop-blur-sm text-white">
       <span class="size-8 border-[3px] border-white/30 border-t-white rounded-full animate-spin" />
       <p class="text-sm font-semibold">正在恢复备份…</p>
       <p class="text-xs text-white/70">服务短暂不可用，请不要关闭页面</p>

@@ -290,7 +290,7 @@ async function save(): Promise<void> {
               v-for="(s, i) in suggestions.slice(0, 5)"
               :key="s.id"
               type="button"
-              class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-surface border border-line-strong text-xs cursor-pointer hover:border-primary hover:text-primary"
+              class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-surface border border-line-strong text-xs cursor-pointer transition-all duration-150 hover:border-primary hover:text-primary active:scale-[0.98]"
               @click="applySuggestion(s)"
             >
               <span>{{ s.supplier.name }}</span>

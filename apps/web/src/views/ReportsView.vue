@@ -10,7 +10,7 @@ import EChart from '@/components/charts/EChart.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import ErrorState from '@/components/ui/ErrorState.vue';
 import Skeleton from '@/components/ui/Skeleton.vue';
-import { AXIS_STYLE, CHART_COLORS, TOOLTIP_STYLE } from '@/components/charts/chartTheme';
+import { useChartTheme } from '@/components/charts/chartTheme';
 import { reportsApi, distributionsApi } from '@/api';
 import { useToastStore } from '@/stores/toast';
 import { apiError } from '@/api/client';
@@ -22,6 +22,7 @@ import { todayString } from '@/utils/datetime';
 
 const toast = useToastStore();
 const guard = createRequestGuard();
+const chartTheme = useChartTheme();
 
 const DEFAULTS = { dateFrom: '', dateTo: '', groupBy: 'month' as string };
 const range = reactive({ ...DEFAULTS });
@@ -100,51 +101,54 @@ function setQuickRange(kind: 'thisMonth' | 'lastMonth' | 'thisYear' | 'all'): vo
 const totalAmount = computed(() => points.value.reduce((sum, p) => sum + p.amount, 0));
 const totalCount = computed(() => points.value.reduce((sum, p) => sum + p.count, 0));
 
-const barOption = computed<EChartsOption>(() => ({
-  color: CHART_COLORS,
-  tooltip: {
-    ...TOOLTIP_STYLE,
-    trigger: 'axis',
-    // 金额轴带上货币符号与千分位，光看裸数字很难读
-    formatter: (params: unknown) => {
-      const rows = params as { axisValue: string; seriesName: string; value: number }[];
-      const lines = rows.map((r) =>
-        r.seriesName === '采购金额'
-          ? `${r.seriesName}：${formatCurrency(r.value)}`
-          : `${r.seriesName}：${r.value} 笔`,
-      );
-      return [rows[0]?.axisValue, ...lines].join('<br/>');
+const barOption = computed<EChartsOption>(() => {
+  const ct = chartTheme.value;
+  return {
+    color: ct.colors,
+    tooltip: {
+      ...ct.tooltip,
+      trigger: 'axis',
+      // 金额轴带上货币符号与千分位，光看裸数字很难读
+      formatter: (params: unknown) => {
+        const rows = params as { axisValue: string; seriesName: string; value: number }[];
+        const lines = rows.map((r) =>
+          r.seriesName === '采购金额'
+            ? `${r.seriesName}：${formatCurrency(r.value)}`
+            : `${r.seriesName}：${r.value} 笔`,
+        );
+        return [rows[0]?.axisValue, ...lines].join('<br/>');
+      },
     },
-  },
-  grid: { left: 8, right: 8, top: 24, bottom: 8, containLabel: true },
-  xAxis: {
-    type: 'category',
-    data: points.value.map((p) => p.label),
-    ...AXIS_STYLE,
-    axisLabel: { ...AXIS_STYLE.axisLabel, interval: 0, rotate: points.value.length > 8 ? 30 : 0 },
-  },
-  yAxis: [
-    { type: 'value', name: '金额', splitLine: { lineStyle: { color: '#EEF1F6' } }, ...AXIS_STYLE },
-    { type: 'value', name: '笔数', minInterval: 1, splitLine: { show: false }, ...AXIS_STYLE },
-  ],
-  series: [
-    {
-      name: '采购金额',
-      type: 'bar',
-      barMaxWidth: 26,
-      itemStyle: { borderRadius: [4, 4, 0, 0] },
-      data: points.value.map((p) => p.amount),
+    grid: { left: 8, right: 8, top: 24, bottom: 8, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: points.value.map((p) => p.label),
+      ...ct.axis,
+      axisLabel: { ...ct.axis.axisLabel, interval: 0, rotate: points.value.length > 8 ? 30 : 0 },
     },
-    {
-      name: '笔数',
-      type: 'line',
-      yAxisIndex: 1,
-      smooth: true,
-      symbolSize: 5,
-      data: points.value.map((p) => p.count),
-    },
-  ],
-}));
+    yAxis: [
+      { type: 'value', name: '金额', splitLine: { lineStyle: { color: ct.splitLine } }, ...ct.axis },
+      { type: 'value', name: '笔数', minInterval: 1, splitLine: { show: false }, ...ct.axis },
+    ],
+    series: [
+      {
+        name: '采购金额',
+        type: 'bar',
+        barMaxWidth: 26,
+        itemStyle: { borderRadius: [4, 4, 0, 0] },
+        data: points.value.map((p) => p.amount),
+      },
+      {
+        name: '笔数',
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: true,
+        symbolSize: 5,
+        data: points.value.map((p) => p.count),
+      },
+    ],
+  };
+});
 
 const groupOptions = [
   { label: '按月份', value: 'month' },
@@ -214,7 +218,7 @@ const hasRange = computed(() => !!(range.dateFrom || range.dateTo));
       <div class="card p-4">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
           <div>
-            <h2 class="text-sm font-bold text-ink">采购金额统计（{{ groupLabel }}）</h2>
+            <h2 class="text-sm font-semibold text-ink">采购金额统计（{{ groupLabel }}）</h2>
             <p class="text-xs text-faint">未填单价的记录只计笔数不计金额</p>
           </div>
           <div class="flex items-center gap-3">
@@ -234,7 +238,7 @@ const hasRange = computed(() => !!(range.dateFrom || range.dateTo));
       <!-- 领用排行 -->
       <div class="card p-4">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <h2 class="text-sm font-bold text-ink">领用排行（按人）</h2>
+          <h2 class="text-sm font-semibold text-ink">领用排行（按人）</h2>
           <Button v-if="recipients.length > 0" variant="secondary" size="sm" @click="exportRecipients">
             <Icon name="download" :size="13" /> 导出全部 {{ recipients.length }} 人
           </Button>
