@@ -175,4 +175,42 @@
   .field-error {
     @apply mt-1 flex items-start gap-1 text-xs text-red;
   }
+
+  /* AI 回复的 Markdown 渲染容器（utils/markdown.ts 的输出） */
+  .md > * + * {
+    margin-top: 0.5rem;
+  }
+  .md strong {
+    @apply font-semibold text-ink;
+  }
+  .md h1, .md h2, .md h3, .md h4 {
+    @apply font-semibold text-ink;
+  }
+  .md ul {
+    @apply list-disc pl-5 space-y-1;
+  }
+  .md ol {
+    @apply list-decimal pl-5 space-y-1;
+  }
+  .md code {
+    @apply font-mono text-[0.85em] bg-canvas border border-line rounded px-1 py-0.5;
+  }
+  .md pre {
+    @apply bg-canvas border border-line rounded-(--radius-control) p-3 overflow-x-auto;
+  }
+  .md pre code {
+    @apply bg-transparent border-0 p-0 rounded-none;
+  }
+  .md table {
+    @apply w-full border-collapse text-xs my-1;
+  }
+  .md th {
+    @apply text-left font-semibold text-muted border-b border-line px-2 py-1.5 whitespace-nowrap;
+  }
+  .md td {
+    @apply border-b border-line/70 px-2 py-1.5 align-top;
+  }
+  .md a {
+    @apply text-primary underline underline-offset-2;
+  }
 }

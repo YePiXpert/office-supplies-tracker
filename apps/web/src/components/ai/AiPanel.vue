@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import Icon from '@/components/ui/Icon.vue';
 import { aiApi, apiError } from '@/api';
 import { useToastStore } from '@/stores/toast';
+import { renderMarkdown } from '@/utils/markdown';
 import type { AiConfigView } from '@procure-lite/shared';
 
 const props = defineProps<{ open: boolean }>();
@@ -211,10 +212,14 @@ watch([messages, asking], () => scrollToBottom(), { deep: true });
                     </li>
                   </ul>
                 </details>
+                <!-- 助手回复是 Markdown：走 renderMarkdown（先转义 HTML，防注入）；用户消息保持纯文本 -->
+                <!-- eslint-disable vue/no-v-html -- renderMarkdown 先整体转义 HTML，输出只含受控标签 -->
                 <div
-                  class="max-w-[92%] px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words rounded-(--radius-card) rounded-tl-sm"
+                  class="md max-w-[92%] px-3 py-2 text-sm leading-relaxed break-words rounded-(--radius-card) rounded-tl-sm"
                   :class="m.error ? 'bg-red-soft text-red border border-red/20' : 'bg-surface border border-line text-text'"
-                >{{ m.content }}</div>
+                  v-html="renderMarkdown(m.content)"
+                ></div>
+                <!-- eslint-enable vue/no-v-html -->
               </div>
             </template>
 
